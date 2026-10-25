@@ -37,8 +37,11 @@ test-results/
 playwright-report/
 *.profraw
 
-# Agent internal files and plans
+# Agent internal files, design specs, and documentation
 .hermes/
+ROADMAP.md
+DESIGN.md
+docs/
 
 # Keys and secrets
 *.asc
