@@ -27,6 +27,19 @@ dist-ssr
 src-tauri/target/
 **/target/
 
+# Tests, QA reports, and artifacts
+tests/
+src-tauri/tests/
+_project/
+coverage/
+*.lcov
+test-results/
+playwright-report/
+*.profraw
+
+# Agent internal files and plans
+.hermes/
+
 # Keys and secrets
 *.asc
 *.gpg
