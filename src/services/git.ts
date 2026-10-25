@@ -52,9 +52,66 @@ export async function undoLastCommit(repo: string): Promise<string> {
 export async function getFileDiff(
   repo: string,
   filePath: string,
-  staged: boolean
+  staged: boolean,
+  ignoreWhitespace?: boolean
 ): Promise<string> {
-  return invoke<string>("get_file_diff", { repo, filePath, staged });
+  return invoke<string>("get_file_diff", {
+    repo,
+    filePath,
+    staged,
+    ignoreWhitespace,
+  });
+}
+
+export async function addToGitignore(repo: string, pattern: string): Promise<void> {
+  return invoke("add_to_gitignore", { repo, pattern });
+}
+
+export async function cherryPick(repo: string, sha: string): Promise<string> {
+  return invoke<string>("cherry_pick", { repo, sha });
+}
+
+export async function revertCommit(repo: string, sha: string): Promise<string> {
+  return invoke<string>("revert_commit", { repo, sha });
+}
+
+export async function resetToCommit(
+  repo: string,
+  sha: string,
+  hard?: boolean
+): Promise<string> {
+  return invoke<string>("reset_to_commit", { repo, sha, hard });
+}
+
+export async function listTags(repo: string): Promise<string[]> {
+  return invoke<string[]>("list_tags", { repo });
+}
+
+export async function createTag(
+  repo: string,
+  tagName: string,
+  targetSha?: string
+): Promise<string> {
+  return invoke<string>("create_tag", { repo, tagName, targetSha });
+}
+
+export async function deleteTag(repo: string, tagName: string): Promise<string> {
+  return invoke<string>("delete_tag", { repo, tagName });
+}
+
+export async function rebaseBranch(
+  repo: string,
+  baseBranch: string
+): Promise<string> {
+  return invoke<string>("rebase_branch", { repo, baseBranch });
+}
+
+export async function gitForcePush(
+  repo: string,
+  remote?: string,
+  branch?: string
+): Promise<string> {
+  return invoke<string>("git_force_push", { repo, remote, branch });
 }
 
 export async function getCommitHistory(

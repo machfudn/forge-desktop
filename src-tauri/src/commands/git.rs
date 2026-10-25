@@ -46,8 +46,18 @@ pub fn undo_last_commit(repo: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn get_file_diff(repo: &str, file_path: &str, staged: bool) -> Result<String, String> {
-    git::get_file_diff(repo, file_path, staged)
+pub fn get_file_diff(
+    repo: &str,
+    file_path: &str,
+    staged: bool,
+    ignore_whitespace: Option<bool>,
+) -> Result<String, String> {
+    git::get_file_diff(repo, file_path, staged, ignore_whitespace.unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn add_to_gitignore(repo: &str, pattern: &str) -> Result<(), String> {
+    git::add_to_gitignore(repo, pattern)
 }
 
 #[tauri::command]
@@ -87,6 +97,45 @@ pub fn merge_branch(repo: &str, target_branch: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn rebase_branch(repo: &str, base_branch: &str) -> Result<String, String> {
+    git::rebase_branch(repo, base_branch)
+}
+
+#[tauri::command]
+pub fn cherry_pick(repo: &str, sha: &str) -> Result<String, String> {
+    git::cherry_pick(repo, sha)
+}
+
+#[tauri::command]
+pub fn revert_commit(repo: &str, sha: &str) -> Result<String, String> {
+    git::revert_commit(repo, sha)
+}
+
+#[tauri::command]
+pub fn reset_to_commit(repo: &str, sha: &str, hard: Option<bool>) -> Result<String, String> {
+    git::reset_to_commit(repo, sha, hard.unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn list_tags(repo: &str) -> Result<Vec<String>, String> {
+    git::list_tags(repo)
+}
+
+#[tauri::command]
+pub fn create_tag(
+    repo: &str,
+    tag_name: &str,
+    target_sha: Option<&str>,
+) -> Result<String, String> {
+    git::create_tag(repo, tag_name, target_sha)
+}
+
+#[tauri::command]
+pub fn delete_tag(repo: &str, tag_name: &str) -> Result<String, String> {
+    git::delete_tag(repo, tag_name)
+}
+
+#[tauri::command]
 pub fn abort_merge(repo: &str) -> Result<(), String> {
     git::abort_merge(repo)
 }
@@ -119,6 +168,15 @@ pub fn git_pull(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Resul
 #[tauri::command]
 pub fn git_push(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<String, String> {
     git::push(repo, remote, branch)
+}
+
+#[tauri::command]
+pub fn git_force_push(
+    repo: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+) -> Result<String, String> {
+    git::force_push(repo, remote, branch)
 }
 
 #[tauri::command]

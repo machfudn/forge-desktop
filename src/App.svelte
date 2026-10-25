@@ -41,8 +41,16 @@
     | "stash"
     | "diag"
     | "auth"
+    | "tag"
     | null;
   let activeModal: ModalType = $state(null);
+
+  // Tag modal states
+  let tagModalTargetSha = $state<string | null>(null);
+  let tagNameInput = $state("");
+
+  // Diff whitespace state
+  let ignoreWhitespace = $state(false);
 
   // Branch modal sub-states
   let branchSearch = $state("");
@@ -150,9 +158,31 @@
       return;
     }
     try {
-      currentDiff = await gitService.getFileDiff(activeRepo, file.path, file.staged);
+      currentDiff = await gitService.getFileDiff(
+        activeRepo,
+        file.path,
+        file.staged,
+        ignoreWhitespace
+      );
     } catch (err) {
       currentDiff = `Error loading diff: ${String(err)}`;
+    }
+  }
+
+  async function handleToggleWhitespace() {
+    ignoreWhitespace = !ignoreWhitespace;
+    if (selectedFile) {
+      await loadDiff(selectedFile);
+    }
+  }
+
+  async function handleAddToGitignore(filePath: string) {
+    try {
+      await gitService.addToGitignore(activeRepo, filePath);
+      setStatus(`Menambahkan ${filePath} ke .gitignore`);
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
     }
   }
 
@@ -438,6 +468,108 @@
     }
   }
 
+  async function handleRebase(targetName: string) {
+    if (confirm(`Rebase branch '${currentStatus?.branch}' ke atas '${targetName}'?`)) {
+      closeModal();
+      try {
+        setStatus(`Me-rebase ke ${targetName}...`);
+        const res = await gitService.rebaseBranch(activeRepo, targetName);
+        setStatus(res || "Rebase berhasil");
+        await loadRepo(activeRepo);
+      } catch (err) {
+        setStatus(String(err), true);
+      }
+    }
+  }
+
+  async function handleCherryPick(sha: string) {
+    try {
+      setStatus(`Melakukan cherry-pick ${sha.slice(0, 7)}...`);
+      await gitService.cherryPick(activeRepo, sha);
+      setStatus(`Berhasil cherry-pick komit ${sha.slice(0, 7)}`);
+      await loadRepo(activeRepo);
+      await loadHistory();
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleRevertCommit(sha: string) {
+    try {
+      setStatus(`Membalikkan komit ${sha.slice(0, 7)}...`);
+      await gitService.revertCommit(activeRepo, sha);
+      setStatus(`Berhasil revert komit ${sha.slice(0, 7)}`);
+      await loadRepo(activeRepo);
+      await loadHistory();
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  function openTagModal(sha: string) {
+    tagModalTargetSha = sha;
+    tagNameInput = "";
+    activeModal = "tag";
+  }
+
+  async function handleCreateTagSubmit() {
+    if (!tagNameInput.trim()) return;
+    try {
+      setStatus(`Membuat tag ${tagNameInput.trim()}...`);
+      await gitService.createTag(
+        activeRepo,
+        tagNameInput.trim(),
+        tagModalTargetSha || undefined
+      );
+      setStatus(`Tag ${tagNameInput.trim()} berhasil dibuat`);
+      activeModal = null;
+      tagNameInput = "";
+      tagModalTargetSha = null;
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleResetToCommit(sha: string) {
+    if (
+      !confirm(
+        `Apakah Anda yakin ingin me-reset branch aktif ke commit ${sha.slice(
+          0,
+          7
+        )}? Perubahan yang belum di-commit akan tetap ada di working tree (soft reset).`
+      )
+    ) {
+      return;
+    }
+    try {
+      setStatus(`Me-reset branch ke ${sha.slice(0, 7)}...`);
+      await gitService.resetToCommit(activeRepo, sha, false);
+      setStatus(`Branch berhasil di-reset ke ${sha.slice(0, 7)}`);
+      await loadRepo(activeRepo);
+      await loadHistory();
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleForcePush() {
+    if (
+      !confirm(
+        "Peringatan: Force Push with lease akan menimpa commit di remote repository jika ada perbedaan riwayat. Lanjutkan?"
+      )
+    ) {
+      return;
+    }
+    try {
+      setStatus("Melakukan force push (--force-with-lease)...");
+      await gitService.gitForcePush(activeRepo);
+      setStatus("Force push berhasil diselesaikan");
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
   // Stash modal actions
   async function handleStashSave() {
     closeModal();
@@ -673,6 +805,15 @@
       >
         Push {aheadBehind.ahead > 0 ? `↑${aheadBehind.ahead}` : ""}
       </button>
+      <button
+        onclick={handleForcePush}
+        class="btn-secondary"
+        title="Force Push dengan lease (--force-with-lease)"
+        disabled={!hasRemotes}
+        style="font-size: 11px;"
+      >
+        Force Push
+      </button>
 
       <button onclick={handleOpenInEditor} class="btn-secondary" title="Buka folder di VS Code / Editor">
         Editor
@@ -728,14 +869,26 @@
     <section class="content-panel">
       {#if activeTab === "changes"}
         {#if selectedFile}
-          <Diff filePath={selectedFile.path} diffText={currentDiff} />
+          <Diff
+            filePath={selectedFile.path}
+            diffText={currentDiff}
+            {ignoreWhitespace}
+            onToggleWhitespace={handleToggleWhitespace}
+            onAddToGitignore={handleAddToGitignore}
+          />
         {:else}
           <div style="display: grid; place-items: center; height: 100%; color: var(--text-muted);">
             {currentStatus?.files.length === 0 ? "Working tree bersih. Tidak ada perubahan." : "Pilih file untuk melihat diff."}
           </div>
         {/if}
       {:else}
-        <History commits={commitHistory} />
+        <History
+          commits={commitHistory}
+          onCherryPick={handleCherryPick}
+          onRevert={handleRevertCommit}
+          onTag={openTagModal}
+          onReset={handleResetToCommit}
+        />
       {/if}
     </section>
   </main>
@@ -808,6 +961,14 @@
                     title="Merge branch ini ke branch aktif"
                   >
                     Merge
+                  </button>
+                  <button
+                    onclick={() => handleRebase(b.name)}
+                    class="btn-secondary"
+                    style="font-size: 10px; padding: 2px 6px;"
+                    title="Rebase branch aktif ke atas branch ini"
+                  >
+                    Rebase
                   </button>
                   <button
                     onclick={() => handleStartRename(b.name)}
@@ -1013,6 +1174,34 @@
       {/if}
       <div class="modal-actions" style="margin-top: 8px;">
         <button class="btn-secondary" onclick={closeModal}>Tutup</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if activeModal === "tag"}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 400px;">
+      <div class="modal-header">Buat Git Tag</div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+        Target komit: <span style="font-family: var(--font-mono); font-weight: 600;">{tagModalTargetSha?.slice(0, 7) || "HEAD"}</span>
+      </div>
+      <input
+        type="text"
+        class="commit-input"
+        placeholder="v1.0.0 atau release-2026"
+        bind:value={tagNameInput}
+        style="margin-bottom: 12px;"
+      />
+      <div class="modal-actions">
+        <button onclick={closeModal} class="btn-secondary">Batal</button>
+        <button
+          onclick={handleCreateTagSubmit}
+          class="btn-primary"
+          disabled={!tagNameInput.trim()}
+        >
+          Buat Tag
+        </button>
       </div>
     </div>
   </div>

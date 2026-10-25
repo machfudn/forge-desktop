@@ -84,6 +84,17 @@ pub fn push(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<St
     cli::run(repo, &args)
 }
 
+pub fn force_push(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<String, String> {
+    let rem = remote.unwrap_or("origin");
+    let mut args = vec!["push", "--force-with-lease", rem];
+    if let Some(b) = branch {
+        if !b.trim().is_empty() {
+            args.push(b);
+        }
+    }
+    cli::run(repo, &args)
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AheadBehind {
     pub ahead: usize,
