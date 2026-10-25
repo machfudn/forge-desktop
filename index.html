@@ -5,63 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0d1117" />
     <title>Forge Desktop</title>
+    <link rel="stylesheet" href="/src/styles/tokens.css" />
     <link rel="stylesheet" href="/src/styles/main.css" />
-    <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <div class="app-container">
-      <header class="app-header">
-        <div class="header-left">
-          <button id="btn-open-repo" class="btn-secondary" style="font-weight: 600;">
-            Buka Repo
-          </button>
-          <button id="btn-clone-repo" class="btn-secondary">
-            Clone
-          </button>
-          <div class="repo-badge">
-            <span id="header-repo-name">Belum ada repo</span>
-          </div>
-          <button id="btn-branch-selector" class="branch-select-btn" disabled>
-            Branch: <span id="header-branch-name">-</span>
-          </button>
-        </div>
-
-        <nav class="nav-tabs" aria-label="Navigasi">
-          <button class="nav-tab active" data-tab="changes">Changes</button>
-          <button class="nav-tab" data-tab="history">History</button>
-        </nav>
-
-        <div class="header-right">
-          <button id="btn-fetch" class="btn-secondary" title="Fetch dari Remote" disabled>Fetch</button>
-          <button id="btn-pull" class="btn-secondary" title="Pull dari Remote" disabled>Pull</button>
-          <button id="btn-push" class="btn-secondary" title="Push ke Remote" disabled>Push</button>
-          <button id="btn-auth" class="btn-secondary" title="Akun GitHub">GitHub</button>
-          <button id="btn-stash" class="btn-secondary" title="Simpan perubahan ke Stash">Stash</button>
-          <button id="btn-diagnostics" class="btn-secondary" title="Laporan Diagnostik Sistem">Diagnostik</button>
-          <button id="btn-refresh" class="btn-secondary" title="Muat Ulang">Refresh</button>
-        </div>
-      </header>
-
-      <main class="app-body">
-        <aside id="sidebar-panel" class="sidebar-panel">
-          <!-- Rendered by changes.ts -->
-        </aside>
-
-        <section id="content-panel" class="content-panel">
-          <!-- Rendered by diff.ts or history.ts -->
-          <div style="display: grid; place-items: center; height: 100%; color: var(--text-muted);">
-            Pilih repositori untuk melihat perubahan atau riwayat.
-          </div>
-        </section>
-      </main>
-
-      <footer class="app-footer">
-        <span id="footer-status">Siap</span>
-        <span id="footer-path">-</span>
-      </footer>
-    </div>
-
-    <!-- Modal Dialogs -->
-    <div id="modal-container"></div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
