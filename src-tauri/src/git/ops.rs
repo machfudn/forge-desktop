@@ -1,4 +1,5 @@
 use super::cli;
+use serde::{Deserialize, Serialize};
 
 fn validate_sha(sha: &str) -> Result<&str, String> {
     let s = sha.trim();
@@ -106,6 +107,47 @@ pub fn squash_commits(
     cli::run(repo, &args)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebaseStep {
+    pub sha: String,
+    pub action: String,
+}
+
+pub fn interactive_rebase(
+    repo: &str,
+    base_sha: &str,
+    steps: Vec<RebaseStep>,
+) -> Result<String, String> {
+    validate_sha(base_sha)?;
+    if steps.is_empty() {
+        return Err("Daftar langkah rebase tidak boleh kosong".into());
+    }
+    for s in &steps {
+        validate_sha(&s.sha)?;
+    }
+
+    let orig_head = cli::run(repo, &["rev-parse", "HEAD"])?.trim().to_string();
+
+    if let Err(e) = cli::run(repo, &["reset", "--hard", base_sha]) {
+        return Err(format!("Gagal reset ke base sha: {e}"));
+    }
+
+    for step in &steps {
+        if step.action == "drop" {
+            continue;
+        }
+        if step.action == "pick" {
+            if let Err(e) = cli::run(repo, &["cherry-pick", &step.sha]) {
+                let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+                let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                return Err(format!("Gagal saat rebase pada commit {}: {e}", step.sha));
+            }
+        }
+    }
+
+    Ok("Interactive rebase berhasil diselesaikan".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +161,11 @@ mod tests {
         assert!(validate_tag_name("").is_err());
         assert!(validate_tag_name("-invalid").is_err());
         assert!(validate_tag_name("v1.0.0").is_ok());
+    }
+
+    #[test]
+    fn test_reject_empty_rebase_steps() {
+        assert!(interactive_rebase("/tmp", "abc1234", vec![]).is_err());
+        assert!(interactive_rebase("/tmp", "invalid", vec![]).is_err());
     }
 }

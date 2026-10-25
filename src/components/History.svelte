@@ -9,6 +9,7 @@
     onTag?: (sha: string) => void;
     onReset?: (sha: string) => void;
     onSquash?: (commitIndex: number, sha: string) => void;
+    onInteractiveRebase?: () => void;
   }
 
   let {
@@ -19,6 +20,7 @@
     onTag,
     onReset,
     onSquash,
+    onInteractiveRebase,
   }: Props = $props();
 
   let selectedSha = $state<string | null>(null);
@@ -34,11 +36,23 @@
   </div>
 {:else}
   <div class="history-container">
-    <div style="padding: 8px 16px; border-bottom: 1px solid var(--border-default); background-color: var(--bg-panel); font-size: 11px; font-weight: 600; color: var(--text-muted); display: grid; grid-template-columns: 80px 1fr 140px 100px; gap: 12px;">
-      <span>SHA</span>
-      <span>KOMIT</span>
-      <span>AUTHOR</span>
-      <span style="text-align: right;">TANGGAL</span>
+    <div style="padding: 8px 16px; border-bottom: 1px solid var(--border-default); background-color: var(--bg-panel); font-size: 11px; font-weight: 600; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: grid; grid-template-columns: 80px 1fr 140px 100px; gap: 12px; flex: 1;">
+        <span>SHA</span>
+        <span>KOMIT</span>
+        <span>AUTHOR</span>
+        <span style="text-align: right;">TANGGAL</span>
+      </div>
+      {#if onInteractiveRebase && commits.length > 1}
+        <button
+          onclick={onInteractiveRebase}
+          class="btn-secondary"
+          style="font-size: 10px; padding: 2px 8px; margin-left: 16px;"
+          title="Buka dialog Interactive Rebase untuk mengurutkan atau membuang komit"
+        >
+          Interactive Rebase
+        </button>
+      {/if}
     </div>
     {#each commits as commit, index (commit.sha)}
       {@const isSelected = selectedSha === commit.sha}

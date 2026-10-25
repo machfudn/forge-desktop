@@ -7,8 +7,10 @@
     imageDiffData?: ImageDiffData | null;
     ignoreWhitespace?: boolean;
     isLfs?: boolean;
+    isStaged?: boolean;
     onToggleWhitespace?: () => void;
     onAddToGitignore?: (path: string) => void;
+    onStageHunk?: (patchText: string, reverse: boolean) => void;
   }
 
   let {
@@ -17,8 +19,10 @@
     imageDiffData = null,
     ignoreWhitespace = false,
     isLfs = false,
+    isStaged = false,
     onToggleWhitespace,
     onAddToGitignore,
+    onStageHunk,
   }: Props = $props();
 
   let isImage = $derived(
@@ -83,18 +87,63 @@
     return `${prefix}${highlighted}`;
   }
 
-  function parseLines(diff: string) {
+  interface ParsedLine {
+    line: string;
+    className: string;
+    html: string;
+    isHunkHeader: boolean;
+    hunkPatch?: string;
+  }
+
+  interface HunkInfo {
+    lines: string[];
+  }
+
+  function extractHunks(diff: string): HunkInfo[] {
+    const raw = diff.split("\n");
+    const hunks: HunkInfo[] = [];
+    let currentHunk: HunkInfo | null = null;
+
+    for (const l of raw) {
+      if (l.startsWith("@@")) {
+        if (currentHunk) {
+          hunks.push(currentHunk);
+        }
+        currentHunk = { lines: [l] };
+      } else if (currentHunk) {
+        currentHunk.lines.push(l);
+      }
+    }
+    if (currentHunk) {
+      hunks.push(currentHunk);
+    }
+    return hunks;
+  }
+
+  function parseLines(diff: string, path: string): ParsedLine[] {
     if (!diff.trim()) return [];
-    return diff.split("\n").map((line) => {
+    const rawLines = diff.split("\n");
+    const hunks = extractHunks(diff);
+    let hunkIdx = 0;
+
+    return rawLines.map((line) => {
       let className = "diff-line";
+      let isHunkHeader = false;
+      let hunkPatch: string | undefined;
+
       if (line.startsWith("+") && !line.startsWith("+++")) {
         className += " add";
       } else if (line.startsWith("-") && !line.startsWith("---")) {
         className += " del";
-      } else if (line.startsWith("@")) {
+      } else if (line.startsWith("@@")) {
         className += " meta";
+        isHunkHeader = true;
+        if (hunks[hunkIdx]) {
+          hunkPatch = `--- a/${path}\n+++ b/${path}\n${hunks[hunkIdx].lines.join("\n")}\n`;
+          hunkIdx++;
+        }
       }
-      return { line, className, html: highlightLine(line) };
+      return { line, className, html: highlightLine(line), isHunkHeader, hunkPatch };
     });
   }
 
@@ -226,7 +275,7 @@
     return result;
   }
 
-  let lines = $derived(parseLines(diffText));
+  let lines = $derived(parseLines(diffText, filePath));
   let splitRows = $derived(parseSplit(diffText));
 </script>
 
@@ -378,8 +427,20 @@
     </div>
   {:else if viewMode === "unified"}
     <div class="diff-content">
-      {#each lines as { className, html }}
-        <div class={className}>{@html html}</div>
+      {#each lines as { className, html, isHunkHeader, hunkPatch }}
+        <div class={className} style={isHunkHeader ? "display: flex; justify-content: space-between; align-items: center;" : ""}>
+          <span>{@html html}</span>
+          {#if isHunkHeader && hunkPatch && onStageHunk}
+            <button
+              class="btn-secondary"
+              style="font-size: 10px; padding: 1px 6px; margin-left: 8px; border-color: {isStaged ? 'var(--diff-del-text)' : 'var(--diff-add-text)'}; color: {isStaged ? 'var(--diff-del-text)' : 'var(--diff-add-text)'}; cursor: pointer;"
+              onclick={(e) => { e.stopPropagation(); onStageHunk(hunkPatch, isStaged); }}
+              title={isStaged ? "Batalkan stage hunk ini (Unstage hunk)" : "Stage hunk ini ke index"}
+            >
+              {isStaged ? "- Unstage Hunk" : "+ Stage Hunk"}
+            </button>
+          {/if}
+        </div>
       {/each}
     </div>
   {:else}

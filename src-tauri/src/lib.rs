@@ -72,6 +72,8 @@ pub fn run() {
             commands::sync_fork,
             commands::get_image_diff,
             commands::check_app_update,
+            commands::stage_hunk,
+            commands::interactive_rebase,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

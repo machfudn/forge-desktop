@@ -110,3 +110,8 @@ export interface AppUpdateInfo {
   release_notes?: string | null;
   html_url?: string | null;
 }
+
+export interface RebaseStep {
+  sha: string;
+  action: "pick" | "drop";
+}

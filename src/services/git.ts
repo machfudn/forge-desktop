@@ -11,6 +11,7 @@ import type {
   IssueInfo,
   PublishRepoParams,
   PullRequestInfo,
+  RebaseStep,
   RemoteInfo,
   RepoConfig,
   RepoStatus,
@@ -438,4 +439,20 @@ export async function getImageDiff(
 
 export async function checkAppUpdate(token?: string): Promise<AppUpdateInfo> {
   return invoke<AppUpdateInfo>("check_app_update", { token });
+}
+
+export async function stageHunk(
+  repo: string,
+  patchText: string,
+  reverse: boolean
+): Promise<void> {
+  return invoke<void>("stage_hunk", { repo, patchText, reverse });
+}
+
+export async function interactiveRebase(
+  repo: string,
+  baseSha: string,
+  steps: RebaseStep[]
+): Promise<string> {
+  return invoke<string>("interactive_rebase", { repo, baseSha, steps });
 }

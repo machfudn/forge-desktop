@@ -387,6 +387,78 @@
     }
   }
 
+  let showRebaseModal = $state(false);
+  interface RebaseItem {
+    sha: string;
+    short_sha: string;
+    summary: string;
+    author: string;
+    action: "pick" | "drop";
+  }
+  let rebaseItems = $state<RebaseItem[]>([]);
+  let rebaseBaseSha = $state("");
+
+  function openRebaseModal() {
+    if (commitHistory.length < 2) return;
+    const count = Math.min(commitHistory.length - 1, 10);
+    const selectedCommits = commitHistory.slice(0, count).slice().reverse();
+    rebaseItems = selectedCommits.map((c) => ({
+      sha: c.sha,
+      short_sha: c.short_sha,
+      summary: c.summary,
+      author: c.author,
+      action: "pick",
+    }));
+    rebaseBaseSha = commitHistory[count]?.sha || commitHistory[count - 1]?.sha;
+    showRebaseModal = true;
+  }
+
+  function moveRebaseItem(index: number, direction: "up" | "down") {
+    const targetIdx = direction === "up" ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= rebaseItems.length) return;
+    const item = rebaseItems[index];
+    rebaseItems.splice(index, 1);
+    rebaseItems.splice(targetIdx, 0, item);
+  }
+
+  function toggleRebaseAction(index: number) {
+    rebaseItems[index].action = rebaseItems[index].action === "pick" ? "drop" : "pick";
+  }
+
+  async function executeInteractiveRebase() {
+    if (!activeRepo || !rebaseBaseSha) return;
+    const activeSteps = rebaseItems.filter((i) => i.action === "pick");
+    if (activeSteps.length === 0) {
+      alert("Setidaknya satu komit harus memiliki aksi 'pick'");
+      return;
+    }
+    try {
+      await gitService.interactiveRebase(
+        activeRepo,
+        rebaseBaseSha,
+        rebaseItems.map((i) => ({ sha: i.sha, action: i.action }))
+      );
+      showRebaseModal = false;
+      await loadRepo(activeRepo);
+      alert("Interactive rebase berhasil diselesaikan!");
+    } catch (e: any) {
+      alert(`Gagal interactive rebase: ${e}`);
+    }
+  }
+
+  async function handleStageHunk(patchText: string, reverse: boolean) {
+    if (!activeRepo) return;
+    try {
+      await gitService.stageHunk(activeRepo, patchText, reverse);
+      await loadRepo(activeRepo);
+      if (selectedFile) {
+        await loadDiff(selectedFile);
+      }
+    } catch (e: any) {
+      alert(`Gagal stage hunk: ${e}`);
+    }
+  }
+
   async function handleAddToGitignore(filePath: string) {
     try {
       await gitService.addToGitignore(activeRepo, filePath);
@@ -1450,8 +1522,10 @@
             imageDiffData={currentImageDiff}
             {ignoreWhitespace}
             isLfs={selectedFile.is_lfs}
+            isStaged={selectedFile.staged}
             onToggleWhitespace={handleToggleWhitespace}
             onAddToGitignore={handleAddToGitignore}
+            onStageHunk={handleStageHunk}
           />
         {:else}
           <div style="display: grid; place-items: center; height: 100%; color: var(--text-muted);">
@@ -1467,6 +1541,7 @@
           onTag={openTagModal}
           onReset={handleResetToCommit}
           onSquash={openSquashModal}
+          onInteractiveRebase={openRebaseModal}
         />
       {/if}
     </section>
@@ -2173,6 +2248,81 @@
           disabled={!publishName.trim()}
         >
           Publikasikan
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showRebaseModal}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 580px; max-height: 80vh; display: flex; flex-direction: column;">
+      <div class="modal-header">Visual Interactive Rebase</div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+        Atur urutan komit atau buang (drop) komit yang tidak diinginkan. Komit akan diaplikasikan dari urutan teratas ke terbawah di atas basis <code style="font-family: var(--font-mono); color: var(--accent-blue);">{rebaseBaseSha.substring(0, 7)}</code>.
+      </div>
+
+      <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; border: 1px solid var(--border-default); border-radius: 4px; padding: 8px; background: var(--bg-panel);">
+        {#each rebaseItems as item, idx (item.sha)}
+          <div
+            style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; background: var(--bg-canvas); border: 1px solid var(--border-muted);"
+          >
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <button
+                class="btn-secondary"
+                style="padding: 0 4px; font-size: 10px; line-height: 12px; height: 14px;"
+                disabled={idx === 0}
+                onclick={() => moveRebaseItem(idx, "up")}
+                title="Pindahkan komit ke atas"
+              >
+                ▲
+              </button>
+              <button
+                class="btn-secondary"
+                style="padding: 0 4px; font-size: 10px; line-height: 12px; height: 14px;"
+                disabled={idx === rebaseItems.length - 1}
+                onclick={() => moveRebaseItem(idx, "down")}
+                title="Pindahkan komit ke bawah"
+              >
+                ▼
+              </button>
+            </div>
+
+            <button
+              class="btn-secondary"
+              style="font-size: 11px; font-weight: 700; padding: 2px 8px; min-width: 50px; text-transform: uppercase; border-color: {item.action === 'pick' ? 'var(--diff-add-text)' : 'var(--diff-del-text)'}; color: {item.action === 'pick' ? 'var(--diff-add-text)' : 'var(--diff-del-text)'};"
+              onclick={() => toggleRebaseAction(idx)}
+              title="Klik untuk mengubah aksi (pick atau drop)"
+            >
+              {item.action}
+            </button>
+
+            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">
+              {item.short_sha}
+            </span>
+
+            <span
+              style="flex: 1; font-size: 12px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; color: {item.action === 'drop' ? 'var(--text-muted)' : 'var(--text-primary)'}; {item.action === 'drop' ? 'text-decoration: line-through;' : ''}"
+              title={item.summary}
+            >
+              {item.summary}
+            </span>
+
+            <span style="font-size: 11px; color: var(--text-muted); max-width: 100px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+              {item.author}
+            </span>
+          </div>
+        {/each}
+      </div>
+
+      <div class="modal-actions" style="margin-top: 14px;">
+        <button class="btn-secondary" onclick={() => (showRebaseModal = false)}>Batal</button>
+        <button
+          class="btn-primary"
+          onclick={executeInteractiveRebase}
+          disabled={rebaseItems.filter((i) => i.action === 'pick').length === 0}
+        >
+          Mulai Rebase
         </button>
       </div>
     </div>

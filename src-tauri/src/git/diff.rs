@@ -1,7 +1,9 @@
 use super::cli;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageDiffData {
@@ -128,6 +130,45 @@ pub fn add_to_gitignore(repo: &str, pattern: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), String> {
+    if patch_text.trim().is_empty() {
+        return Err("Patch text tidak boleh kosong".into());
+    }
+    let mut args = vec!["-C", repo, "apply", "--cached"];
+    if reverse {
+        args.push("--reverse");
+    }
+    args.push("-");
+
+    let mut child = Command::new("git")
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Gagal menjalankan git apply: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(patch_text.as_bytes())
+            .map_err(|e| format!("Gagal menulis patch ke stdin: {e}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Gagal menyelesaikan git apply: {e}"))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(if err.is_empty() {
+            "Gagal melakukan apply hunk ke index".into()
+        } else {
+            err
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +181,10 @@ mod tests {
     #[test]
     fn reject_empty_gitignore_pattern() {
         assert!(add_to_gitignore("/tmp", "   ").is_err());
+    }
+
+    #[test]
+    fn reject_empty_stage_hunk() {
+        assert!(stage_hunk("/tmp", "   ", false).is_err());
     }
 }

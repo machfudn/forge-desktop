@@ -1,8 +1,8 @@
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, AheadBehind, AppUpdateInfo, BranchInfo, CheckRunInfo, CommitInfo, DeviceFlowInit,
-    ImageDiffData, IssueInfo, PublishRepoParams, PullRequestInfo, RemoteInfo, RepoConfig,
-    RepoStatus, TokenPollResult,
+    ImageDiffData, IssueInfo, PublishRepoParams, PullRequestInfo, RebaseStep, RemoteInfo,
+    RepoConfig, RepoStatus, TokenPollResult,
 };
 use crate::system;
 
@@ -390,4 +390,18 @@ pub fn get_image_diff(repo: &str, file_path: &str) -> Result<ImageDiffData, Stri
 #[tauri::command]
 pub fn check_app_update(token: Option<&str>) -> Result<AppUpdateInfo, String> {
     git::check_app_update(token)
+}
+
+#[tauri::command]
+pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), String> {
+    git::stage_hunk(repo, patch_text, reverse)
+}
+
+#[tauri::command]
+pub fn interactive_rebase(
+    repo: &str,
+    base_sha: &str,
+    steps: Vec<RebaseStep>,
+) -> Result<String, String> {
+    git::interactive_rebase(repo, base_sha, steps)
 }
