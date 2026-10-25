@@ -1,3 +1,4 @@
+use std::path::Path;
 use serde::Serialize;
 use super::cli;
 
@@ -6,12 +7,23 @@ pub struct FileEntry {
     pub path: String,
     pub status_code: String,
     pub staged: bool,
+    pub is_conflict: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct RepoStatus {
     pub branch: String,
     pub files: Vec<FileEntry>,
+    pub has_conflicts: bool,
+    pub in_merge: bool,
+    pub in_rebase: bool,
+}
+
+pub fn is_conflict_code(code: &str) -> bool {
+    matches!(
+        code,
+        "UU" | "AA" | "DD" | "AU" | "UA" | "UD" | "DU"
+    )
 }
 
 pub fn parse_status_line(line: &str) -> Option<FileEntry> {
@@ -20,12 +32,15 @@ pub fn parse_status_line(line: &str) -> Option<FileEntry> {
     }
     let code = line[..2].to_string();
     let path = line[3..].trim().to_string();
+    let is_conflict = is_conflict_code(&code);
     let index_char = code.chars().next().unwrap_or(' ');
-    let staged = index_char != ' ' && index_char != '?';
+    let staged = !is_conflict && index_char != ' ' && index_char != '?';
+
     Some(FileEntry {
         path,
         status_code: code,
         staged,
+        is_conflict,
     })
 }
 
@@ -38,12 +53,23 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
     };
 
     let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
-    let files = status_out
+    let files: Vec<FileEntry> = status_out
         .lines()
         .filter_map(parse_status_line)
         .collect();
 
-    Ok(RepoStatus { branch, files })
+    let has_conflicts = files.iter().any(|f| f.is_conflict);
+    let git_dir = Path::new(repo).join(".git");
+    let in_merge = git_dir.join("MERGE_HEAD").exists();
+    let in_rebase = git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists();
+
+    Ok(RepoStatus {
+        branch,
+        files,
+        has_conflicts,
+        in_merge,
+        in_rebase,
+    })
 }
 
 pub fn stage_file(repo: &str, file_path: &str) -> Result<(), String> {
@@ -76,6 +102,14 @@ pub fn commit(repo: &str, message: &str) -> Result<String, String> {
     cli::run(repo, &["commit", "-m", msg])
 }
 
+pub fn abort_merge(repo: &str) -> Result<(), String> {
+    cli::run(repo, &["merge", "--abort"]).map(|_| ())
+}
+
+pub fn abort_rebase(repo: &str) -> Result<(), String> {
+    cli::run(repo, &["rebase", "--abort"]).map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,6 +120,7 @@ mod tests {
         assert_eq!(entry.path, "new_file.txt");
         assert_eq!(entry.status_code, "??");
         assert!(!entry.staged);
+        assert!(!entry.is_conflict);
     }
 
     #[test]
@@ -94,6 +129,7 @@ mod tests {
         assert_eq!(entry.path, "staged_file.txt");
         assert_eq!(entry.status_code, "A ");
         assert!(entry.staged);
+        assert!(!entry.is_conflict);
     }
 
     #[test]
@@ -101,6 +137,16 @@ mod tests {
         let entry = parse_status_line(" M modified.txt").unwrap();
         assert_eq!(entry.path, "modified.txt");
         assert_eq!(entry.status_code, " M");
+        assert!(!entry.staged);
+        assert!(!entry.is_conflict);
+    }
+
+    #[test]
+    fn parse_conflict_both_modified() {
+        let entry = parse_status_line("UU conflict.txt").unwrap();
+        assert_eq!(entry.path, "conflict.txt");
+        assert_eq!(entry.status_code, "UU");
+        assert!(entry.is_conflict);
         assert!(!entry.staged);
     }
 

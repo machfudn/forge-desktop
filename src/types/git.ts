@@ -2,11 +2,15 @@ export interface FileEntry {
   path: string;
   status_code: string;
   staged: boolean;
+  is_conflict: boolean;
 }
 
 export interface RepoStatus {
   branch: string;
   files: FileEntry[];
+  has_conflicts: boolean;
+  in_merge: boolean;
+  in_rebase: boolean;
 }
 
 export interface CommitInfo {
@@ -20,4 +24,23 @@ export interface CommitInfo {
 export interface BranchInfo {
   name: string;
   is_current: boolean;
+}
+
+export interface RemoteInfo {
+  name: string;
+  url: string;
+}
+
+export interface DeviceFlowInit {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface TokenPollResult {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
 }
