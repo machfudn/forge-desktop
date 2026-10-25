@@ -414,3 +414,15 @@ export async function publishRepositoryToGithub(
 ): Promise<string> {
   return invoke<string>("publish_repository_to_github", { repo, params, token });
 }
+
+export async function syncFork(
+  repo: string,
+  upstreamRemote?: string,
+  branch?: string
+): Promise<string> {
+  return invoke<string>("sync_fork", {
+    repo,
+    upstreamRemote: upstreamRemote || null,
+    branch: branch || null,
+  });
+}

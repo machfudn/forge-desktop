@@ -9,6 +9,7 @@
     FileEntry,
     IssueInfo,
     PullRequestInfo,
+    RemoteInfo,
     RepoConfig,
     RepoStatus,
   } from "./types/git";
@@ -27,6 +28,7 @@
   let currentDiff = $state("");
   let commitHistory: CommitInfo[] = $state([]);
   let branches: BranchInfo[] = $state([]);
+  let currentRemotes: RemoteInfo[] = $state([]);
   let hasRemotes = $state(false);
   let aheadBehind: AheadBehind = $state({ ahead: 0, behind: 0 });
 
@@ -71,6 +73,51 @@
       : 5
   );
   let autofetchTimer: number | null = null;
+
+  // Desktop Notifications & Fork Sync
+  let desktopNotifEnabled = $state(
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("forge:desktop-notifs") !== "false"
+      : true
+  );
+  let hasUpstream = $derived(currentRemotes.some((r) => r.name === "upstream"));
+
+  function sendDesktopNotification(title: string, body: string) {
+    if (!desktopNotifEnabled) return;
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      try {
+        new Notification(title, { body });
+      } catch {}
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") {
+          try {
+            new Notification(title, { body });
+          } catch {}
+        }
+      });
+    }
+  }
+
+  async function handleSyncFork() {
+    try {
+      setStatus("Menyinkronkan dengan remote upstream...");
+      const res = await gitService.syncFork(
+        activeRepo,
+        "upstream",
+        currentStatus?.branch || "main"
+      );
+      setStatus(`Fork berhasil disinkronkan: ${res || "Up-to-date"}`);
+      sendDesktopNotification(
+        "Forge Desktop",
+        "Fork berhasil disinkronkan dengan branch upstream."
+      );
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(`Gagal sinkronisasi fork: ${err}`, true);
+    }
+  }
 
   // Safety Preferences
   let confirmDiscard = $state(
@@ -238,9 +285,9 @@
       currentStatus = status;
 
       try {
-        const remotes = await gitService.listRemotes(path);
-        hasRemotes = remotes.length > 0;
-        const originRemote = remotes.find((r) => r.name === "origin") || remotes[0];
+        currentRemotes = await gitService.listRemotes(path);
+        hasRemotes = currentRemotes.length > 0;
+        const originRemote = currentRemotes.find((r) => r.name === "origin") || currentRemotes[0];
         if (originRemote) {
           const parsed = await gitService.parseGithubRepository(originRemote.url);
           if (parsed) {
@@ -252,6 +299,7 @@
           githubRepoInfo = null;
         }
       } catch {
+        currentRemotes = [];
         hasRemotes = false;
         githubRepoInfo = null;
       }
@@ -343,6 +391,12 @@
                 conclusion: latest.conclusion,
               },
             };
+            if (latest.conclusion === "failure" || latest.conclusion === "timed_out") {
+              sendDesktopNotification(
+                "Forge Desktop: CI Build Gagal",
+                `Pemeriksaan CI gagal pada commit ${commitHistory[0].short_sha} (${commitHistory[0].summary})`
+              );
+            }
           }
         } catch {
           // Non-blocking
@@ -1060,6 +1114,7 @@
         localStorage.setItem("forge:confirm-force-push", String(confirmForcePush));
         localStorage.setItem("forge:theme", activeTheme);
         localStorage.setItem("forge:autofetch-minutes", String(autofetchMinutes));
+        localStorage.setItem("forge:desktop-notifs", String(desktopNotifEnabled));
       }
       applyTheme(activeTheme);
       setupAutofetch();
@@ -1237,6 +1292,16 @@
           Publish ke GitHub
         </button>
       {/if}
+      {#if hasUpstream}
+        <button
+          onclick={handleSyncFork}
+          class="btn-secondary"
+          style="font-size: 11px; padding: 4px 8px; border-color: var(--accent-blue); color: var(--accent-blue);"
+          title="Tarik dan gabungkan komit terbaru dari remote upstream fork"
+        >
+          Sync Fork
+        </button>
+      {/if}
       <button
         onclick={handleFetch}
         class="btn-secondary"
@@ -1309,6 +1374,7 @@
           <Changes
             status={currentStatus}
             {selectedFile}
+            issues={issues.map((i) => ({ number: i.number, title: i.title }))}
             onSelectFile={(f) => {
               selectedFile = f;
               loadDiff(f);
@@ -1342,6 +1408,7 @@
             filePath={selectedFile.path}
             diffText={currentDiff}
             {ignoreWhitespace}
+            isLfs={selectedFile.is_lfs}
             onToggleWhitespace={handleToggleWhitespace}
             onAddToGitignore={handleAddToGitignore}
           />
@@ -1638,6 +1705,10 @@
         <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-primary); cursor: pointer;">
           <input type="checkbox" bind:checked={confirmForcePush} />
           <span>Konfirmasi sebelum Force Push (--force-with-lease)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-primary); cursor: pointer;">
+          <input type="checkbox" bind:checked={desktopNotifEnabled} />
+          <span>Notifikasi Desktop (CI Build Gagal & Sync Fork)</span>
         </label>
       </div>
       <div class="modal-actions" style="margin-top: 14px;">

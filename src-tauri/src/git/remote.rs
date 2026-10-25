@@ -145,6 +145,26 @@ pub fn clone_repository(url: &str, target_dir: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+pub fn sync_fork(
+    repo: &str,
+    upstream_remote: Option<&str>,
+    branch: Option<&str>,
+) -> Result<String, String> {
+    let remote = upstream_remote.unwrap_or("upstream").trim();
+    let b = branch.unwrap_or("main").trim();
+    if remote.is_empty() || remote.starts_with('-') || b.is_empty() || b.starts_with('-') {
+        return Err("Parameter remote atau branch tidak valid".into());
+    }
+    cli::run(repo, &["fetch", remote, b])?;
+    let upstream_ref = format!("{remote}/{b}");
+    cli::run(repo, &["merge", "--ff-only", &upstream_ref]).or_else(|_| {
+        cli::run(
+            repo,
+            &["merge", &upstream_ref, "-m", &format!("Merge upstream {upstream_ref}")],
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

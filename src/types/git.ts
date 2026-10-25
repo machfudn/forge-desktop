@@ -3,6 +3,7 @@ export interface FileEntry {
   status_code: string;
   staged: boolean;
   is_conflict: boolean;
+  is_lfs?: boolean;
 }
 
 export interface RepoStatus {

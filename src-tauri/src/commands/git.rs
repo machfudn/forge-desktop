@@ -371,3 +371,12 @@ pub fn publish_repository_to_github(
 ) -> Result<String, String> {
     git::publish_repository_to_github(repo, params, token)
 }
+
+#[tauri::command]
+pub fn sync_fork(
+    repo: &str,
+    upstream_remote: Option<&str>,
+    branch: Option<&str>,
+) -> Result<String, String> {
+    git::sync_fork(repo, upstream_remote, branch)
+}

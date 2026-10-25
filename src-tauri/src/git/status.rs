@@ -8,6 +8,7 @@ pub struct FileEntry {
     pub status_code: String,
     pub staged: bool,
     pub is_conflict: bool,
+    pub is_lfs: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -41,6 +42,7 @@ pub fn parse_status_line(line: &str) -> Option<FileEntry> {
         status_code: code,
         staged,
         is_conflict,
+        is_lfs: false,
     })
 }
 
@@ -53,10 +55,35 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
     };
 
     let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
-    let files: Vec<FileEntry> = status_out
+    let mut files: Vec<FileEntry> = status_out
         .lines()
         .filter_map(parse_status_line)
         .collect();
+
+    // Check Git LFS status via git check-attr
+    if !files.is_empty() {
+        let mut check_args = vec!["check-attr", "filter", "--"];
+        for f in &files {
+            check_args.push(&f.path);
+        }
+        if let Ok(attr_out) = cli::run(repo, &check_args) {
+            let lfs_paths: std::collections::HashSet<String> = attr_out
+                .lines()
+                .filter_map(|line| {
+                    if line.ends_with(": filter: lfs") {
+                        let path = line.split(": filter: lfs").next()?.trim();
+                        Some(path.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for f in &mut files {
+                f.is_lfs = lfs_paths.contains(&f.path);
+            }
+        }
+    }
 
     let has_conflicts = files.iter().any(|f| f.is_conflict);
     let git_dir = Path::new(repo).join(".git");

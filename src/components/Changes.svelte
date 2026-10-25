@@ -15,6 +15,7 @@
     onDiscardFile?: (file: FileEntry) => void;
     onDiscardAll?: () => void;
     onOpenInEditor?: (filePath: string) => void;
+    issues?: { number: number; title: string }[];
   }
 
   let {
@@ -31,7 +32,88 @@
     onDiscardFile,
     onDiscardAll,
     onOpenInEditor,
+    issues = [],
   }: Props = $props();
+
+  const EMOJI_LIST = [
+    { code: ":sparkles:", emoji: "✨", desc: "Fitur baru" },
+    { code: ":bug:", emoji: "🐛", desc: "Perbaikan bug" },
+    { code: ":memo:", emoji: "📝", desc: "Dokumentasi" },
+    { code: ":art:", emoji: "🎨", desc: "Format / struktur kode" },
+    { code: ":recycle:", emoji: "♻️", desc: "Refaktor kode" },
+    { code: ":zap:", emoji: "⚡", desc: "Performa" },
+    { code: ":tada:", emoji: "🎉", desc: "Rilis / inisialisasi" },
+    { code: ":rocket:", emoji: "🚀", desc: "Deploy" },
+    { code: ":wrench:", emoji: "🔧", desc: "Tooling / konfigurasi" },
+    { code: ":fire:", emoji: "🔥", desc: "Hapus file / kode" },
+    { code: ":white_check_mark:", emoji: "✅", desc: "Pengujian / tes" },
+    { code: ":lock:", emoji: "🔒", desc: "Keamanan" },
+    { code: ":lipstick:", emoji: "💄", desc: "Styling / UI" },
+  ];
+
+  let autocompleteTarget = $state<"summary" | "description" | null>(null);
+  let autocompleteQuery = $state("");
+  let autocompleteType = $state<"emoji" | "issue" | null>(null);
+
+  let filteredEmojis = $derived(
+    autocompleteType === "emoji"
+      ? EMOJI_LIST.filter(
+          (e) =>
+            e.code.toLowerCase().includes(autocompleteQuery.toLowerCase()) ||
+            e.desc.toLowerCase().includes(autocompleteQuery.toLowerCase())
+        )
+      : []
+  );
+
+  let filteredIssues = $derived(
+    autocompleteType === "issue" && issues
+      ? issues.filter(
+          (i) =>
+            String(i.number).includes(autocompleteQuery) ||
+            i.title.toLowerCase().includes(autocompleteQuery.toLowerCase())
+        )
+      : []
+  );
+
+  function checkAutocomplete(text: string, target: "summary" | "description") {
+    const emojiMatch = text.match(/:([a-z0-9_]*)$/i);
+    if (emojiMatch) {
+      autocompleteTarget = target;
+      autocompleteType = "emoji";
+      autocompleteQuery = emojiMatch[1];
+      return;
+    }
+    const issueMatch = text.match(/#([0-9]*)$/);
+    if (issueMatch) {
+      autocompleteTarget = target;
+      autocompleteType = "issue";
+      autocompleteQuery = issueMatch[1];
+      return;
+    }
+    autocompleteTarget = null;
+    autocompleteType = null;
+  }
+
+  function insertEmoji(emojiChar: string) {
+    if (autocompleteTarget === "summary") {
+      commitSummary = commitSummary.replace(/:([a-z0-9_]*)$/i, emojiChar + " ");
+    } else if (autocompleteTarget === "description") {
+      commitDescription = commitDescription.replace(/:([a-z0-9_]*)$/i, emojiChar + " ");
+    }
+    autocompleteType = null;
+    autocompleteTarget = null;
+  }
+
+  function insertIssue(num: number, _title?: string) {
+    const replacement = `#${num} `;
+    if (autocompleteTarget === "summary") {
+      commitSummary = commitSummary.replace(/#([0-9]*)$/, replacement);
+    } else if (autocompleteTarget === "description") {
+      commitDescription = commitDescription.replace(/#([0-9]*)$/, replacement);
+    }
+    autocompleteType = null;
+    autocompleteTarget = null;
+  }
 
   let commitSummary = $state("");
   let commitDescription = $state("");
@@ -133,6 +215,11 @@
           aria-label="Stage file"
         />
         <span class="file-status-badge {badge.class}">{badge.text}</span>
+        {#if file.is_lfs}
+          <span style="background: var(--text-accent); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; font-family: var(--font-mono); margin-right: 4px;">
+            LFS
+          </span>
+        {/if}
         <span class="file-name" title={file.path}>{file.path}</span>
         {#if file.is_conflict && onOpenInEditor}
           <button
@@ -176,21 +263,62 @@
     {/each}
   </div>
 
+  {#if autocompleteType === "emoji" && filteredEmojis.length > 0}
+    <div style="background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-sm); max-height: 140px; overflow-y: auto; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10;">
+      <div style="font-size: 10px; color: var(--text-muted); padding: 2px 6px; font-weight: 600;">PILIH EMOJI (:)</div>
+      {#each filteredEmojis as item}
+        <div
+          role="button"
+          tabindex="0"
+          style="display: flex; align-items: center; gap: 8px; padding: 4px 6px; cursor: pointer; border-radius: var(--radius-sm); font-size: 11px;"
+          onmouseenter={(e) => (e.currentTarget.style.background = "var(--bg-subtle)")}
+          onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
+          onclick={() => insertEmoji(item.emoji)}
+          onkeydown={(e) => { if (e.key === "Enter") insertEmoji(item.emoji); }}
+        >
+          <span style="font-size: 14px;">{item.emoji}</span>
+          <span style="font-family: var(--font-mono); color: var(--text-accent);">{item.code}</span>
+          <span style="color: var(--text-secondary); margin-left: auto;">{item.desc}</span>
+        </div>
+      {/each}
+    </div>
+  {:else if autocompleteType === "issue" && filteredIssues.length > 0}
+    <div style="background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-sm); max-height: 140px; overflow-y: auto; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10;">
+      <div style="font-size: 10px; color: var(--text-muted); padding: 2px 6px; font-weight: 600;">PILIH ISSUE / PR (#)</div>
+      {#each filteredIssues as issue}
+        <div
+          role="button"
+          tabindex="0"
+          style="display: flex; align-items: center; gap: 6px; padding: 4px 6px; cursor: pointer; border-radius: var(--radius-sm); font-size: 11px;"
+          onmouseenter={(e) => (e.currentTarget.style.background = "var(--bg-subtle)")}
+          onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
+          onclick={() => insertIssue(issue.number, issue.title)}
+          onkeydown={(e) => { if (e.key === "Enter") insertIssue(issue.number, issue.title); }}
+        >
+          <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-accent);">#{issue.number}</span>
+          <span style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{issue.title}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <input
     type="text"
     class="commit-input"
-    placeholder="Ringkasan komit (Summary)"
+    placeholder="Ringkasan komit (Ketik : untuk emoji, # untuk issue)"
     maxlength="150"
     bind:value={commitSummary}
+    oninput={(e) => checkAutocomplete(e.currentTarget.value, "summary")}
     onkeydown={handleKeydown}
   />
 
   {#if showDescription}
     <textarea
       class="commit-input"
-      placeholder="Deskripsi detail komit (opsional)"
+      placeholder="Deskripsi detail komit (opsional, ketik : untuk emoji, # untuk issue)"
       rows="3"
       bind:value={commitDescription}
+      oninput={(e) => checkAutocomplete(e.currentTarget.value, "description")}
       style="resize: vertical; font-size: 12px; font-family: inherit;"
     ></textarea>
   {/if}

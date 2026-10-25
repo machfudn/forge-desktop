@@ -3,6 +3,7 @@
     filePath: string;
     diffText: string;
     ignoreWhitespace?: boolean;
+    isLfs?: boolean;
     onToggleWhitespace?: () => void;
     onAddToGitignore?: (path: string) => void;
   }
@@ -11,6 +12,7 @@
     filePath,
     diffText,
     ignoreWhitespace = false,
+    isLfs = false,
     onToggleWhitespace,
     onAddToGitignore,
   }: Props = $props();
@@ -164,7 +166,14 @@
 
 <div class="diff-container">
   <div class="diff-header" style="display: flex; justify-content: space-between; align-items: center;">
-    <span style="font-family: var(--font-mono); font-size: 12px;">{filePath}</span>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-family: var(--font-mono); font-size: 12px;">{filePath}</span>
+      {#if isLfs}
+        <span style="background: var(--text-accent); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono);">
+          Git LFS
+        </span>
+      {/if}
+    </div>
     <div style="display: flex; gap: 6px; align-items: center;">
       <div style="display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden;">
         <button
