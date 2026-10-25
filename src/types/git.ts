@@ -44,3 +44,10 @@ export interface TokenPollResult {
   error?: string;
   error_description?: string;
 }
+
+export interface DiagnosticReport {
+  app_version: string;
+  os_info: string;
+  git_version: string;
+  sanitized_config: string[];
+}

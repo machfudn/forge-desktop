@@ -3,6 +3,7 @@ import type {
   BranchInfo,
   CommitInfo,
   DeviceFlowInit,
+  DiagnosticReport,
   RemoteInfo,
   RepoStatus,
   TokenPollResult,
@@ -116,4 +117,30 @@ export async function configureGitCredentials(
   token: string
 ): Promise<void> {
   return invoke("configure_git_credentials", { username, token });
+}
+
+export async function discardFileChanges(
+  repo: string,
+  filePath: string
+): Promise<void> {
+  return invoke("discard_file_changes", { repo, filePath });
+}
+
+export async function gitStashSave(
+  repo: string,
+  message?: string
+): Promise<string> {
+  return invoke<string>("git_stash_save", { repo, message });
+}
+
+export async function gitStashPop(repo: string): Promise<string> {
+  return invoke<string>("git_stash_pop", { repo });
+}
+
+export async function gitListStashes(repo: string): Promise<string[]> {
+  return invoke<string[]>("git_list_stashes", { repo });
+}
+
+export async function getDiagnostics(repo?: string): Promise<DiagnosticReport> {
+  return invoke<DiagnosticReport>("get_diagnostics", { repo });
 }

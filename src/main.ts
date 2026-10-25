@@ -4,7 +4,9 @@ import { renderChangesSidebar } from "./ui/changes";
 import { renderDiff } from "./ui/diff";
 import { renderHistory } from "./ui/history";
 
-let activeRepo = "/home/machfudin/Development/github-desktop";
+let activeRepo =
+  localStorage.getItem("forge:active-repo") ||
+  "/home/machfudin/Development/github-desktop";
 let activeTab: "changes" | "history" = "changes";
 let currentStatus: RepoStatus | null = null;
 let selectedFile: FileEntry | null = null;
@@ -18,6 +20,8 @@ const btnFetch = document.querySelector<HTMLButtonElement>("#btn-fetch")!;
 const btnPull = document.querySelector<HTMLButtonElement>("#btn-pull")!;
 const btnPush = document.querySelector<HTMLButtonElement>("#btn-push")!;
 const btnAuth = document.querySelector<HTMLButtonElement>("#btn-auth")!;
+const btnStash = document.querySelector<HTMLButtonElement>("#btn-stash")!;
+const btnDiagnostics = document.querySelector<HTMLButtonElement>("#btn-diagnostics")!;
 const btnRefresh = document.querySelector<HTMLButtonElement>("#btn-refresh")!;
 const sidebarPanel = document.querySelector<HTMLElement>("#sidebar-panel")!;
 const contentPanel = document.querySelector<HTMLElement>("#content-panel")!;
@@ -31,11 +35,27 @@ function setStatusMessage(msg: string, isError = false): void {
   footerStatus.style.color = isError ? "var(--diff-del-text)" : "var(--text-muted)";
 }
 
+function getRecentRepos(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem("forge:recent-repos") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function addRecentRepo(path: string): void {
+  const recents = getRecentRepos().filter((p) => p !== path);
+  recents.unshift(path);
+  localStorage.setItem("forge:recent-repos", JSON.stringify(recents.slice(0, 10)));
+}
+
 async function loadRepo(path: string): Promise<void> {
   try {
     setStatusMessage("Memuat repositori...");
     const status = await gitService.inspectRepository(path);
     activeRepo = path;
+    localStorage.setItem("forge:active-repo", path);
+    addRecentRepo(path);
     currentStatus = status;
 
     headerRepoName.textContent = path.split("/").pop() || path;
@@ -144,6 +164,16 @@ async function renderCurrentView(): Promise<void> {
           await loadRepo(activeRepo);
         } catch (err) {
           setStatusMessage(String(err), true);
+        }
+      },
+      onDiscardFile: async (file) => {
+        if (confirm(`Batalkan perubahan pada ${file.path}?`)) {
+          try {
+            await gitService.discardFileChanges(activeRepo, file.path);
+            await loadRepo(activeRepo);
+          } catch (err) {
+            setStatusMessage(String(err), true);
+          }
         }
       },
     });
@@ -265,6 +295,104 @@ btnCloneRepo.addEventListener("click", () => {
   });
 });
 
+// Stash Modal
+btnStash?.addEventListener("click", async () => {
+  try {
+    const stashes = await gitService.gitListStashes(activeRepo);
+    modalContainer.innerHTML = `
+      <div class="modal-overlay" id="modal-bg">
+        <div class="modal-dialog" style="width: 440px;">
+          <div class="modal-header">Git Stash</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="stash-msg-input" class="commit-input" placeholder="Pesan stash (opsional)" style="flex: 1;" />
+              <button id="btn-stash-save" class="btn-primary" style="font-size: 11px;">Simpan Stash</button>
+            </div>
+            <button id="btn-stash-pop" class="btn-secondary" style="align-self: flex-start; font-size: 11px;" ${stashes.length === 0 ? "disabled" : ""}>
+              Terapkan Stash Teratas (Pop)
+            </button>
+            <label style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Daftar Stash (${stashes.length})</label>
+            <div style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 11px; padding: 6px;">
+              ${
+                stashes.length === 0
+                  ? '<div style="color: var(--text-muted); text-align: center; padding: 12px;">Tidak ada stash tersimpan</div>'
+                  : stashes.map((s) => `<div style="padding: 4px 0; border-bottom: 1px solid var(--border-muted); font-family: var(--font-mono);">${s}</div>`).join("")
+              }
+            </div>
+          </div>
+          <div class="modal-actions" style="margin-top: 10px;">
+            <button class="btn-secondary" id="btn-close-stash">Tutup</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.querySelector("#btn-close-stash")?.addEventListener("click", () => {
+      modalContainer.innerHTML = "";
+    });
+
+    document.querySelector("#btn-stash-save")?.addEventListener("click", async () => {
+      const msg = document.querySelector<HTMLInputElement>("#stash-msg-input")?.value.trim();
+      modalContainer.innerHTML = "";
+      try {
+        await gitService.gitStashSave(activeRepo, msg || undefined);
+        await loadRepo(activeRepo);
+      } catch (err) {
+        setStatusMessage(String(err), true);
+      }
+    });
+
+    document.querySelector("#btn-stash-pop")?.addEventListener("click", async () => {
+      modalContainer.innerHTML = "";
+      try {
+        await gitService.gitStashPop(activeRepo);
+        await loadRepo(activeRepo);
+      } catch (err) {
+        setStatusMessage(String(err), true);
+      }
+    });
+  } catch (err) {
+    setStatusMessage(String(err), true);
+  }
+});
+
+// Diagnostics Modal
+btnDiagnostics?.addEventListener("click", async () => {
+  try {
+    const diag = await gitService.getDiagnostics(activeRepo);
+    modalContainer.innerHTML = `
+      <div class="modal-overlay" id="modal-bg">
+        <div class="modal-dialog" style="width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
+          <div class="modal-header">Laporan Diagnostik Sistem</div>
+          <div style="overflow-y: auto; flex: 1; font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+            <div><strong>Aplikasi:</strong> Forge Desktop v${diag.app_version}</div>
+            <div><strong>OS / Arch:</strong> ${diag.os_info}</div>
+            <div><strong>Versi Git:</strong> ${diag.git_version}</div>
+            <div><strong>Konfigurasi Git (Aman / Redacted):</strong></div>
+            <pre style="background: var(--bg-subtle); padding: 8px; border-radius: var(--radius-sm); max-height: 180px; overflow-y: auto; font-family: var(--font-mono); font-size: 10px;">${diag.sanitized_config.join("\n") || "Tidak ada config"}</pre>
+          </div>
+          <div class="modal-actions" style="margin-top: 12px;">
+            <button class="btn-secondary" id="btn-copy-diag">Salin Info</button>
+            <button class="btn-primary" id="btn-close-diag">Tutup</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.querySelector("#btn-close-diag")?.addEventListener("click", () => {
+      modalContainer.innerHTML = "";
+    });
+
+    document.querySelector("#btn-copy-diag")?.addEventListener("click", () => {
+      const text = `App: Forge Desktop v${diag.app_version}\nOS: ${diag.os_info}\nGit: ${diag.git_version}\nConfig:\n${diag.sanitized_config.join("\n")}`;
+      navigator.clipboard.writeText(text);
+      setStatusMessage("Diagnostik disalin ke clipboard");
+    });
+  } catch (err) {
+    setStatusMessage(String(err), true);
+  }
+});
+
 // GitHub OAuth Device Flow Modal
 btnAuth.addEventListener("click", () => {
   modalContainer.innerHTML = `
@@ -318,7 +446,6 @@ btnAuth.addEventListener("click", () => {
         </div>
       `;
 
-      // Poll interval
       const intervalSec = Math.max(flow.interval || 5, 5);
       const pollTimer = setInterval(async () => {
         try {
@@ -417,14 +544,33 @@ btnBranchSelector.addEventListener("click", async () => {
   }
 });
 
-// Open repo modal
+// Open repo modal with recents
 btnOpenRepo.addEventListener("click", () => {
+  const recents = getRecentRepos();
   modalContainer.innerHTML = `
     <div class="modal-overlay" id="modal-bg">
-      <div class="modal-dialog">
+      <div class="modal-dialog" style="width: 440px;">
         <div class="modal-header">Buka Repositori Git</div>
         <input type="text" id="repo-path-input" class="commit-input" value="${activeRepo}" placeholder="/path/ke/repo" />
-        <div class="modal-actions">
+        ${
+          recents.length > 0
+            ? `
+          <label style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">Repositori Terakhir:</label>
+          <div style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-sm); margin-top: 4px;">
+            ${recents
+              .map(
+                (r) => `
+              <div class="recent-repo-item" data-path="${r}" style="padding: 6px 10px; cursor: pointer; font-size: 11px; font-family: var(--font-mono); border-bottom: 1px solid var(--border-muted);">
+                ${r}
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+        `
+            : ""
+        }
+        <div class="modal-actions" style="margin-top: 12px;">
           <button class="btn-secondary" id="btn-cancel-open">Batal</button>
           <button class="btn-primary" id="btn-confirm-open">Buka</button>
         </div>
@@ -434,6 +580,16 @@ btnOpenRepo.addEventListener("click", () => {
 
   document.querySelector("#btn-cancel-open")?.addEventListener("click", () => {
     modalContainer.innerHTML = "";
+  });
+
+  document.querySelectorAll(".recent-repo-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      const p = el.getAttribute("data-path");
+      if (p) {
+        const inp = document.querySelector<HTMLInputElement>("#repo-path-input");
+        if (inp) inp.value = p;
+      }
+    });
   });
 
   document.querySelector("#btn-confirm-open")?.addEventListener("click", async () => {

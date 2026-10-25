@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod diagnostics;
 pub mod git;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,6 +28,11 @@ pub fn run() {
             commands::github_start_device_flow,
             commands::github_poll_token,
             commands::configure_git_credentials,
+            commands::discard_file_changes,
+            commands::git_stash_save,
+            commands::git_stash_pop,
+            commands::git_list_stashes,
+            commands::get_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

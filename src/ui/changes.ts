@@ -8,6 +8,7 @@ export interface ChangesCallbacks {
   onCommit: (message: string) => void;
   onAbortMerge?: () => void;
   onAbortRebase?: () => void;
+  onDiscardFile?: (file: FileEntry) => void;
 }
 
 export function renderChangesSidebar(
@@ -71,6 +72,7 @@ export function renderChangesSidebar(
                 <input type="checkbox" class="file-stage-cb" ${file.staged ? "checked" : ""} ${file.is_conflict ? "disabled" : ""} aria-label="Stage file" />
                 <span class="file-status-badge ${badgeClass}">${escapeHtml(badgeText)}</span>
                 <span class="file-name" title="${escapeHtml(file.path)}">${escapeHtml(file.path)}</span>
+                <button class="btn-discard" title="Batalkan perubahan" data-discard="${escapeHtml(file.path)}" style="margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 2px 6px;">x</button>
               </li>
             `;
               })
@@ -97,13 +99,20 @@ export function renderChangesSidebar(
     if (!file) return;
 
     el.addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).tagName.toLowerCase() === "input") return;
+      const target = e.target as HTMLElement;
+      if (target.tagName.toLowerCase() === "input" || target.classList.contains("btn-discard")) return;
       callbacks.onSelectFile(file);
     });
 
     const cb = el.querySelector(".file-stage-cb");
     cb?.addEventListener("change", () => {
       callbacks.onToggleStage(file);
+    });
+
+    const discardBtn = el.querySelector(".btn-discard");
+    discardBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      callbacks.onDiscardFile?.(file);
     });
   });
 

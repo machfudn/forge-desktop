@@ -1,3 +1,4 @@
+use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, BranchInfo, CommitInfo, DeviceFlowInit, RemoteInfo, RepoStatus, TokenPollResult,
 };
@@ -106,4 +107,29 @@ pub fn github_poll_token(client_id: &str, device_code: &str) -> Result<TokenPoll
 #[tauri::command]
 pub fn configure_git_credentials(username: &str, token: &str) -> Result<(), String> {
     git::configure_git_credentials(username, token)
+}
+
+#[tauri::command]
+pub fn discard_file_changes(repo: &str, file_path: &str) -> Result<(), String> {
+    git::discard_changes(repo, file_path)
+}
+
+#[tauri::command]
+pub fn git_stash_save(repo: &str, message: Option<&str>) -> Result<String, String> {
+    git::stash_save(repo, message)
+}
+
+#[tauri::command]
+pub fn git_stash_pop(repo: &str) -> Result<String, String> {
+    git::stash_pop(repo)
+}
+
+#[tauri::command]
+pub fn git_list_stashes(repo: &str) -> Result<Vec<String>, String> {
+    git::list_stashes(repo)
+}
+
+#[tauri::command]
+pub fn get_diagnostics(repo: Option<&str>) -> Result<DiagnosticReport, String> {
+    Ok(diagnostics::generate_report(repo))
 }
