@@ -89,3 +89,9 @@ export interface CheckRunInfo {
   conclusion?: string;
   html_url?: string;
 }
+
+export interface PublishRepoParams {
+  name: string;
+  description?: string;
+  private: boolean;
+}

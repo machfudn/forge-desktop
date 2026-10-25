@@ -1,7 +1,7 @@
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, AheadBehind, BranchInfo, CheckRunInfo, CommitInfo, DeviceFlowInit, IssueInfo,
-    PullRequestInfo, RemoteInfo, RepoConfig, RepoStatus, TokenPollResult,
+    PublishRepoParams, PullRequestInfo, RemoteInfo, RepoConfig, RepoStatus, TokenPollResult,
 };
 use crate::system;
 
@@ -356,4 +356,18 @@ pub fn get_cli_repo_arg() -> Result<Option<String>, String> {
         }
     }
     Ok(None)
+}
+
+#[tauri::command]
+pub fn compare_branches(repo: &str, base: &str, target: &str) -> Result<AheadBehind, String> {
+    git::compare_branches(repo, base, target)
+}
+
+#[tauri::command]
+pub fn publish_repository_to_github(
+    repo: &str,
+    params: PublishRepoParams,
+    token: Option<&str>,
+) -> Result<String, String> {
+    git::publish_repository_to_github(repo, params, token)
 }

@@ -35,3 +35,34 @@
   --radius-md: 6px;
   --radius-lg: 8px;
 }
+
+[data-theme="light"] {
+  --bg-app: #ffffff;
+  --bg-sidebar: #f6f8fa;
+  --bg-panel: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --bg-input: #ffffff;
+  --border-default: #d0d7de;
+  --border-muted: #d8dee4;
+
+  --text-primary: #1f2328;
+  --text-secondary: #656d76;
+  --text-muted: #8c959f;
+
+  --accent-primary: #1f883d;
+  --accent-primary-hover: #1a7f37;
+  --accent-blue: #0969da;
+  --focus-ring: #0969da;
+
+  --diff-add-bg: #dafbe1;
+  --diff-add-text: #1a7f37;
+  --diff-del-bg: #ffebe9;
+  --diff-del-text: #cf222e;
+  --diff-meta-text: #656d76;
+
+  --tok-keyword: #cf222e;
+  --tok-string: #0a3069;
+  --tok-number: #0550ae;
+  --tok-comment: #6e7781;
+  --tok-fn: #8250df;
+}

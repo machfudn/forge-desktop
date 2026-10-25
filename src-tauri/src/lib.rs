@@ -67,6 +67,8 @@ pub fn run() {
             commands::get_global_config,
             commands::set_global_config,
             commands::get_cli_repo_arg,
+            commands::compare_branches,
+            commands::publish_repository_to_github,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

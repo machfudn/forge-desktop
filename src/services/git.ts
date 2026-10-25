@@ -7,6 +7,7 @@ import type {
   DeviceFlowInit,
   DiagnosticReport,
   IssueInfo,
+  PublishRepoParams,
   PullRequestInfo,
   RemoteInfo,
   RepoConfig,
@@ -396,4 +397,20 @@ export async function setGlobalConfig(
 
 export async function getCliRepoArg(): Promise<string | null> {
   return invoke<string | null>("get_cli_repo_arg");
+}
+
+export async function compareBranches(
+  repo: string,
+  base: string,
+  target: string
+): Promise<AheadBehind> {
+  return invoke<AheadBehind>("compare_branches", { repo, base, target });
+}
+
+export async function publishRepositoryToGithub(
+  repo: string,
+  params: PublishRepoParams,
+  token?: string
+): Promise<string> {
+  return invoke<string>("publish_repository_to_github", { repo, params, token });
 }

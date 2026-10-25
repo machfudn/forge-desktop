@@ -35,6 +35,13 @@ pub struct CheckRunInfo {
     pub html_url: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishRepoParams {
+    pub name: String,
+    pub description: Option<String>,
+    pub private: bool,
+}
+
 pub fn parse_github_repo(remote_url: &str) -> Option<(String, String)> {
     let raw = remote_url.trim();
     if raw.is_empty() {
@@ -310,6 +317,85 @@ pub fn get_commit_check_runs(
         }
     }
     Ok(vec![])
+}
+
+pub fn publish_repository_to_github(
+    repo_path: &str,
+    params: PublishRepoParams,
+    token: Option<&str>,
+) -> Result<String, String> {
+    let tok = token
+        .map(|s| s.to_string())
+        .or_else(get_stored_github_token)
+        .ok_or_else(|| {
+            "Token autentikasi GitHub tidak ditemukan. Silakan login ke GitHub terlebih dahulu."
+                .to_string()
+        })?;
+
+    let name = params.name.trim();
+    if name.is_empty() {
+        return Err("Nama repository GitHub tidak boleh kosong".into());
+    }
+
+    let payload = serde_json::json!({
+        "name": name,
+        "description": params.description.as_deref().unwrap_or(""),
+        "private": params.private,
+        "auto_init": false
+    });
+    let payload_str = payload.to_string();
+
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-s",
+        "-X",
+        "POST",
+        "https://api.github.com/user/repos",
+        "-H",
+        "User-Agent: ForgeDesktop/1.1.0",
+        "-H",
+        "Accept: application/vnd.github.v3+json",
+        "-H",
+        &format!("Authorization: Bearer {tok}"),
+        "-H",
+        "Content-Type: application/json",
+        "-d",
+        &payload_str,
+    ]);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Gagal menghubungi GitHub API: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    #[derive(Deserialize)]
+    struct RepoCreateResponse {
+        clone_url: Option<String>,
+        message: Option<String>,
+    }
+
+    let parsed: RepoCreateResponse = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Gagal membaca response GitHub API: {e} ({stdout})"))?;
+
+    if let Some(err_msg) = parsed.message {
+        return Err(format!("GitHub API Error: {err_msg}"));
+    }
+
+    let clone_url = parsed
+        .clone_url
+        .ok_or_else(|| "Gagal mendapatkan clone URL dari repositori yang dibuat".to_string())?;
+
+    // Add remote 'origin'
+    let _ = cli::run(repo_path, &["remote", "add", "origin", &clone_url]);
+
+    // Push current branch
+    let current_branch_raw = cli::run(repo_path, &["branch", "--show-current"])?;
+    let branch = current_branch_raw.trim();
+    let branch_name = if branch.is_empty() { "main" } else { branch };
+
+    cli::run(repo_path, &["push", "-u", "origin", branch_name])?;
+
+    Ok(clone_url)
 }
 
 #[cfg(test)]

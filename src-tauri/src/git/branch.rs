@@ -1,5 +1,6 @@
-use serde::Serialize;
 use super::cli;
+use super::remote::AheadBehind;
+use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BranchInfo {
@@ -67,6 +68,24 @@ pub fn merge_branch(repo: &str, target_branch: &str) -> Result<String, String> {
     cli::run(repo, &["merge", target])
 }
 
+pub fn compare_branches(repo: &str, base: &str, target: &str) -> Result<AheadBehind, String> {
+    let b = base.trim();
+    let t = target.trim();
+    if b.is_empty() || b.starts_with('-') || t.is_empty() || t.starts_with('-') {
+        return Err("Nama branch tidak valid".into());
+    }
+    let spec = format!("{b}...{t}");
+    let out = cli::run(repo, &["rev-list", "--left-right", "--count", &spec])?;
+    let parts: Vec<&str> = out.split_whitespace().collect();
+    if parts.len() >= 2 {
+        let ahead = parts[0].parse::<usize>().unwrap_or(0);
+        let behind = parts[1].parse::<usize>().unwrap_or(0);
+        Ok(AheadBehind { ahead, behind })
+    } else {
+        Ok(AheadBehind { ahead: 0, behind: 0 })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,5 +102,7 @@ mod tests {
         assert!(rename_branch("/tmp", "old", "-invalid").is_err());
         assert!(merge_branch("/tmp", " ").is_err());
         assert!(merge_branch("/tmp", "-m").is_err());
+        assert!(compare_branches("/tmp", " -b", "main").is_err());
+        assert!(compare_branches("/tmp", "main", "").is_err());
     }
 }

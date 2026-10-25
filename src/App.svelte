@@ -47,8 +47,30 @@
     | "pr"
     | "squash"
     | "confirm"
+    | "publish"
     | null;
   let activeModal: ModalType = $state(null);
+
+  // Publish repo states
+  let publishName = $state("");
+  let publishDesc = $state("");
+  let publishPrivate = $state(false);
+
+  // Branch divergence comparison map
+  let branchDivergenceMap = $state<Record<string, AheadBehind>>({});
+
+  // Theme & Auto-fetch preferences
+  let activeTheme = $state(
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("forge:theme") || "dark"
+      : "dark"
+  );
+  let autofetchMinutes = $state(
+    typeof localStorage !== "undefined"
+      ? Number(localStorage.getItem("forge:autofetch-minutes") || "5")
+      : 5
+  );
+  let autofetchTimer: number | null = null;
 
   // Safety Preferences
   let confirmDiscard = $state(
@@ -510,9 +532,86 @@
       newBranchName = "";
       branchSearch = "";
       branchToRename = null;
+      branchDivergenceMap = {};
       activeModal = "branch";
+
+      const current = branches.find((b) => b.is_current);
+      if (current) {
+        for (const b of branches) {
+          if (!b.is_current) {
+            gitService
+              .compareBranches(activeRepo, current.name, b.name)
+              .then((div) => {
+                branchDivergenceMap = { ...branchDivergenceMap, [b.name]: div };
+              })
+              .catch(() => {});
+          }
+        }
+      }
     } catch (err) {
       setStatus(String(err), true);
+    }
+  }
+
+  function openPublishModal() {
+    publishName = activeRepo.split("/").pop() || "";
+    publishDesc = "";
+    publishPrivate = false;
+    activeModal = "publish";
+  }
+
+  async function handlePublishSubmit() {
+    if (!publishName.trim()) return;
+    closeModal();
+    try {
+      setStatus(`Mempublikasikan repositori ${publishName} ke GitHub...`);
+      const cloneUrl = await gitService.publishRepositoryToGithub(
+        activeRepo,
+        {
+          name: publishName.trim(),
+          description: publishDesc.trim() || undefined,
+          private: publishPrivate,
+        }
+      );
+      setStatus(`Repositori berhasil dipublikasikan ke GitHub: ${cloneUrl}`);
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  function applyTheme(theme: string) {
+    let resolved = theme;
+    if (theme === "system") {
+      resolved =
+        typeof window !== "undefined" &&
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+    }
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", resolved);
+    }
+  }
+
+  function setupAutofetch() {
+    if (autofetchTimer) {
+      clearInterval(autofetchTimer);
+      autofetchTimer = null;
+    }
+    if (autofetchMinutes > 0 && typeof window !== "undefined") {
+      autofetchTimer = window.setInterval(async () => {
+        if (hasRemotes && activeRepo) {
+          try {
+            await gitService.gitFetch(activeRepo);
+            const status = await gitService.inspectRepository(activeRepo);
+            currentStatus = status;
+          } catch {
+            // background silent failure
+          }
+        }
+      }, autofetchMinutes * 60 * 1000);
     }
   }
 
@@ -959,8 +1058,12 @@
       if (typeof localStorage !== "undefined") {
         localStorage.setItem("forge:confirm-discard", String(confirmDiscard));
         localStorage.setItem("forge:confirm-force-push", String(confirmForcePush));
+        localStorage.setItem("forge:theme", activeTheme);
+        localStorage.setItem("forge:autofetch-minutes", String(autofetchMinutes));
       }
-      setStatus("Pengaturan konfigurasi lokal, global, dan preferensi keamanan berhasil disimpan");
+      applyTheme(activeTheme);
+      setupAutofetch();
+      setStatus("Pengaturan konfigurasi lokal, global, tema, dan preferensi keamanan berhasil disimpan");
     } catch (err) {
       setStatus(String(err), true);
     }
@@ -1064,6 +1167,8 @@
   );
 
   onMount(async () => {
+    applyTheme(activeTheme);
+    setupAutofetch();
     try {
       const cliRepo = await gitService.getCliRepoArg();
       if (cliRepo) {
@@ -1122,6 +1227,16 @@
     </nav>
 
     <div class="header-right">
+      {#if !hasRemotes}
+        <button
+          onclick={openPublishModal}
+          class="btn-primary"
+          style="font-size: 11px; padding: 4px 10px;"
+          title="Publikasikan repositori lokal ini ke GitHub"
+        >
+          Publish ke GitHub
+        </button>
+      {/if}
       <button
         onclick={handleFetch}
         class="btn-secondary"
@@ -1300,11 +1415,16 @@
             >
               <span
                 onclick={() => handleSwitchBranch(b.name)}
-                style="cursor: pointer; flex: 1; {b.is_current ? 'font-weight: 600;' : ''}"
+                style="cursor: pointer; flex: 1; {b.is_current ? 'font-weight: 600;' : ''} display: flex; align-items: center; gap: 6px;"
               >
-                {b.name}
+                <span>{b.name}</span>
                 {#if b.is_current}
-                  <span style="color: var(--accent-blue); font-size: 10px; margin-left: 6px;">(aktif)</span>
+                  <span style="color: var(--accent-blue); font-size: 10px;">(aktif)</span>
+                {:else if branchDivergenceMap[b.name]}
+                  {@const div = branchDivergenceMap[b.name]}
+                  <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);">
+                    {div.ahead > 0 ? `+${div.ahead}` : ""}{div.behind > 0 ? ` -${div.behind}` : ""}{div.ahead === 0 && div.behind === 0 ? "identik" : ""}
+                  </span>
                 {/if}
               </span>
 
@@ -1485,6 +1605,28 @@
 
         <span style="font-size: 11px; color: var(--text-secondary);">Global Email (user.email)</span>
         <input type="text" class="commit-input" bind:value={globalConfig.user_email} placeholder="email@example.com (global)" />
+
+        <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; margin-top: 8px;">
+          Tampilan & Latar Belakang
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span style="font-size: 11px; color: var(--text-secondary); width: 140px;">Tema Antarmuka:</span>
+          <select class="commit-input" bind:value={activeTheme} style="flex: 1; background: var(--bg-canvas); color: var(--text-primary);">
+            <option value="dark">Dark Theme (Gelap)</option>
+            <option value="light">Light Theme (Terang)</option>
+            <option value="system">Mengikuti Sistem OS</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span style="font-size: 11px; color: var(--text-secondary); width: 140px;">Auto-fetch Otomatis:</span>
+          <select class="commit-input" bind:value={autofetchMinutes} style="flex: 1; background: var(--bg-canvas); color: var(--text-primary);">
+            <option value={0}>Nonaktif</option>
+            <option value={1}>Setiap 1 menit</option>
+            <option value={5}>Setiap 5 menit (Default)</option>
+            <option value={10}>Setiap 10 menit</option>
+            <option value={15}>Setiap 15 menit</option>
+          </select>
+        </div>
 
         <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; margin-top: 8px;">
           Preferensi Keamanan
@@ -1848,6 +1990,48 @@
           onclick={handleConfirmModalSubmit}
         >
           Ya, Lanjutkan
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if activeModal === "publish"}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 440px;">
+      <div class="modal-header">Publikasikan Repositori ke GitHub</div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+        Repositori lokal ini belum terhubung ke remote. Buat repositori baru di akun GitHub Anda dan lakukan push branch utama.
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Nama Repositori</span>
+        <input
+          type="text"
+          class="commit-input"
+          placeholder="Nama repositori"
+          bind:value={publishName}
+        />
+        <span style="font-size: 11px; color: var(--text-secondary);">Deskripsi (Opsional)</span>
+        <textarea
+          class="commit-input"
+          placeholder="Deskripsi repositori GitHub"
+          rows="2"
+          bind:value={publishDesc}
+          style="resize: vertical; font-size: 12px;"
+        ></textarea>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-primary); cursor: pointer; margin-top: 4px;">
+          <input type="checkbox" bind:checked={publishPrivate} />
+          <span>Buat sebagai repositori privat (Private Repository)</span>
+        </label>
+      </div>
+      <div class="modal-actions" style="margin-top: 14px;">
+        <button class="btn-secondary" onclick={closeModal}>Batal</button>
+        <button
+          class="btn-primary"
+          onclick={handlePublishSubmit}
+          disabled={!publishName.trim()}
+        >
+          Publikasikan
         </button>
       </div>
     </div>
