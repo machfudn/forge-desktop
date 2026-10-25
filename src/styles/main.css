@@ -1,0 +1,376 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  line-height: 1.5;
+  font-size: 13px;
+  user-select: none;
+  overflow: hidden;
+  height: 100vh;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.app-container {
+  display: grid;
+  grid-template-rows: 40px 1fr 28px;
+  height: 100vh;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-default);
+  padding: 0 12px;
+  gap: 12px;
+}
+
+.header-left, .header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.repo-badge {
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.branch-select-btn {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.branch-select-btn:hover {
+  background-color: var(--border-default);
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.nav-tab {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.nav-tab:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-subtle);
+}
+
+.nav-tab.active {
+  color: var(--text-primary);
+  background-color: var(--bg-subtle);
+  border-bottom: 2px solid var(--accent-blue);
+}
+
+/* Main Layout */
+.app-body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Sidebar / Changes List */
+.sidebar-panel {
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebar-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-header h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-muted);
+  cursor: pointer;
+}
+
+.file-item:hover {
+  background-color: var(--bg-subtle);
+}
+
+.file-item.selected {
+  background-color: #1f242c;
+  border-left: 2px solid var(--accent-blue);
+}
+
+.file-status-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.file-status-badge.status-M { color: #d29922; background: rgba(210, 153, 34, 0.15); }
+.file-status-badge.status-A { color: var(--diff-add-text); background: var(--diff-add-bg); }
+.file-status-badge.status-D { color: var(--diff-del-text); background: var(--diff-del-bg); }
+.file-status-badge.status-Q { color: var(--text-muted); background: var(--bg-subtle); }
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+/* Commit Box */
+.commit-box {
+  padding: 12px;
+  border-top: 1px solid var(--border-default);
+  background-color: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commit-input {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.btn-commit {
+  background-color: var(--accent-primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.btn-commit:hover:not(:disabled) {
+  background-color: var(--accent-primary-hover);
+}
+
+.btn-commit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Workspace / Content Panel */
+.content-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-app);
+}
+
+.diff-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.diff-header {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-default);
+  background-color: var(--bg-panel);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.diff-content {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 8px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diff-line {
+  padding: 0 16px;
+  min-height: 20px;
+}
+
+.diff-line.add {
+  background-color: var(--diff-add-bg);
+  color: var(--diff-add-text);
+}
+
+.diff-line.del {
+  background-color: var(--diff-del-bg);
+  color: var(--diff-del-text);
+}
+
+.diff-line.meta {
+  color: var(--diff-meta-text);
+}
+
+/* History List */
+.history-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.commit-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 140px 100px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-muted);
+  align-items: center;
+  gap: 12px;
+}
+
+.commit-row:hover {
+  background-color: var(--bg-subtle);
+}
+
+.commit-sha {
+  font-family: var(--font-mono);
+  color: var(--accent-blue);
+  font-size: 11px;
+}
+
+.commit-summary {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-author {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.commit-date {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+/* Footer / Status bar */
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-sidebar);
+  border-top: 1px solid var(--border-default);
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Modal Dialog */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+}
+
+.modal-dialog {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  width: 360px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-header {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-secondary {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  color: var(--text-primary);
+}
+
+.btn-primary {
+  background-color: var(--accent-primary);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  color: #fff;
+  font-weight: 600;
+}
