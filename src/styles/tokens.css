@@ -25,6 +25,12 @@
   --diff-del-text: #f85149;
   --diff-meta-text: #8b949e;
 
+  --tok-keyword: #ff7b72;
+  --tok-string: #a5d6ff;
+  --tok-number: #79c0ff;
+  --tok-comment: #8b949e;
+  --tok-fn: #d2a8ff;
+
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;

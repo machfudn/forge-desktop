@@ -81,3 +81,11 @@ export interface IssueInfo {
   html_url: string;
   comments_count: number;
 }
+
+export interface CheckRunInfo {
+  id: number;
+  name: string;
+  status: string;
+  conclusion?: string;
+  html_url?: string;
+}

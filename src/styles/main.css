@@ -269,6 +269,28 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: var(--diff-meta-text);
 }
 
+.tok-kw {
+  color: var(--tok-keyword);
+  font-weight: 600;
+}
+
+.tok-str {
+  color: var(--tok-string);
+}
+
+.tok-num {
+  color: var(--tok-number);
+}
+
+.tok-com {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+
+.tok-fn {
+  color: var(--tok-fn);
+}
+
 /* History List */
 .history-container {
   display: flex;

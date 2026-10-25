@@ -77,6 +77,35 @@ pub fn delete_tag(repo: &str, tag_name: &str) -> Result<String, String> {
     cli::run(repo, &["tag", "-d", name])
 }
 
+pub fn squash_commits(
+    repo: &str,
+    count: usize,
+    new_summary: &str,
+    new_description: Option<&str>,
+) -> Result<String, String> {
+    if count < 2 {
+        return Err("Jumlah komit untuk di-squash minimal 2".into());
+    }
+    let s = new_summary.trim();
+    if s.is_empty() {
+        return Err("Pesan komit baru tidak boleh kosong".into());
+    }
+
+    let reset_target = format!("HEAD~{count}");
+    cli::run(repo, &["reset", "--soft", &reset_target])?;
+
+    let mut args = vec!["commit", "-m", s];
+    let desc_val;
+    if let Some(d) = new_description {
+        desc_val = d.trim();
+        if !desc_val.is_empty() {
+            args.push("-m");
+            args.push(desc_val);
+        }
+    }
+    cli::run(repo, &args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

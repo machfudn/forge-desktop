@@ -26,6 +26,15 @@ pub struct IssueInfo {
     pub comments_count: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckRunInfo {
+    pub id: u64,
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub html_url: Option<String>,
+}
+
 pub fn parse_github_repo(remote_url: &str) -> Option<(String, String)> {
     let raw = remote_url.trim();
     if raw.is_empty() {
@@ -232,6 +241,75 @@ pub fn checkout_pull_request(
 
     // Checkout the created local branch
     cli::run(repo_path, &["checkout", &target_branch])
+}
+
+pub fn get_commit_check_runs(
+    owner: &str,
+    repo: &str,
+    commit_sha: &str,
+    token: Option<&str>,
+) -> Result<Vec<CheckRunInfo>, String> {
+    let o = owner.trim();
+    let r = repo.trim();
+    let sha = commit_sha.trim();
+    if o.is_empty() || r.is_empty() || sha.is_empty() {
+        return Err("Owner, repo, dan commit sha tidak boleh kosong".into());
+    }
+
+    let url = format!("https://api.github.com/repos/{o}/{r}/commits/{sha}/check-runs");
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-s",
+        "-H",
+        "User-Agent: ForgeDesktop/1.1.0",
+        "-H",
+        "Accept: application/vnd.github.v3+json",
+    ]);
+
+    let tok = token.map(|t| t.to_string()).or_else(get_stored_github_token);
+    if let Some(ref t) = tok {
+        cmd.args(["-H", &format!("Authorization: Bearer {t}")]);
+    }
+    cmd.arg(&url);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Gagal menghubungi GitHub Check Runs API: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.trim().is_empty() {
+        return Ok(vec![]);
+    }
+
+    #[derive(Deserialize)]
+    struct RawCheckResponse {
+        check_runs: Option<Vec<RawCheckRun>>,
+    }
+    #[derive(Deserialize)]
+    struct RawCheckRun {
+        id: Option<u64>,
+        name: Option<String>,
+        status: Option<String>,
+        conclusion: Option<String>,
+        html_url: Option<String>,
+    }
+
+    if let Ok(resp) = serde_json::from_str::<RawCheckResponse>(&stdout) {
+        if let Some(runs) = resp.check_runs {
+            return Ok(runs
+                .into_iter()
+                .filter_map(|c| {
+                    Some(CheckRunInfo {
+                        id: c.id?,
+                        name: c.name.unwrap_or_else(|| "check".into()),
+                        status: c.status.unwrap_or_else(|| "unknown".into()),
+                        conclusion: c.conclusion,
+                        html_url: c.html_url,
+                    })
+                })
+                .collect());
+        }
+    }
+    Ok(vec![])
 }
 
 #[cfg(test)]

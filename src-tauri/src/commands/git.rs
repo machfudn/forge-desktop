@@ -1,7 +1,7 @@
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
-    self, AheadBehind, BranchInfo, CommitInfo, DeviceFlowInit, IssueInfo, PullRequestInfo,
-    RemoteInfo, RepoConfig, RepoStatus, TokenPollResult,
+    self, AheadBehind, BranchInfo, CheckRunInfo, CommitInfo, DeviceFlowInit, IssueInfo,
+    PullRequestInfo, RemoteInfo, RepoConfig, RepoStatus, TokenPollResult,
 };
 use crate::system;
 
@@ -289,4 +289,34 @@ pub fn checkout_github_pull_request(
     remote: Option<&str>,
 ) -> Result<String, String> {
     git::checkout_pull_request(repo_path, pr_number, remote)
+}
+
+#[tauri::command]
+pub fn get_commit_check_runs(
+    owner: &str,
+    repo: &str,
+    commit_sha: &str,
+    token: Option<&str>,
+) -> Result<Vec<CheckRunInfo>, String> {
+    git::get_commit_check_runs(owner, repo, commit_sha, token)
+}
+
+#[tauri::command]
+pub fn squash_commits(
+    repo: &str,
+    count: usize,
+    new_summary: &str,
+    new_description: Option<&str>,
+) -> Result<String, String> {
+    git::squash_commits(repo, count, new_summary, new_description)
+}
+
+#[tauri::command]
+pub fn get_global_config() -> Result<RepoConfig, String> {
+    git::get_global_config()
+}
+
+#[tauri::command]
+pub fn set_global_config(user_name: &str, user_email: &str) -> Result<(), String> {
+    git::set_global_config(user_name, user_email)
 }

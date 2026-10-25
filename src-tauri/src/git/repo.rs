@@ -30,6 +30,27 @@ pub fn set_repo_config(repo: &str, user_name: &str, user_email: &str) -> Result<
     Ok(())
 }
 
+pub fn get_global_config() -> Result<RepoConfig, String> {
+    let name = cli::run_raw(".", &["config", "--global", "user.name"]).unwrap_or_default();
+    let email = cli::run_raw(".", &["config", "--global", "user.email"]).unwrap_or_default();
+    Ok(RepoConfig {
+        user_name: name.trim().to_string(),
+        user_email: email.trim().to_string(),
+    })
+}
+
+pub fn set_global_config(user_name: &str, user_email: &str) -> Result<(), String> {
+    let name = user_name.trim();
+    let email = user_email.trim();
+    if !name.is_empty() {
+        cli::run_raw(".", &["config", "--global", "user.name", name])?;
+    }
+    if !email.is_empty() {
+        cli::run_raw(".", &["config", "--global", "user.email", email])?;
+    }
+    Ok(())
+}
+
 pub fn init_repository(
     target_path: &str,
     default_branch: Option<&str>,

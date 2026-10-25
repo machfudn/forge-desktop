@@ -45,6 +45,7 @@
     | "auth"
     | "tag"
     | "pr"
+    | "squash"
     | null;
   let activeModal: ModalType = $state(null);
 
@@ -54,10 +55,16 @@
   let issues: IssueInfo[] = $state([]);
   let prTab: "prs" | "issues" = $state("prs");
   let isLoadingGithub = $state(false);
+  let checkRunsMap = $state<Record<string, { status: string; conclusion?: string }>>({});
 
   // Tag modal states
   let tagModalTargetSha = $state<string | null>(null);
   let tagNameInput = $state("");
+
+  // Squash modal states
+  let squashCount = $state(2);
+  let squashSummary = $state("");
+  let squashDescription = $state("");
 
   // Diff whitespace state
   let ignoreWhitespace = $state(false);
@@ -87,6 +94,7 @@
   // Diagnostics & Settings sub-states
   let diagReport: DiagnosticReport | null = $state(null);
   let repoConfig: RepoConfig = $state({ user_name: "", user_email: "" });
+  let globalConfig: RepoConfig = $state({ user_name: "", user_email: "" });
 
   // Auth flow states
   let oauthClientId = $state("");
@@ -213,6 +221,29 @@
       setStatus("Memuat riwayat komit...");
       commitHistory = await gitService.getCommitHistory(activeRepo, 50);
       setStatus("Siap");
+
+      if (githubRepoInfo && commitHistory.length > 0) {
+        const topSha = commitHistory[0].sha;
+        try {
+          const runs = await gitService.getCommitCheckRuns(
+            githubRepoInfo.owner,
+            githubRepoInfo.repo,
+            topSha
+          );
+          if (runs.length > 0) {
+            const latest = runs[0];
+            checkRunsMap = {
+              ...checkRunsMap,
+              [topSha]: {
+                status: latest.status,
+                conclusion: latest.conclusion,
+              },
+            };
+          }
+        } catch {
+          // Non-blocking
+        }
+      }
     } catch (err) {
       setStatus(String(err), true);
     }
@@ -376,10 +407,15 @@
   async function openSettingsModal() {
     try {
       repoConfig = await gitService.getRepoConfig(activeRepo);
-      activeModal = "settings";
-    } catch (err) {
-      setStatus(String(err), true);
+    } catch {
+      repoConfig = { user_name: "", user_email: "" };
     }
+    try {
+      globalConfig = await gitService.getGlobalConfig();
+    } catch {
+      globalConfig = { user_name: "", user_email: "" };
+    }
+    activeModal = "settings";
   }
 
   async function openStashModal() {
@@ -722,7 +758,37 @@
         repoConfig.user_name,
         repoConfig.user_email
       );
-      setStatus("Pengaturan author repositori berhasil disimpan");
+      await gitService.setGlobalConfig(
+        globalConfig.user_name,
+        globalConfig.user_email
+      );
+      setStatus("Pengaturan konfigurasi lokal dan global berhasil disimpan");
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  function openSquashModal(index: number, sha: string) {
+    squashCount = index + 1;
+    squashSummary = `Squash ${squashCount} komit ke ${sha.slice(0, 7)}`;
+    squashDescription = "";
+    activeModal = "squash";
+  }
+
+  async function handleSquashSubmit() {
+    if (!squashSummary.trim()) return;
+    closeModal();
+    try {
+      setStatus(`Me-nyquash ${squashCount} komit...`);
+      await gitService.squashCommits(
+        activeRepo,
+        squashCount,
+        squashSummary.trim(),
+        squashDescription.trim() || undefined
+      );
+      setStatus(`Berhasil squash ${squashCount} komit`);
+      await loadRepo(activeRepo);
+      await loadHistory();
     } catch (err) {
       setStatus(String(err), true);
     }
@@ -964,10 +1030,12 @@
       {:else}
         <History
           commits={commitHistory}
+          {checkRunsMap}
           onCherryPick={handleCherryPick}
           onRevert={handleRevertCommit}
           onTag={openTagModal}
           onReset={handleResetToCommit}
+          onSquash={openSquashModal}
         />
       {/if}
     </section>
@@ -1137,18 +1205,30 @@
   </div>
 {:else if activeModal === "settings"}
   <div class="modal-overlay">
-    <div class="modal-dialog" style="width: 440px;">
-      <div class="modal-header">Pengaturan Repositori</div>
+    <div class="modal-dialog" style="width: 460px;">
+      <div class="modal-header">Pengaturan Repositori & Git</div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); border-bottom: 1px solid var(--border-default); padding-bottom: 4px;">
+          Konfigurasi Lokal
+        </div>
         <span style="font-size: 11px; color: var(--text-secondary);">Nama Author (user.name)</span>
-        <input type="text" class="commit-input" bind:value={repoConfig.user_name} placeholder="Nama Anda" />
+        <input type="text" class="commit-input" bind:value={repoConfig.user_name} placeholder="Nama Anda (lokal)" />
 
         <span style="font-size: 11px; color: var(--text-secondary);">Email Author (user.email)</span>
-        <input type="text" class="commit-input" bind:value={repoConfig.user_email} placeholder="email@example.com" />
+        <input type="text" class="commit-input" bind:value={repoConfig.user_email} placeholder="email@example.com (lokal)" />
+
+        <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; margin-top: 8px;">
+          Konfigurasi Global Git (~/.gitconfig)
+        </div>
+        <span style="font-size: 11px; color: var(--text-secondary);">Global Nama (user.name)</span>
+        <input type="text" class="commit-input" bind:value={globalConfig.user_name} placeholder="Nama Anda (global)" />
+
+        <span style="font-size: 11px; color: var(--text-secondary);">Global Email (user.email)</span>
+        <input type="text" class="commit-input" bind:value={globalConfig.user_email} placeholder="email@example.com (global)" />
       </div>
       <div class="modal-actions" style="margin-top: 14px;">
         <button class="btn-secondary" onclick={closeModal}>Batal</button>
-        <button class="btn-primary" onclick={handleSaveSettings}>Simpan</button>
+        <button class="btn-primary" onclick={handleSaveSettings}>Simpan Semua</button>
       </div>
     </div>
   </div>
@@ -1402,6 +1482,44 @@
 
       <div class="modal-actions" style="margin-top: 12px;">
         <button onclick={closeModal} class="btn-secondary">Tutup</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if activeModal === "squash"}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 440px;">
+      <div class="modal-header">Squash {squashCount} Komit</div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+        {squashCount} komit dari HEAD akan digabung menjadi satu komit baru.
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Ringkasan Komit Baru (Summary)</span>
+        <input
+          type="text"
+          class="commit-input"
+          placeholder="Ringkasan komit hasil squash"
+          bind:value={squashSummary}
+        />
+        <span style="font-size: 11px; color: var(--text-secondary);">Deskripsi Komit (Opsional)</span>
+        <textarea
+          class="commit-input"
+          placeholder="Rincian deskripsi gabungan"
+          rows="3"
+          bind:value={squashDescription}
+          style="resize: vertical; font-size: 12px;"
+        ></textarea>
+      </div>
+      <div class="modal-actions" style="margin-top: 14px;">
+        <button class="btn-secondary" onclick={closeModal}>Batal</button>
+        <button
+          class="btn-primary"
+          onclick={handleSquashSubmit}
+          disabled={!squashSummary.trim()}
+        >
+          Konfirmasi Squash
+        </button>
       </div>
     </div>
   </div>

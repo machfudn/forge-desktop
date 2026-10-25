@@ -3,13 +3,23 @@
 
   interface Props {
     commits: CommitInfo[];
+    checkRunsMap?: Record<string, { status: string; conclusion?: string }>;
     onCherryPick?: (sha: string) => void;
     onRevert?: (sha: string) => void;
     onTag?: (sha: string) => void;
     onReset?: (sha: string) => void;
+    onSquash?: (commitIndex: number, sha: string) => void;
   }
 
-  let { commits, onCherryPick, onRevert, onTag, onReset }: Props = $props();
+  let {
+    commits,
+    checkRunsMap = {},
+    onCherryPick,
+    onRevert,
+    onTag,
+    onReset,
+    onSquash,
+  }: Props = $props();
 
   let selectedSha = $state<string | null>(null);
 
@@ -30,7 +40,7 @@
       <span>AUTHOR</span>
       <span style="text-align: right;">TANGGAL</span>
     </div>
-    {#each commits as commit (commit.sha)}
+    {#each commits as commit, index (commit.sha)}
       {@const isSelected = selectedSha === commit.sha}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -41,7 +51,16 @@
         onclick={() => handleSelectCommit(commit.sha)}
         style="cursor: pointer; {isSelected ? 'background: var(--bg-subtle); border-left: 3px solid var(--accent-blue);' : ''}"
       >
-        <span class="commit-sha">{commit.short_sha}</span>
+        <span class="commit-sha" style="display: flex; align-items: center; gap: 6px;">
+          {#if checkRunsMap[commit.sha]}
+            {@const ci = checkRunsMap[commit.sha]}
+            <span
+              style="width: 7px; height: 7px; border-radius: 50%; display: inline-block; background-color: {ci.conclusion === 'success' ? 'var(--diff-add-text)' : ci.conclusion === 'failure' ? 'var(--diff-del-text)' : '#e3b341'};"
+              title="CI: {ci.conclusion || ci.status}"
+            ></span>
+          {/if}
+          {commit.short_sha}
+        </span>
         <span class="commit-summary" title={commit.summary}>{commit.summary}</span>
         <span class="commit-author">{commit.author}</span>
         <span class="commit-date">{commit.date}</span>
@@ -50,6 +69,16 @@
       {#if isSelected}
         <div style="background: var(--bg-canvas); padding: 8px 16px; border-bottom: 1px solid var(--border-default); display: flex; gap: 6px; align-items: center; font-size: 11px;">
           <span style="color: var(--text-muted); margin-right: 4px;">Aksi Komit {commit.short_sha}:</span>
+          {#if onSquash && index > 0}
+            <button
+              onclick={() => onSquash(index, commit.sha)}
+              class="btn-secondary"
+              style="font-size: 10px; padding: 2px 8px;"
+              title="Squash {index + 1} komit dari HEAD ke komit ini"
+            >
+              Squash {index + 1} komit
+            </button>
+          {/if}
           {#if onCherryPick}
             <button
               onclick={() => onCherryPick(commit.sha)}

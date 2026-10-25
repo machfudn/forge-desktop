@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AheadBehind,
   BranchInfo,
+  CheckRunInfo,
   CommitInfo,
   DeviceFlowInit,
   DiagnosticReport,
@@ -330,4 +331,43 @@ export async function checkoutGithubPullRequest(
     prNumber,
     remote,
   });
+}
+
+export async function getCommitCheckRuns(
+  owner: string,
+  repo: string,
+  commitSha: string,
+  token?: string
+): Promise<CheckRunInfo[]> {
+  return invoke<CheckRunInfo[]>("get_commit_check_runs", {
+    owner,
+    repo,
+    commitSha,
+    token,
+  });
+}
+
+export async function squashCommits(
+  repo: string,
+  count: number,
+  newSummary: string,
+  newDescription?: string
+): Promise<string> {
+  return invoke<string>("squash_commits", {
+    repo,
+    count,
+    newSummary,
+    newDescription,
+  });
+}
+
+export async function getGlobalConfig(): Promise<RepoConfig> {
+  return invoke<RepoConfig>("get_global_config");
+}
+
+export async function setGlobalConfig(
+  userName: string,
+  userEmail: string
+): Promise<void> {
+  return invoke("set_global_config", { userName, userEmail });
 }

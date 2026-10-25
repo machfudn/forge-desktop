@@ -17,6 +17,56 @@
 
   let viewMode = $state<"unified" | "split">("unified");
 
+  function escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function highlightLine(line: string): string {
+    if (
+      line.startsWith("@@") ||
+      line.startsWith("diff ") ||
+      line.startsWith("index ") ||
+      line.startsWith("---") ||
+      line.startsWith("+++")
+    ) {
+      return escapeHtml(line);
+    }
+    const prefix =
+      line.startsWith("+") || line.startsWith("-") || line.startsWith(" ")
+        ? line.charAt(0)
+        : "";
+    const content = prefix ? line.slice(1) : line;
+
+    const trimmed = content.trim();
+    if (
+      trimmed.startsWith("//") ||
+      trimmed.startsWith("#") ||
+      trimmed.startsWith("/*") ||
+      trimmed.startsWith("*")
+    ) {
+      return `${prefix}<span class="tok-com">${escapeHtml(content)}</span>`;
+    }
+
+    const escaped = escapeHtml(content);
+    const highlighted = escaped
+      .replace(
+        /(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`)/g,
+        '<span class="tok-str">$1</span>'
+      )
+      .replace(
+        /\b(fn|let|const|var|function|return|if|else|for|while|match|pub|struct|enum|import|from|export|type|interface|class|def|async|await|package|impl|trait|use|mod|mut|self|true|false)\b/g,
+        '<span class="tok-kw">$1</span>'
+      )
+      .replace(/\b(\d+(\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+
+    return `${prefix}${highlighted}`;
+  }
+
   function parseLines(diff: string) {
     if (!diff.trim()) return [];
     return diff.split("\n").map((line) => {
@@ -28,15 +78,17 @@
       } else if (line.startsWith("@")) {
         className += " meta";
       }
-      return { line, className };
+      return { line, className, html: highlightLine(line) };
     });
   }
 
   interface SplitRow {
     leftLine: string;
     leftType: "del" | "context" | "meta" | "empty";
+    leftHtml: string;
     rightLine: string;
     rightType: "add" | "context" | "meta" | "empty";
+    rightHtml: string;
   }
 
   function parseSplit(diff: string): SplitRow[] {
@@ -50,11 +102,15 @@
     function flushBuffers() {
       const maxLen = Math.max(delBuffer.length, addBuffer.length);
       for (let i = 0; i < maxLen; i++) {
+        const left = delBuffer[i] !== undefined ? delBuffer[i] : "";
+        const right = addBuffer[i] !== undefined ? addBuffer[i] : "";
         rows.push({
-          leftLine: delBuffer[i] !== undefined ? delBuffer[i] : "",
+          leftLine: left,
           leftType: delBuffer[i] !== undefined ? "del" : "empty",
-          rightLine: addBuffer[i] !== undefined ? addBuffer[i] : "",
+          leftHtml: left ? highlightLine(left) : "",
+          rightLine: right,
           rightType: addBuffer[i] !== undefined ? "add" : "empty",
+          rightHtml: right ? highlightLine(right) : "",
         });
       }
       delBuffer = [];
@@ -72,11 +128,14 @@
       }
       if (line.startsWith("@@")) {
         flushBuffers();
+        const h = highlightLine(line);
         rows.push({
           leftLine: line,
           leftType: "meta",
+          leftHtml: h,
           rightLine: line,
           rightType: "meta",
+          rightHtml: h,
         });
       } else if (line.startsWith("-")) {
         delBuffer.push(line);
@@ -84,11 +143,14 @@
         addBuffer.push(line);
       } else {
         flushBuffers();
+        const h = highlightLine(line);
         rows.push({
           leftLine: line,
           leftType: "context",
+          leftHtml: h,
           rightLine: line,
           rightType: "context",
+          rightHtml: h,
         });
       }
     }
@@ -148,8 +210,8 @@
     </div>
   {:else if viewMode === "unified"}
     <div class="diff-content">
-      {#each lines as { line, className }}
-        <div class={className}>{line}</div>
+      {#each lines as { className, html }}
+        <div class={className}>{@html html}</div>
       {/each}
     </div>
   {:else}
@@ -160,13 +222,13 @@
             class="diff-line {row.leftType === 'del' ? 'del' : row.leftType === 'meta' ? 'meta' : ''}"
             style="border-right: 1px solid var(--border-default); overflow-x: auto; white-space: pre; min-height: 19px;"
           >
-            {row.leftLine}
+            {@html row.leftHtml}
           </div>
           <div
             class="diff-line {row.rightType === 'add' ? 'add' : row.rightType === 'meta' ? 'meta' : ''}"
             style="overflow-x: auto; white-space: pre; min-height: 19px;"
           >
-            {row.rightLine}
+            {@html row.rightHtml}
           </div>
         </div>
       {/each}
