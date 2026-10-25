@@ -84,6 +84,32 @@ pub fn push(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<St
     cli::run(repo, &args)
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AheadBehind {
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+pub fn get_ahead_behind(repo: &str, branch: &str) -> Result<AheadBehind, String> {
+    let b = branch.trim();
+    if b.is_empty() || b.starts_with('-') {
+        return Ok(AheadBehind { ahead: 0, behind: 0 });
+    }
+    let upstream_spec = format!("{b}...{b}@{{upstream}}");
+    match cli::run(repo, &["rev-list", "--left-right", "--count", &upstream_spec]) {
+        Ok(out) => {
+            let parts: Vec<&str> = out.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let ahead = parts[0].parse::<usize>().unwrap_or(0);
+                let behind = parts[1].parse::<usize>().unwrap_or(0);
+                return Ok(AheadBehind { ahead, behind });
+            }
+            Ok(AheadBehind { ahead: 0, behind: 0 })
+        }
+        Err(_) => Ok(AheadBehind { ahead: 0, behind: 0 }),
+    }
+}
+
 pub fn clone_repository(url: &str, target_dir: &str) -> Result<String, String> {
     validate_remote_url(url)?;
     let target = target_dir.trim();

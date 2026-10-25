@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type {
+    AheadBehind,
     BranchInfo,
     CommitInfo,
     DeviceFlowInit,
     DiagnosticReport,
     FileEntry,
+    RepoConfig,
     RepoStatus,
   } from "./types/git";
   import * as gitService from "./services/git";
@@ -24,23 +26,49 @@
   let commitHistory: CommitInfo[] = $state([]);
   let branches: BranchInfo[] = $state([]);
   let hasRemotes = $state(false);
+  let aheadBehind: AheadBehind = $state({ ahead: 0, behind: 0 });
 
   let footerStatus = $state("Siap");
   let isStatusError = $state(false);
 
   // Modal states
-  type ModalType = "branch" | "open" | "clone" | "stash" | "diag" | "auth" | null;
+  type ModalType =
+    | "branch"
+    | "open"
+    | "clone"
+    | "init"
+    | "settings"
+    | "stash"
+    | "diag"
+    | "auth"
+    | null;
   let activeModal: ModalType = $state(null);
 
-  // Modal sub-states
+  // Branch modal sub-states
+  let branchSearch = $state("");
   let newBranchName = $state("");
+  let branchToRename = $state<string | null>(null);
+  let renameBranchInput = $state("");
+
+  // Open & Init modal sub-states
   let openRepoPath = $state("");
   let recentRepos: string[] = $state([]);
+  let initRepoPath = $state("");
+  let initDefaultBranch = $state("main");
+  let initGitignore = $state("Node");
+  let initLicense = $state("MIT");
+
+  // Clone sub-states
   let cloneUrl = $state("");
   let cloneTarget = $state("");
+
+  // Stash sub-states
   let stashMsg = $state("");
   let stashList: string[] = $state([]);
+
+  // Diagnostics & Settings sub-states
   let diagReport: DiagnosticReport | null = $state(null);
+  let repoConfig: RepoConfig = $state({ user_name: "", user_email: "" });
 
   // Auth flow states
   let oauthClientId = $state("");
@@ -84,6 +112,16 @@
         hasRemotes = remotes.length > 0;
       } catch {
         hasRemotes = false;
+      }
+
+      if (status.branch && !status.branch.startsWith("(")) {
+        try {
+          aheadBehind = await gitService.getBranchAheadBehind(path, status.branch);
+        } catch {
+          aheadBehind = { ahead: 0, behind: 0 };
+        }
+      } else {
+        aheadBehind = { ahead: 0, behind: 0 };
       }
 
       if (status.files.length > 0) {
@@ -159,14 +197,27 @@
     }
   }
 
-  async function handleCommit(msg: string) {
+  async function handleCommit(summary: string, description?: string, amend?: boolean) {
     try {
       setStatus("Melakukan komit...");
-      await gitService.commitChanges(activeRepo, msg);
+      await gitService.commitChanges(activeRepo, summary, description, amend);
       setStatus("Komit berhasil dibuat");
       await loadRepo(activeRepo);
     } catch (err) {
       setStatus(String(err), true);
+    }
+  }
+
+  async function handleUndoCommit() {
+    if (confirm("Batalkan komit terakhir? Perubahan akan kembali ke status staging.")) {
+      try {
+        setStatus("Membatalkan komit terakhir...");
+        await gitService.undoLastCommit(activeRepo);
+        setStatus("Komit terakhir dibatalkan (soft reset)");
+        await loadRepo(activeRepo);
+      } catch (err) {
+        setStatus(String(err), true);
+      }
     }
   }
 
@@ -242,6 +293,8 @@
     try {
       branches = await gitService.listBranches(activeRepo);
       newBranchName = "";
+      branchSearch = "";
+      branchToRename = null;
       activeModal = "branch";
     } catch (err) {
       setStatus(String(err), true);
@@ -254,10 +307,27 @@
     activeModal = "open";
   }
 
+  function openInitModal() {
+    initRepoPath = "";
+    initDefaultBranch = "main";
+    initGitignore = "Node";
+    initLicense = "MIT";
+    activeModal = "init";
+  }
+
   function openCloneModal() {
     cloneUrl = "";
     cloneTarget = "";
     activeModal = "clone";
+  }
+
+  async function openSettingsModal() {
+    try {
+      repoConfig = await gitService.getRepoConfig(activeRepo);
+      activeModal = "settings";
+    } catch (err) {
+      setStatus(String(err), true);
+    }
   }
 
   async function openStashModal() {
@@ -315,6 +385,59 @@
     }
   }
 
+  async function handleDeleteBranch(name: string, isCurrent: boolean) {
+    if (isCurrent) {
+      alert("Tidak dapat menghapus branch yang sedang aktif.");
+      return;
+    }
+    if (confirm(`Hapus branch '${name}'?`)) {
+      try {
+        await gitService.deleteBranch(activeRepo, name, true);
+        branches = await gitService.listBranches(activeRepo);
+        setStatus(`Branch ${name} berhasil dihapus`);
+      } catch (err) {
+        setStatus(String(err), true);
+      }
+    }
+  }
+
+  async function handleStartRename(name: string) {
+    branchToRename = name;
+    renameBranchInput = name;
+  }
+
+  async function handleConfirmRename() {
+    if (!branchToRename) return;
+    const newName = renameBranchInput.trim();
+    if (!newName || newName === branchToRename) {
+      branchToRename = null;
+      return;
+    }
+    try {
+      await gitService.renameBranch(activeRepo, branchToRename, newName);
+      branchToRename = null;
+      branches = await gitService.listBranches(activeRepo);
+      await loadRepo(activeRepo);
+      setStatus(`Branch berhasil diubah menjadi ${newName}`);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleMergeBranch(targetName: string) {
+    if (confirm(`Gabungkan (merge) branch '${targetName}' ke '${currentStatus?.branch}'?`)) {
+      closeModal();
+      try {
+        setStatus(`Menggabungkan ${targetName}...`);
+        const res = await gitService.mergeBranch(activeRepo, targetName);
+        setStatus(res || "Merge berhasil");
+        await loadRepo(activeRepo);
+      } catch (err) {
+        setStatus(String(err), true);
+      }
+    }
+  }
+
   // Stash modal actions
   async function handleStashSave() {
     closeModal();
@@ -350,6 +473,83 @@
       await gitService.cloneRepository(url, target);
       setStatus("Clone sukses");
       await loadRepo(target);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  // Init repo actions
+  async function handleInitRepo() {
+    const target = initRepoPath.trim();
+    if (!target) {
+      alert("Path folder repositori wajib diisi");
+      return;
+    }
+    closeModal();
+    try {
+      setStatus(`Menginisialisasi repositori baru di ${target}...`);
+      let giContent: string | undefined;
+      if (initGitignore === "Node") {
+        giContent = "node_modules/\ndist/\n.env\n*.log";
+      } else if (initGitignore === "Rust") {
+        giContent = "target/\n**/*.rs.bk\nCargo.lock";
+      } else if (initGitignore === "Python") {
+        giContent = "__pycache__/\n*.py[cod]\nvenv/\n.env";
+      }
+
+      let licContent: string | undefined;
+      if (initLicense === "MIT") {
+        licContent = `MIT License\n\nCopyright (c) ${new Date().getFullYear()}\n\nPermission is hereby granted, free of charge...`;
+      } else if (initLicense === "Apache-2.0") {
+        licContent = `Apache License Version 2.0, January 2004\nhttp://www.apache.org/licenses/`;
+      }
+
+      await gitService.initRepository(target, initDefaultBranch, giContent, licContent);
+      setStatus("Repositori berhasil dibuat");
+      await loadRepo(target);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  // Settings actions
+  async function handleSaveSettings() {
+    closeModal();
+    try {
+      await gitService.setRepoConfig(
+        activeRepo,
+        repoConfig.user_name,
+        repoConfig.user_email
+      );
+      setStatus("Pengaturan author repositori berhasil disimpan");
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  // External tools
+  async function handleOpenInTerminal() {
+    try {
+      await gitService.openInTerminal(activeRepo);
+      setStatus("Membuka terminal...");
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleOpenInFileManager() {
+    try {
+      await gitService.openInFileManager(activeRepo);
+      setStatus("Membuka file manager...");
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleOpenInEditor() {
+    try {
+      await gitService.openInEditor(activeRepo);
+      setStatus("Membuka editor eksternal...");
     } catch (err) {
       setStatus(String(err), true);
     }
@@ -392,6 +592,12 @@
     }
   }
 
+  let filteredBranches = $derived(
+    branches.filter((b) =>
+      b.name.toLowerCase().includes(branchSearch.toLowerCase())
+    )
+  );
+
   onMount(() => {
     loadRepo(activeRepo);
   });
@@ -402,6 +608,9 @@
     <div class="header-left">
       <button onclick={openOpenRepoModal} class="btn-secondary" style="font-weight: 600;">
         Buka Repo
+      </button>
+      <button onclick={openInitModal} class="btn-secondary" title="Inisialisasi Git Baru">
+        Repo Baru
       </button>
       <button onclick={openCloneModal} class="btn-secondary">
         Clone
@@ -440,9 +649,44 @@
     </nav>
 
     <div class="header-right">
-      <button onclick={handleFetch} class="btn-secondary" title="Fetch dari Remote" disabled={!hasRemotes}>Fetch</button>
-      <button onclick={handlePull} class="btn-secondary" title="Pull dari Remote" disabled={!hasRemotes}>Pull</button>
-      <button onclick={handlePush} class="btn-secondary" title="Push ke Remote" disabled={!hasRemotes}>Push</button>
+      <button
+        onclick={handleFetch}
+        class="btn-secondary"
+        title="Fetch dari Remote"
+        disabled={!hasRemotes}
+      >
+        Fetch
+      </button>
+      <button
+        onclick={handlePull}
+        class="btn-secondary"
+        title="Pull dari Remote"
+        disabled={!hasRemotes}
+      >
+        Pull {aheadBehind.behind > 0 ? `↓${aheadBehind.behind}` : ""}
+      </button>
+      <button
+        onclick={handlePush}
+        class="btn-secondary"
+        title="Push ke Remote"
+        disabled={!hasRemotes}
+      >
+        Push {aheadBehind.ahead > 0 ? `↑${aheadBehind.ahead}` : ""}
+      </button>
+
+      <button onclick={handleOpenInEditor} class="btn-secondary" title="Buka folder di VS Code / Editor">
+        Editor
+      </button>
+      <button onclick={handleOpenInTerminal} class="btn-secondary" title="Buka folder di Terminal">
+        Terminal
+      </button>
+      <button onclick={handleOpenInFileManager} class="btn-secondary" title="Buka folder di File Manager">
+        Folder
+      </button>
+
+      <button onclick={openSettingsModal} class="btn-secondary" title="Pengaturan Repositori">
+        Settings
+      </button>
       <button onclick={openAuthModal} class="btn-secondary" title="Akun GitHub">GitHub</button>
       <button onclick={openStashModal} class="btn-secondary" title="Simpan perubahan ke Stash">Stash</button>
       <button onclick={openDiagModal} class="btn-secondary" title="Laporan Diagnostik Sistem">Diagnostik</button>
@@ -465,6 +709,7 @@
             onStageAll={handleStageAll}
             onUnstageAll={handleUnstageAll}
             onCommit={handleCommit}
+            onUndoCommit={handleUndoCommit}
             onAbortMerge={handleAbortMerge}
             onAbortRebase={handleAbortRebase}
             onDiscardFile={handleDiscardFile}
@@ -504,27 +749,87 @@
 <!-- Modals -->
 {#if activeModal === "branch"}
   <div class="modal-overlay">
-    <div class="modal-dialog">
-      <div class="modal-header">Pilih atau Buat Branch</div>
+    <div class="modal-dialog" style="width: 480px;">
+      <div class="modal-header">Pilih atau Kelola Branch</div>
       <div style="display: flex; gap: 6px;">
-        <input type="text" class="commit-input" placeholder="Nama branch baru" style="flex: 1;" bind:value={newBranchName} />
+        <input
+          type="text"
+          class="commit-input"
+          placeholder="Filter nama branch..."
+          style="flex: 1;"
+          bind:value={branchSearch}
+        />
+        <input
+          type="text"
+          class="commit-input"
+          placeholder="Nama branch baru"
+          style="flex: 1;"
+          bind:value={newBranchName}
+        />
         <button onclick={handleCreateBranch} class="btn-primary" style="font-size: 11px;">Buat</button>
       </div>
-      <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-sm);">
-        {#each branches as b (b.name)}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="branch-item"
-            onclick={() => handleSwitchBranch(b.name)}
-            style="padding: 6px 10px; cursor: pointer; display: flex; justify-content: space-between; font-size: 12px; background: {b.is_current ? 'var(--bg-subtle)' : 'transparent'};"
-          >
-            <span>{b.name}</span>
-            {#if b.is_current}
-              <span style="color: var(--accent-blue); font-size: 11px;">aktif</span>
-            {/if}
-          </div>
-        {/each}
+
+      {#if branchToRename}
+        <div style="display: flex; gap: 6px; padding: 8px; background: var(--bg-subtle); border-radius: var(--radius-sm); align-items: center;">
+          <span style="font-size: 11px; color: var(--text-secondary);">Ganti nama '{branchToRename}':</span>
+          <input type="text" class="commit-input" bind:value={renameBranchInput} style="flex: 1; font-size: 11px;" />
+          <button onclick={handleConfirmRename} class="btn-primary" style="font-size: 11px;">Simpan</button>
+          <button onclick={() => (branchToRename = null)} class="btn-secondary" style="font-size: 11px;">Batal</button>
+        </div>
+      {/if}
+
+      <div style="max-height: 240px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-sm);">
+        {#if filteredBranches.length === 0}
+          <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11px;">Tidak ada branch ditemukan</div>
+        {:else}
+          {#each filteredBranches as b (b.name)}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="branch-item"
+              style="padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; border-bottom: 1px solid var(--border-muted); background: {b.is_current ? 'var(--bg-subtle)' : 'transparent'};"
+            >
+              <span
+                onclick={() => handleSwitchBranch(b.name)}
+                style="cursor: pointer; flex: 1; {b.is_current ? 'font-weight: 600;' : ''}"
+              >
+                {b.name}
+                {#if b.is_current}
+                  <span style="color: var(--accent-blue); font-size: 10px; margin-left: 6px;">(aktif)</span>
+                {/if}
+              </span>
+
+              <div style="display: flex; gap: 4px; align-items: center;">
+                {#if !b.is_current}
+                  <button
+                    onclick={() => handleMergeBranch(b.name)}
+                    class="btn-secondary"
+                    style="font-size: 10px; padding: 2px 6px;"
+                    title="Merge branch ini ke branch aktif"
+                  >
+                    Merge
+                  </button>
+                  <button
+                    onclick={() => handleStartRename(b.name)}
+                    class="btn-secondary"
+                    style="font-size: 10px; padding: 2px 6px;"
+                    title="Ganti nama branch"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    onclick={() => handleDeleteBranch(b.name, b.is_current)}
+                    class="btn-secondary"
+                    style="font-size: 10px; padding: 2px 6px; color: var(--diff-del-text);"
+                    title="Hapus branch lokal"
+                  >
+                    Hapus
+                  </button>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        {/if}
       </div>
       <div class="modal-actions">
         <button class="btn-secondary" onclick={closeModal}>Tutup</button>
@@ -554,6 +859,55 @@
       <div class="modal-actions" style="margin-top: 12px;">
         <button class="btn-secondary" onclick={closeModal}>Batal</button>
         <button class="btn-primary" onclick={() => { closeModal(); loadRepo(openRepoPath); }}>Buka</button>
+      </div>
+    </div>
+  </div>
+{:else if activeModal === "init"}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 440px;">
+      <div class="modal-header">Inisialisasi Repositori Baru</div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Lokasi Direktori</span>
+        <input type="text" class="commit-input" bind:value={initRepoPath} placeholder="/path/ke/folder-baru" />
+
+        <span style="font-size: 11px; color: var(--text-secondary);">Default Branch</span>
+        <input type="text" class="commit-input" bind:value={initDefaultBranch} placeholder="main" />
+
+        <span style="font-size: 11px; color: var(--text-secondary);">Template .gitignore</span>
+        <select class="commit-input" bind:value={initGitignore} style="background: var(--bg-canvas); color: var(--text-default);">
+          <option value="None">Tidak Ada</option>
+          <option value="Node">Node.js</option>
+          <option value="Rust">Rust</option>
+          <option value="Python">Python</option>
+        </select>
+
+        <span style="font-size: 11px; color: var(--text-secondary);">Lisensi</span>
+        <select class="commit-input" bind:value={initLicense} style="background: var(--bg-canvas); color: var(--text-default);">
+          <option value="None">Tidak Ada</option>
+          <option value="MIT">MIT License</option>
+          <option value="Apache-2.0">Apache 2.0</option>
+        </select>
+      </div>
+      <div class="modal-actions" style="margin-top: 12px;">
+        <button class="btn-secondary" onclick={closeModal}>Batal</button>
+        <button class="btn-primary" onclick={handleInitRepo}>Buat Repositori</button>
+      </div>
+    </div>
+  </div>
+{:else if activeModal === "settings"}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 440px;">
+      <div class="modal-header">Pengaturan Repositori</div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Nama Author (user.name)</span>
+        <input type="text" class="commit-input" bind:value={repoConfig.user_name} placeholder="Nama Anda" />
+
+        <span style="font-size: 11px; color: var(--text-secondary);">Email Author (user.email)</span>
+        <input type="text" class="commit-input" bind:value={repoConfig.user_email} placeholder="email@example.com" />
+      </div>
+      <div class="modal-actions" style="margin-top: 14px;">
+        <button class="btn-secondary" onclick={closeModal}>Batal</button>
+        <button class="btn-primary" onclick={handleSaveSettings}>Simpan</button>
       </div>
     </div>
   </div>

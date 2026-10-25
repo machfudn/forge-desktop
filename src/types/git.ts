@@ -51,3 +51,13 @@ export interface DiagnosticReport {
   git_version: string;
   sanitized_config: string[];
 }
+
+export interface AheadBehind {
+  ahead: number;
+  behind: number;
+}
+
+export interface RepoConfig {
+  user_name: string;
+  user_email: string;
+}

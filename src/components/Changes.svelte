@@ -8,7 +8,8 @@
     onToggleStage: (file: FileEntry) => void;
     onStageAll: () => void;
     onUnstageAll: () => void;
-    onCommit: (message: string) => void;
+    onCommit: (summary: string, description?: string, amend?: boolean) => void;
+    onUndoCommit?: () => void;
     onAbortMerge?: () => void;
     onAbortRebase?: () => void;
     onDiscardFile?: (file: FileEntry) => void;
@@ -22,20 +23,28 @@
     onStageAll,
     onUnstageAll,
     onCommit,
+    onUndoCommit,
     onAbortMerge,
     onAbortRebase,
     onDiscardFile,
   }: Props = $props();
 
-  let commitMessage = $state("");
+  let commitSummary = $state("");
+  let commitDescription = $state("");
+  let isAmend = $state(false);
+  let showDescription = $state(false);
+
   let stagedCount = $derived(status.files.filter((f) => f.staged).length);
   let totalCount = $derived(status.files.length);
 
   function handleCommit() {
-    const msg = commitMessage.trim();
-    if (msg && stagedCount > 0 && !status.has_conflicts) {
-      onCommit(msg);
-      commitMessage = "";
+    const summary = commitSummary.trim();
+    if ((summary || isAmend) && (stagedCount > 0 || isAmend) && !status.has_conflicts) {
+      onCommit(summary, commitDescription.trim() || undefined, isAmend);
+      commitSummary = "";
+      commitDescription = "";
+      isAmend = false;
+      showDescription = false;
     }
   }
 
@@ -120,20 +129,63 @@
   {/if}
 </ul>
 
-<div class="commit-box">
+<div class="commit-box" style="display: flex; flex-direction: column; gap: 6px;">
   <input
     type="text"
     class="commit-input"
-    placeholder="Ringkasan komit"
+    placeholder="Ringkasan komit (Summary)"
     maxlength="150"
-    bind:value={commitMessage}
+    bind:value={commitSummary}
     onkeydown={handleKeydown}
   />
+
+  {#if showDescription}
+    <textarea
+      class="commit-input"
+      placeholder="Deskripsi detail komit (opsional)"
+      rows="3"
+      bind:value={commitDescription}
+      style="resize: vertical; font-size: 12px; font-family: inherit;"
+    ></textarea>
+  {/if}
+
+  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-secondary);">
+    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+      <input type="checkbox" bind:checked={isAmend} />
+      <span>Amend komit</span>
+    </label>
+    <button
+      type="button"
+      onclick={() => (showDescription = !showDescription)}
+      style="background: none; border: none; color: var(--text-accent); cursor: pointer; font-size: 11px; padding: 0;"
+    >
+      {showDescription ? "Sembunyikan Deskripsi" : "+ Tambah Deskripsi"}
+    </button>
+  </div>
+
   <button
     class="btn-commit"
-    disabled={stagedCount === 0 || status.has_conflicts}
+    disabled={(stagedCount === 0 && !isAmend) || status.has_conflicts || (!commitSummary.trim() && !isAmend)}
     onclick={handleCommit}
   >
-    {status.has_conflicts ? "Selesaikan konflik dahulu" : `Komit ke branch (${stagedCount} file)`}
+    {#if status.has_conflicts}
+      Selesaikan konflik dahulu
+    {:else if isAmend}
+      Amandemen komit terakhir
+    {:else}
+      Komit ke branch ({stagedCount} file)
+    {/if}
   </button>
+
+  {#if onUndoCommit}
+    <button
+      type="button"
+      onclick={onUndoCommit}
+      class="btn-secondary"
+      style="font-size: 11px; width: 100%; margin-top: 2px;"
+      title="Batalkan komit terakhir dan kembalikan perubahannya ke staging"
+    >
+      Undo Komit Terakhir
+    </button>
+  {/if}
 </div>

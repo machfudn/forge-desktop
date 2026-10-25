@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AheadBehind,
   BranchInfo,
   CommitInfo,
   DeviceFlowInit,
   DiagnosticReport,
   RemoteInfo,
+  RepoConfig,
   RepoStatus,
   TokenPollResult,
 } from "../types/git";
@@ -29,8 +31,22 @@ export async function unstageAll(repo: string): Promise<void> {
   return invoke("unstage_all", { repo });
 }
 
-export async function commitChanges(repo: string, message: string): Promise<string> {
-  return invoke<string>("commit_changes", { repo, message });
+export async function commitChanges(
+  repo: string,
+  summary: string,
+  description?: string,
+  amend?: boolean
+): Promise<string> {
+  return invoke<string>("commit_changes", {
+    repo,
+    summary,
+    description,
+    amend,
+  });
+}
+
+export async function undoLastCommit(repo: string): Promise<string> {
+  return invoke<string>("undo_last_commit", { repo });
 }
 
 export async function getFileDiff(
@@ -60,6 +76,29 @@ export async function createBranch(repo: string, branchName: string): Promise<vo
   return invoke("create_branch", { repo, branchName });
 }
 
+export async function deleteBranch(
+  repo: string,
+  branchName: string,
+  force?: boolean
+): Promise<string> {
+  return invoke<string>("delete_branch", { repo, branchName, force });
+}
+
+export async function renameBranch(
+  repo: string,
+  oldName: string,
+  newName: string
+): Promise<string> {
+  return invoke<string>("rename_branch", { repo, oldName, newName });
+}
+
+export async function mergeBranch(
+  repo: string,
+  targetBranch: string
+): Promise<string> {
+  return invoke<string>("merge_branch", { repo, targetBranch });
+}
+
 export async function abortMerge(repo: string): Promise<void> {
   return invoke("abort_merge", { repo });
 }
@@ -70,6 +109,13 @@ export async function abortRebase(repo: string): Promise<void> {
 
 export async function listRemotes(repo: string): Promise<RemoteInfo[]> {
   return invoke<RemoteInfo[]>("list_remotes", { repo });
+}
+
+export async function getBranchAheadBehind(
+  repo: string,
+  branch: string
+): Promise<AheadBehind> {
+  return invoke<AheadBehind>("get_branch_ahead_behind", { repo, branch });
 }
 
 export async function gitFetch(repo: string, remote?: string): Promise<string> {
@@ -97,6 +143,32 @@ export async function cloneRepository(
   targetDir: string
 ): Promise<string> {
   return invoke<string>("clone_repository", { url, targetDir });
+}
+
+export async function initRepository(
+  targetPath: string,
+  defaultBranch?: string,
+  gitignoreContent?: string,
+  licenseContent?: string
+): Promise<string> {
+  return invoke<string>("init_repository", {
+    targetPath,
+    defaultBranch,
+    gitignoreContent,
+    licenseContent,
+  });
+}
+
+export async function getRepoConfig(repo: string): Promise<RepoConfig> {
+  return invoke<RepoConfig>("get_repo_config", { repo });
+}
+
+export async function setRepoConfig(
+  repo: string,
+  userName: string,
+  userEmail: string
+): Promise<void> {
+  return invoke("set_repo_config", { repo, userName, userEmail });
 }
 
 export async function githubStartDeviceFlow(
@@ -143,4 +215,16 @@ export async function gitListStashes(repo: string): Promise<string[]> {
 
 export async function getDiagnostics(repo?: string): Promise<DiagnosticReport> {
   return invoke<DiagnosticReport>("get_diagnostics", { repo });
+}
+
+export async function openInFileManager(path: string): Promise<void> {
+  return invoke("open_in_file_manager", { path });
+}
+
+export async function openInTerminal(path: string): Promise<void> {
+  return invoke("open_in_terminal", { path });
+}
+
+export async function openInEditor(path: string, editor?: string): Promise<void> {
+  return invoke("open_in_editor", { path, editor });
 }

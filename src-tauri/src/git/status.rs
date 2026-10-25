@@ -94,12 +94,45 @@ pub fn unstage_all(repo: &str) -> Result<(), String> {
     cli::run(repo, &["restore", "--staged", "."]).map(|_| ())
 }
 
-pub fn commit(repo: &str, message: &str) -> Result<String, String> {
-    let msg = message.trim();
-    if msg.is_empty() {
+pub fn commit(
+    repo: &str,
+    summary: &str,
+    description: Option<&str>,
+    amend: bool,
+) -> Result<String, String> {
+    let sum = summary.trim();
+    if sum.is_empty() && !amend {
         return Err("Pesan commit wajib diisi".into());
     }
-    cli::run(repo, &["commit", "-m", msg])
+
+    let mut full_msg = String::new();
+    if !sum.is_empty() {
+        full_msg.push_str(sum);
+        if let Some(desc) = description {
+            let d = desc.trim();
+            if !d.is_empty() {
+                full_msg.push_str("\n\n");
+                full_msg.push_str(d);
+            }
+        }
+    }
+
+    let mut args = vec!["commit"];
+    if amend {
+        args.push("--amend");
+    }
+    if !full_msg.is_empty() {
+        args.push("-m");
+        args.push(&full_msg);
+    } else if amend {
+        args.push("--no-edit");
+    }
+
+    cli::run(repo, &args)
+}
+
+pub fn undo_last_commit(repo: &str) -> Result<String, String> {
+    cli::run(repo, &["reset", "--soft", "HEAD~1"])
 }
 
 pub fn abort_merge(repo: &str) -> Result<(), String> {
@@ -152,6 +185,6 @@ mod tests {
 
     #[test]
     fn reject_blank_commit() {
-        assert!(commit("/tmp", "   ").is_err());
+        assert!(commit("/tmp", "   ", None, false).is_err());
     }
 }

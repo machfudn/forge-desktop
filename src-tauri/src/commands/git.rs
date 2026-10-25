@@ -1,7 +1,9 @@
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
-    self, BranchInfo, CommitInfo, DeviceFlowInit, RemoteInfo, RepoStatus, TokenPollResult,
+    self, AheadBehind, BranchInfo, CommitInfo, DeviceFlowInit, RemoteInfo, RepoConfig, RepoStatus,
+    TokenPollResult,
 };
+use crate::system;
 
 #[tauri::command]
 pub fn inspect_repository(repo: &str) -> Result<RepoStatus, String> {
@@ -29,8 +31,18 @@ pub fn unstage_all(repo: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn commit_changes(repo: &str, message: &str) -> Result<String, String> {
-    git::commit(repo, message)
+pub fn commit_changes(
+    repo: &str,
+    summary: &str,
+    description: Option<&str>,
+    amend: Option<bool>,
+) -> Result<String, String> {
+    git::commit(repo, summary, description, amend.unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn undo_last_commit(repo: &str) -> Result<String, String> {
+    git::undo_last_commit(repo)
 }
 
 #[tauri::command]
@@ -60,6 +72,21 @@ pub fn create_branch(repo: &str, branch_name: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn delete_branch(repo: &str, branch_name: &str, force: Option<bool>) -> Result<String, String> {
+    git::delete_branch(repo, branch_name, force.unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn rename_branch(repo: &str, old_name: &str, new_name: &str) -> Result<String, String> {
+    git::rename_branch(repo, old_name, new_name)
+}
+
+#[tauri::command]
+pub fn merge_branch(repo: &str, target_branch: &str) -> Result<String, String> {
+    git::merge_branch(repo, target_branch)
+}
+
+#[tauri::command]
 pub fn abort_merge(repo: &str) -> Result<(), String> {
     git::abort_merge(repo)
 }
@@ -72,6 +99,11 @@ pub fn abort_rebase(repo: &str) -> Result<(), String> {
 #[tauri::command]
 pub fn list_remotes(repo: &str) -> Result<Vec<RemoteInfo>, String> {
     git::list_remotes(repo)
+}
+
+#[tauri::command]
+pub fn get_branch_ahead_behind(repo: &str, branch: &str) -> Result<AheadBehind, String> {
+    git::get_ahead_behind(repo, branch)
 }
 
 #[tauri::command]
@@ -92,6 +124,26 @@ pub fn git_push(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Resul
 #[tauri::command]
 pub fn clone_repository(url: &str, target_dir: &str) -> Result<String, String> {
     git::clone_repository(url, target_dir)
+}
+
+#[tauri::command]
+pub fn init_repository(
+    target_path: &str,
+    default_branch: Option<&str>,
+    gitignore_content: Option<&str>,
+    license_content: Option<&str>,
+) -> Result<String, String> {
+    git::init_repository(target_path, default_branch, gitignore_content, license_content)
+}
+
+#[tauri::command]
+pub fn get_repo_config(repo: &str) -> Result<RepoConfig, String> {
+    git::get_repo_config(repo)
+}
+
+#[tauri::command]
+pub fn set_repo_config(repo: &str, user_name: &str, user_email: &str) -> Result<(), String> {
+    git::set_repo_config(repo, user_name, user_email)
 }
 
 #[tauri::command]
@@ -132,4 +184,19 @@ pub fn git_list_stashes(repo: &str) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub fn get_diagnostics(repo: Option<&str>) -> Result<DiagnosticReport, String> {
     Ok(diagnostics::generate_report(repo))
+}
+
+#[tauri::command]
+pub fn open_in_file_manager(path: &str) -> Result<(), String> {
+    system::open_in_file_manager(path)
+}
+
+#[tauri::command]
+pub fn open_in_terminal(path: &str) -> Result<(), String> {
+    system::open_in_terminal(path)
+}
+
+#[tauri::command]
+pub fn open_in_editor(path: &str, editor: Option<&str>) -> Result<(), String> {
+    system::open_in_editor(path, editor)
 }

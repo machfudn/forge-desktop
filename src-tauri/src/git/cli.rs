@@ -1,12 +1,13 @@
 use std::path::Path;
 use std::process::Command;
 
-pub fn run(repo: &str, args: &[&str]) -> Result<String, String> {
-    if !Path::new(repo).join(".git").exists() {
-        return Err("Folder bukan repository Git".into());
+pub fn run_raw(dir: &str, args: &[&str]) -> Result<String, String> {
+    let p = Path::new(dir);
+    if !p.exists() {
+        return Err("Direktori tidak ditemukan".into());
     }
     let output = Command::new("git")
-        .args(["-C", repo])
+        .args(["-C", dir])
         .args(args)
         .output()
         .map_err(|error| format!("git tidak tersedia: {error}"))?;
@@ -19,6 +20,13 @@ pub fn run(repo: &str, args: &[&str]) -> Result<String, String> {
         });
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+pub fn run(repo: &str, args: &[&str]) -> Result<String, String> {
+    if !Path::new(repo).join(".git").exists() {
+        return Err("Folder bukan repository Git".into());
+    }
+    run_raw(repo, args)
 }
 
 #[cfg(test)]
