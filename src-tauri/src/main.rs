@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    tmpgithub_desktop_tauri_lib::run()
+    forge_desktop_lib::run()
 }
