@@ -13,6 +13,7 @@
     onAbortMerge?: () => void;
     onAbortRebase?: () => void;
     onDiscardFile?: (file: FileEntry) => void;
+    onDiscardAll?: () => void;
   }
 
   let {
@@ -27,6 +28,7 @@
     onAbortMerge,
     onAbortRebase,
     onDiscardFile,
+    onDiscardAll,
   }: Props = $props();
 
   let commitSummary = $state("");
@@ -92,6 +94,9 @@
 <div class="sidebar-header">
   <h3>Perubahan ({totalCount})</h3>
   <div style="display: flex; gap: 4px;">
+    {#if totalCount > 0 && onDiscardAll}
+      <button class="btn-secondary" onclick={onDiscardAll} style="font-size: 11px; padding: 2px 6px; color: var(--diff-del-text); border-color: rgba(248,81,73,0.3);" title="Batalkan semua perubahan file">Discard Semua</button>
+    {/if}
     <button class="btn-secondary" onclick={onStageAll} style="font-size: 11px; padding: 2px 6px;">Stage Semua</button>
     <button class="btn-secondary" onclick={onUnstageAll} style="font-size: 11px; padding: 2px 6px;">Unstage</button>
   </div>
@@ -141,6 +146,23 @@
 </ul>
 
 <div class="commit-box" style="display: flex; flex-direction: column; gap: 6px;">
+  <div style="display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px;">
+    {#each ["feat: ", "fix: ", "docs: ", "refactor: ", "chore: "] as prefix}
+      <button
+        type="button"
+        class="btn-secondary"
+        style="font-size: 10px; padding: 1px 6px;"
+        onclick={() => {
+          if (!commitSummary.startsWith(prefix)) {
+            commitSummary = prefix + commitSummary.replace(/^[a-z]+:\s*/, "");
+          }
+        }}
+      >
+        {prefix.trim()}
+      </button>
+    {/each}
+  </div>
+
   <input
     type="text"
     class="commit-input"

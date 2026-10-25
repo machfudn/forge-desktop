@@ -1,0 +1,30 @@
+#!/usr/bin/env sh
+# Forge Desktop CLI Launcher (opens repo directly in Forge Desktop)
+
+TARGET_PATH="${1:-.}"
+
+if [ ! -e "$TARGET_PATH" ]; then
+  echo "Error: Path '$TARGET_PATH' does not exist." >&2
+  exit 1
+fi
+
+RESOLVED=$(cd "$TARGET_PATH" 2>/dev/null && pwd || echo "$TARGET_PATH")
+
+# Find Forge Desktop binary (installed, appimage, or development target)
+if command -v forge-desktop >/dev/null 2>&1; then
+  exec forge-desktop "$RESOLVED" "$@"
+elif [ -x "/usr/bin/forge-desktop" ]; then
+  exec /usr/bin/forge-desktop "$RESOLVED" "$@"
+elif [ -x "$HOME/.local/bin/forge-desktop" ]; then
+  exec "$HOME/.local/bin/forge-desktop" "$RESOLVED" "$@"
+else
+  # Fallback to cargo run in repo dir if inside development tree
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  DEV_ROOT="$(dirname "$SCRIPT_DIR")"
+  if [ -f "$DEV_ROOT/src-tauri/Cargo.toml" ]; then
+    cd "$DEV_ROOT" && exec cargo tauri dev -- "$RESOLVED" "$@"
+  else
+    echo "Error: forge-desktop binary not found in PATH or standard locations." >&2
+    exit 1
+  fi
+fi

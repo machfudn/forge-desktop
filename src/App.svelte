@@ -46,8 +46,26 @@
     | "tag"
     | "pr"
     | "squash"
+    | "confirm"
     | null;
   let activeModal: ModalType = $state(null);
+
+  // Safety Preferences
+  let confirmDiscard = $state(
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("forge:confirm-discard") !== "false"
+      : true
+  );
+  let confirmForcePush = $state(
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("forge:confirm-force-push") !== "false"
+      : true
+  );
+
+  // Confirm dialog modal state
+  let confirmModalTitle = $state("");
+  let confirmModalMessage = $state("");
+  let confirmModalAction: (() => Promise<void>) | null = null;
 
   // GitHub PR & Issues states
   let githubRepoInfo = $state<{ owner: string; repo: string } | null>(null);
@@ -326,14 +344,64 @@
     }
   }
 
+  function requestConfirmation(title: string, message: string, action: () => Promise<void>) {
+    confirmModalTitle = title;
+    confirmModalMessage = message;
+    confirmModalAction = action;
+    activeModal = "confirm";
+  }
+
+  async function handleConfirmModalSubmit() {
+    const action = confirmModalAction;
+    closeModal();
+    if (action) {
+      await action();
+    }
+  }
+
   async function handleDiscardFile(file: FileEntry) {
-    if (confirm(`Batalkan perubahan pada ${file.path}?`)) {
+    const doDiscard = async () => {
       try {
+        setStatus(`Membatalkan perubahan pada ${file.path}...`);
         await gitService.discardFileChanges(activeRepo, file.path);
+        setStatus(`Perubahan ${file.path} dibatalkan`);
         await loadRepo(activeRepo);
       } catch (err) {
         setStatus(String(err), true);
       }
+    };
+
+    if (confirmDiscard) {
+      requestConfirmation(
+        "Batalkan Perubahan File",
+        `Apakah Anda yakin ingin membatalkan semua perubahan pada file "${file.path}"? Tindakan ini tidak dapat diurungkan.`,
+        doDiscard
+      );
+    } else {
+      await doDiscard();
+    }
+  }
+
+  async function handleDiscardAll() {
+    const doDiscardAll = async () => {
+      try {
+        setStatus("Membatalkan seluruh perubahan working tree...");
+        await gitService.discardAllChanges(activeRepo);
+        setStatus("Seluruh perubahan berhasil dibatalkan");
+        await loadRepo(activeRepo);
+      } catch (err) {
+        setStatus(String(err), true);
+      }
+    };
+
+    if (confirmDiscard) {
+      requestConfirmation(
+        "Batalkan Semua Perubahan",
+        "Apakah Anda yakin ingin membatalkan SEMUA perubahan pada repositori ini? Semua modifikasi dan file belum terlacak akan dihapus secara permanen.",
+        doDiscardAll
+      );
+    } else {
+      await doDiscardAll();
     }
   }
 
@@ -611,20 +679,25 @@
   }
 
   async function handleForcePush() {
-    if (
-      !confirm(
-        "Peringatan: Force Push with lease akan menimpa commit di remote repository jika ada perbedaan riwayat. Lanjutkan?"
-      )
-    ) {
-      return;
-    }
-    try {
-      setStatus("Melakukan force push (--force-with-lease)...");
-      await gitService.gitForcePush(activeRepo);
-      setStatus("Force push berhasil diselesaikan");
-      await loadRepo(activeRepo);
-    } catch (err) {
-      setStatus(String(err), true);
+    const doForcePush = async () => {
+      try {
+        setStatus("Melakukan force push (--force-with-lease)...");
+        await gitService.gitForcePush(activeRepo);
+        setStatus("Force push berhasil diselesaikan");
+        await loadRepo(activeRepo);
+      } catch (err) {
+        setStatus(String(err), true);
+      }
+    };
+
+    if (confirmForcePush) {
+      requestConfirmation(
+        "Konfirmasi Force Push",
+        "Peringatan: Force Push with lease akan menimpa commit di remote repository jika ada perbedaan riwayat. Lanjutkan proses?",
+        doForcePush
+      );
+    } else {
+      await doForcePush();
     }
   }
 
@@ -762,7 +835,11 @@
         globalConfig.user_name,
         globalConfig.user_email
       );
-      setStatus("Pengaturan konfigurasi lokal dan global berhasil disimpan");
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("forge:confirm-discard", String(confirmDiscard));
+        localStorage.setItem("forge:confirm-force-push", String(confirmForcePush));
+      }
+      setStatus("Pengaturan konfigurasi lokal, global, dan preferensi keamanan berhasil disimpan");
     } catch (err) {
       setStatus(String(err), true);
     }
@@ -865,7 +942,15 @@
     )
   );
 
-  onMount(() => {
+  onMount(async () => {
+    try {
+      const cliRepo = await gitService.getCliRepoArg();
+      if (cliRepo) {
+        activeRepo = cliRepo;
+      }
+    } catch {
+      // non-blocking
+    }
     loadRepo(activeRepo);
   });
 </script>
@@ -1000,6 +1085,7 @@
             onAbortMerge={handleAbortMerge}
             onAbortRebase={handleAbortRebase}
             onDiscardFile={handleDiscardFile}
+            onDiscardAll={handleDiscardAll}
           />
         {/if}
       {:else}
@@ -1225,6 +1311,18 @@
 
         <span style="font-size: 11px; color: var(--text-secondary);">Global Email (user.email)</span>
         <input type="text" class="commit-input" bind:value={globalConfig.user_email} placeholder="email@example.com (global)" />
+
+        <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; margin-top: 8px;">
+          Preferensi Keamanan
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-primary); cursor: pointer;">
+          <input type="checkbox" bind:checked={confirmDiscard} />
+          <span>Konfirmasi sebelum membatalkan perubahan file (Discard)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-primary); cursor: pointer;">
+          <input type="checkbox" bind:checked={confirmForcePush} />
+          <span>Konfirmasi sebelum Force Push (--force-with-lease)</span>
+        </label>
       </div>
       <div class="modal-actions" style="margin-top: 14px;">
         <button class="btn-secondary" onclick={closeModal}>Batal</button>
@@ -1519,6 +1617,27 @@
           disabled={!squashSummary.trim()}
         >
           Konfirmasi Squash
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if activeModal === "confirm"}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 420px;">
+      <div class="modal-header" style="color: var(--diff-del-text);">{confirmModalTitle}</div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+        {confirmModalMessage}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick={closeModal}>Batal</button>
+        <button
+          class="btn-primary"
+          style="background: var(--diff-del-text); border-color: var(--diff-del-text); color: #fff;"
+          onclick={handleConfirmModalSubmit}
+        >
+          Ya, Lanjutkan
         </button>
       </div>
     </div>

@@ -258,6 +258,10 @@ export async function discardFileChanges(
   return invoke("discard_file_changes", { repo, filePath });
 }
 
+export async function discardAllChanges(repo: string): Promise<void> {
+  return invoke("discard_all_changes", { repo });
+}
+
 export async function gitStashSave(
   repo: string,
   message?: string
@@ -370,4 +374,8 @@ export async function setGlobalConfig(
   userEmail: string
 ): Promise<void> {
   return invoke("set_global_config", { userName, userEmail });
+}
+
+export async function getCliRepoArg(): Promise<string | null> {
+  return invoke<string | null>("get_cli_repo_arg");
 }

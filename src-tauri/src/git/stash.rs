@@ -25,6 +25,16 @@ pub fn discard_changes(repo: &str, file: &str) -> Result<(), String> {
     cli::run(repo, &["checkout", "HEAD", "--", trimmed]).map(|_| ())
 }
 
+pub fn discard_all_changes(repo: &str) -> Result<(), String> {
+    // Unstage any staged files
+    let _ = cli::run(repo, &["reset", "HEAD"]);
+    // Restore tracked modifications
+    cli::run(repo, &["checkout", "HEAD", "--", "."])?;
+    // Remove untracked files and directories
+    cli::run(repo, &["clean", "-fd"])?;
+    Ok(())
+}
+
 pub fn stash_save(repo: &str, message: Option<&str>) -> Result<String, String> {
     let mut args = vec!["stash", "push", "-u"];
     if let Some(msg) = message {

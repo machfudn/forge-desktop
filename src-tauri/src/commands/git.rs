@@ -225,6 +225,11 @@ pub fn discard_file_changes(repo: &str, file_path: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn discard_all_changes(repo: &str) -> Result<(), String> {
+    git::discard_all_changes(repo)
+}
+
+#[tauri::command]
 pub fn git_stash_save(repo: &str, message: Option<&str>) -> Result<String, String> {
     git::stash_save(repo, message)
 }
@@ -319,4 +324,21 @@ pub fn get_global_config() -> Result<RepoConfig, String> {
 #[tauri::command]
 pub fn set_global_config(user_name: &str, user_email: &str) -> Result<(), String> {
     git::set_global_config(user_name, user_email)
+}
+
+#[tauri::command]
+pub fn get_cli_repo_arg() -> Result<Option<String>, String> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        let candidate = &args[1];
+        if !candidate.starts_with('-') {
+            let path = std::path::Path::new(candidate);
+            if path.exists() && path.is_dir() {
+                if let Ok(canonical) = path.canonicalize() {
+                    return Ok(Some(canonical.to_string_lossy().to_string()));
+                }
+            }
+        }
+    }
+    Ok(None)
 }

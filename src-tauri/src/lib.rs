@@ -47,6 +47,7 @@ pub fn run() {
             commands::github_poll_token,
             commands::configure_git_credentials,
             commands::discard_file_changes,
+            commands::discard_all_changes,
             commands::git_stash_save,
             commands::git_stash_pop,
             commands::git_list_stashes,
@@ -62,6 +63,7 @@ pub fn run() {
             commands::squash_commits,
             commands::get_global_config,
             commands::set_global_config,
+            commands::get_cli_repo_arg,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
