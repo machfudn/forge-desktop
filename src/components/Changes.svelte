@@ -33,18 +33,29 @@
   let commitDescription = $state("");
   let isAmend = $state(false);
   let showDescription = $state(false);
+  let showCoAuthors = $state(false);
+  let coAuthorName = $state("");
+  let coAuthorEmail = $state("");
 
   let stagedCount = $derived(status.files.filter((f) => f.staged).length);
   let totalCount = $derived(status.files.length);
 
   function handleCommit() {
     const summary = commitSummary.trim();
+    let desc = commitDescription.trim();
+    if (showCoAuthors && coAuthorName.trim() && coAuthorEmail.trim()) {
+      const coAuthorTrailer = `Co-authored-by: ${coAuthorName.trim()} <${coAuthorEmail.trim()}>`;
+      desc = desc ? `${desc}\n\n${coAuthorTrailer}` : coAuthorTrailer;
+    }
     if ((summary || isAmend) && (stagedCount > 0 || isAmend) && !status.has_conflicts) {
-      onCommit(summary, commitDescription.trim() || undefined, isAmend);
+      onCommit(summary, desc || undefined, isAmend);
       commitSummary = "";
       commitDescription = "";
+      coAuthorName = "";
+      coAuthorEmail = "";
       isAmend = false;
       showDescription = false;
+      showCoAuthors = false;
     }
   }
 
@@ -149,18 +160,46 @@
     ></textarea>
   {/if}
 
+  {#if showCoAuthors}
+    <div style="display: flex; gap: 4px;">
+      <input
+        type="text"
+        class="commit-input"
+        placeholder="Nama Co-Author"
+        style="flex: 1; font-size: 11px;"
+        bind:value={coAuthorName}
+      />
+      <input
+        type="email"
+        class="commit-input"
+        placeholder="co-author@example.com"
+        style="flex: 1; font-size: 11px;"
+        bind:value={coAuthorEmail}
+      />
+    </div>
+  {/if}
+
   <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-secondary);">
     <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
       <input type="checkbox" bind:checked={isAmend} />
       <span>Amend komit</span>
     </label>
-    <button
-      type="button"
-      onclick={() => (showDescription = !showDescription)}
-      style="background: none; border: none; color: var(--text-accent); cursor: pointer; font-size: 11px; padding: 0;"
-    >
-      {showDescription ? "Sembunyikan Deskripsi" : "+ Tambah Deskripsi"}
-    </button>
+    <div style="display: flex; gap: 8px;">
+      <button
+        type="button"
+        onclick={() => (showCoAuthors = !showCoAuthors)}
+        style="background: none; border: none; color: var(--text-accent); cursor: pointer; font-size: 11px; padding: 0;"
+      >
+        {showCoAuthors ? "Sembunyikan Co-Author" : "+ Co-Author"}
+      </button>
+      <button
+        type="button"
+        onclick={() => (showDescription = !showDescription)}
+        style="background: none; border: none; color: var(--text-accent); cursor: pointer; font-size: 11px; padding: 0;"
+      >
+        {showDescription ? "Sembunyikan Deskripsi" : "+ Deskripsi"}
+      </button>
+    </div>
   </div>
 
   <button

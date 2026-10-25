@@ -7,6 +7,8 @@
     DeviceFlowInit,
     DiagnosticReport,
     FileEntry,
+    IssueInfo,
+    PullRequestInfo,
     RepoConfig,
     RepoStatus,
   } from "./types/git";
@@ -42,8 +44,16 @@
     | "diag"
     | "auth"
     | "tag"
+    | "pr"
     | null;
   let activeModal: ModalType = $state(null);
+
+  // GitHub PR & Issues states
+  let githubRepoInfo = $state<{ owner: string; repo: string } | null>(null);
+  let pullRequests: PullRequestInfo[] = $state([]);
+  let issues: IssueInfo[] = $state([]);
+  let prTab: "prs" | "issues" = $state("prs");
+  let isLoadingGithub = $state(false);
 
   // Tag modal states
   let tagModalTargetSha = $state<string | null>(null);
@@ -118,8 +128,20 @@
       try {
         const remotes = await gitService.listRemotes(path);
         hasRemotes = remotes.length > 0;
+        const originRemote = remotes.find((r) => r.name === "origin") || remotes[0];
+        if (originRemote) {
+          const parsed = await gitService.parseGithubRepository(originRemote.url);
+          if (parsed) {
+            githubRepoInfo = { owner: parsed[0], repo: parsed[1] };
+          } else {
+            githubRepoInfo = null;
+          }
+        } else {
+          githubRepoInfo = null;
+        }
       } catch {
         hasRemotes = false;
+        githubRepoInfo = null;
       }
 
       if (status.branch && !status.branch.startsWith("(")) {
@@ -570,6 +592,53 @@
     }
   }
 
+  async function openPRModal() {
+    activeModal = "pr";
+    if (githubRepoInfo) {
+      await loadGithubData();
+    }
+  }
+
+  async function loadGithubData() {
+    if (!githubRepoInfo) return;
+    isLoadingGithub = true;
+    try {
+      if (prTab === "prs") {
+        pullRequests = await gitService.listGithubPullRequests(
+          githubRepoInfo.owner,
+          githubRepoInfo.repo
+        );
+      } else {
+        issues = await gitService.listGithubIssues(
+          githubRepoInfo.owner,
+          githubRepoInfo.repo
+        );
+      }
+    } catch (err) {
+      setStatus(String(err), true);
+    } finally {
+      isLoadingGithub = false;
+    }
+  }
+
+  async function handleCheckoutPR(prNumber: number) {
+    closeModal();
+    try {
+      setStatus(`Mengambil branch PR #${prNumber}...`);
+      await gitService.checkoutGithubPullRequest(activeRepo, prNumber);
+      setStatus(`Berhasil checkout branch PR #${prNumber}`);
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  function handleCreatePR() {
+    if (!githubRepoInfo || !currentStatus?.branch) return;
+    const url = `https://github.com/${githubRepoInfo.owner}/${githubRepoInfo.repo}/compare/${currentStatus.branch}?expand=1`;
+    window.open(url, "_blank");
+  }
+
   // Stash modal actions
   async function handleStashSave() {
     closeModal();
@@ -814,6 +883,17 @@
       >
         Force Push
       </button>
+
+      {#if githubRepoInfo}
+        <button
+          onclick={openPRModal}
+          class="btn-secondary"
+          title="Lihat Pull Requests dan Issues GitHub"
+          style="font-size: 11px; border-color: var(--accent-blue);"
+        >
+          PR & Issues
+        </button>
+      {/if}
 
       <button onclick={handleOpenInEditor} class="btn-secondary" title="Buka folder di VS Code / Editor">
         Editor
@@ -1202,6 +1282,126 @@
         >
           Buat Tag
         </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if activeModal === "pr"}
+  <div class="modal-overlay">
+    <div class="modal-dialog" style="width: 550px; max-height: 80vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>GitHub: {githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : "Repository"}</span>
+        <button
+          onclick={handleCreatePR}
+          class="btn-primary"
+          style="font-size: 11px; padding: 2px 8px;"
+          title="Buka browser untuk membuat Pull Request"
+        >
+          + Buat PR di Browser
+        </button>
+      </div>
+
+      <!-- Tab toggle: Pull Requests vs Issues -->
+      <div style="display: flex; gap: 8px; border-bottom: 1px solid var(--border-default); margin-bottom: 8px;">
+        <button
+          onclick={() => { prTab = "prs"; loadGithubData(); }}
+          style="background: none; border: none; border-bottom: 2px solid {prTab === 'prs' ? 'var(--accent-blue)' : 'transparent'}; color: {prTab === 'prs' ? 'var(--text-primary)' : 'var(--text-muted)'}; font-weight: {prTab === 'prs' ? '600' : 'normal'}; padding: 6px 12px; cursor: pointer; font-size: 12px;"
+        >
+          Pull Requests ({pullRequests.length})
+        </button>
+        <button
+          onclick={() => { prTab = "issues"; loadGithubData(); }}
+          style="background: none; border: none; border-bottom: 2px solid {prTab === 'issues' ? 'var(--accent-blue)' : 'transparent'}; color: {prTab === 'issues' ? 'var(--text-primary)' : 'var(--text-muted)'}; font-weight: {prTab === 'issues' ? '600' : 'normal'}; padding: 6px 12px; cursor: pointer; font-size: 12px;"
+        >
+          Issues ({issues.length})
+        </button>
+      </div>
+
+      {#if isLoadingGithub}
+        <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
+          Memuat data GitHub...
+        </div>
+      {:else if prTab === "prs"}
+        <div style="overflow-y: auto; max-height: 350px; display: flex; flex-direction: column; gap: 4px;">
+          {#if pullRequests.length === 0}
+            <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;">
+              Tidak ada Pull Request yang sedang terbuka.
+            </div>
+          {:else}
+            {#each pullRequests as pr (pr.id)}
+              <div
+                style="padding: 8px 10px; border: 1px solid var(--border-muted); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; font-size: 12px;"
+              >
+                <div style="flex: 1; min-width: 0; margin-right: 8px;">
+                  <div style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <span style="color: var(--accent-blue);">#{pr.number}</span> {pr.title}
+                  </div>
+                  <div style="font-size: 10px; color: var(--text-muted);">
+                    oleh {pr.author} • {pr.head_branch} &rarr; {pr.base_branch}
+                  </div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <button
+                    onclick={() => handleCheckoutPR(pr.number)}
+                    class="btn-primary"
+                    style="font-size: 10px; padding: 2px 8px;"
+                    title="Checkout branch PR ini ke lokal"
+                  >
+                    Checkout
+                  </button>
+                  <a
+                    href={pr.html_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    class="btn-secondary"
+                    style="font-size: 10px; padding: 2px 6px; text-decoration: none;"
+                    title="Buka PR di github.com"
+                  >
+                    Web
+                  </a>
+                </div>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      {:else}
+        <div style="overflow-y: auto; max-height: 350px; display: flex; flex-direction: column; gap: 4px;">
+          {#if issues.length === 0}
+            <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;">
+              Tidak ada Issue yang sedang terbuka.
+            </div>
+          {:else}
+            {#each issues as issue (issue.id)}
+              <div
+                style="padding: 8px 10px; border: 1px solid var(--border-muted); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; font-size: 12px;"
+              >
+                <div style="flex: 1; min-width: 0; margin-right: 8px;">
+                  <div style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <span style="color: var(--diff-add-text);">#{issue.number}</span> {issue.title}
+                  </div>
+                  <div style="font-size: 10px; color: var(--text-muted);">
+                    oleh {issue.author} • {issue.comments_count} komentar
+                  </div>
+                </div>
+                <a
+                  href={issue.html_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  class="btn-secondary"
+                  style="font-size: 10px; padding: 2px 6px; text-decoration: none;"
+                  title="Buka issue di github.com"
+                >
+                  Web
+                </a>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      {/if}
+
+      <div class="modal-actions" style="margin-top: 12px;">
+        <button onclick={closeModal} class="btn-secondary">Tutup</button>
       </div>
     </div>
   </div>

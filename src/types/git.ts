@@ -61,3 +61,23 @@ export interface RepoConfig {
   user_name: string;
   user_email: string;
 }
+
+export interface PullRequestInfo {
+  id: number;
+  number: number;
+  title: string;
+  author: string;
+  head_branch: string;
+  base_branch: string;
+  html_url: string;
+  created_at: string;
+}
+
+export interface IssueInfo {
+  id: number;
+  number: number;
+  title: string;
+  author: string;
+  html_url: string;
+  comments_count: number;
+}

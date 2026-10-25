@@ -1,7 +1,7 @@
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
-    self, AheadBehind, BranchInfo, CommitInfo, DeviceFlowInit, RemoteInfo, RepoConfig, RepoStatus,
-    TokenPollResult,
+    self, AheadBehind, BranchInfo, CommitInfo, DeviceFlowInit, IssueInfo, PullRequestInfo,
+    RemoteInfo, RepoConfig, RepoStatus, TokenPollResult,
 };
 use crate::system;
 
@@ -257,4 +257,36 @@ pub fn open_in_terminal(path: &str) -> Result<(), String> {
 #[tauri::command]
 pub fn open_in_editor(path: &str, editor: Option<&str>) -> Result<(), String> {
     system::open_in_editor(path, editor)
+}
+
+#[tauri::command]
+pub fn parse_github_repository(remote_url: &str) -> Result<Option<(String, String)>, String> {
+    Ok(git::parse_github_repo(remote_url))
+}
+
+#[tauri::command]
+pub fn list_github_pull_requests(
+    owner: &str,
+    repo: &str,
+    token: Option<&str>,
+) -> Result<Vec<PullRequestInfo>, String> {
+    git::list_pull_requests(owner, repo, token)
+}
+
+#[tauri::command]
+pub fn list_github_issues(
+    owner: &str,
+    repo: &str,
+    token: Option<&str>,
+) -> Result<Vec<IssueInfo>, String> {
+    git::list_issues(owner, repo, token)
+}
+
+#[tauri::command]
+pub fn checkout_github_pull_request(
+    repo_path: &str,
+    pr_number: u64,
+    remote: Option<&str>,
+) -> Result<String, String> {
+    git::checkout_pull_request(repo_path, pr_number, remote)
 }

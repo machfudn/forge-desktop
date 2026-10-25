@@ -5,6 +5,8 @@ import type {
   CommitInfo,
   DeviceFlowInit,
   DiagnosticReport,
+  IssueInfo,
+  PullRequestInfo,
   RemoteInfo,
   RepoConfig,
   RepoStatus,
@@ -284,4 +286,48 @@ export async function openInTerminal(path: string): Promise<void> {
 
 export async function openInEditor(path: string, editor?: string): Promise<void> {
   return invoke("open_in_editor", { path, editor });
+}
+
+export async function parseGithubRepository(
+  remoteUrl: string
+): Promise<[string, string] | null> {
+  return invoke<[string, string] | null>("parse_github_repository", {
+    remoteUrl,
+  });
+}
+
+export async function listGithubPullRequests(
+  owner: string,
+  repo: string,
+  token?: string
+): Promise<PullRequestInfo[]> {
+  return invoke<PullRequestInfo[]>("list_github_pull_requests", {
+    owner,
+    repo,
+    token,
+  });
+}
+
+export async function listGithubIssues(
+  owner: string,
+  repo: string,
+  token?: string
+): Promise<IssueInfo[]> {
+  return invoke<IssueInfo[]>("list_github_issues", {
+    owner,
+    repo,
+    token,
+  });
+}
+
+export async function checkoutGithubPullRequest(
+  repoPath: string,
+  prNumber: number,
+  remote?: string
+): Promise<string> {
+  return invoke<string>("checkout_github_pull_request", {
+    repoPath,
+    prNumber,
+    remote,
+  });
 }
