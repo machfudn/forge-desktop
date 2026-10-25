@@ -108,6 +108,9 @@
   // Stash sub-states
   let stashMsg = $state("");
   let stashList: string[] = $state([]);
+  let selectedStash: string | null = $state(null);
+  let stashDiff = $state("");
+  let isLoadingStashDiff = $state(false);
 
   // Diagnostics & Settings sub-states
   let diagReport: DiagnosticReport | null = $state(null);
@@ -124,6 +127,67 @@
   function setStatus(msg: string, isError = false) {
     footerStatus = msg;
     isStatusError = isError;
+  }
+
+  function getStoredAliases(): Record<string, string> {
+    try {
+      return JSON.parse(localStorage.getItem("forge:repo-aliases") || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  let repoAliases: Record<string, string> = $state(getStoredAliases());
+  let repoMissingStatus: Record<string, boolean> = $state({});
+
+  function setRepoAlias(path: string, alias: string) {
+    const updated = { ...repoAliases };
+    if (alias.trim()) {
+      updated[path] = alias.trim();
+    } else {
+      delete updated[path];
+    }
+    repoAliases = updated;
+    localStorage.setItem("forge:repo-aliases", JSON.stringify(updated));
+  }
+
+  function removeRecentRepo(path: string) {
+    const list = getStoredRecents().filter((p) => p !== path);
+    localStorage.setItem("forge:recent-repos", JSON.stringify(list));
+    recentRepos = list;
+  }
+
+  async function relocateRepo(oldPath: string, newPath: string) {
+    if (!newPath.trim()) return;
+    try {
+      const exists = await gitService.checkRepoExists(newPath);
+      if (!exists) {
+        setStatus(`Direktori ${newPath} bukan repositori git yang valid`, true);
+        return;
+      }
+      removeRecentRepo(oldPath);
+      if (repoAliases[oldPath]) {
+        setRepoAlias(newPath, repoAliases[oldPath]);
+        setRepoAlias(oldPath, "");
+      }
+      await loadRepo(newPath);
+      closeModal();
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function checkRecentReposMissing() {
+    const statusMap: Record<string, boolean> = {};
+    for (const r of recentRepos) {
+      try {
+        const ok = await gitService.checkRepoExists(r);
+        statusMap[r] = !ok;
+      } catch {
+        statusMap[r] = true;
+      }
+    }
+    repoMissingStatus = statusMap;
   }
 
   function getStoredRecents(): string[] {
@@ -452,10 +516,11 @@
     }
   }
 
-  function openOpenRepoModal() {
+  async function openOpenRepoModal() {
     recentRepos = getStoredRecents();
     openRepoPath = activeRepo;
     activeModal = "open";
+    await checkRecentReposMissing();
   }
 
   function openInitModal() {
@@ -490,6 +555,8 @@
     try {
       stashList = await gitService.gitListStashes(activeRepo);
       stashMsg = "";
+      selectedStash = null;
+      stashDiff = "";
       activeModal = "stash";
     } catch (err) {
       setStatus(String(err), true);
@@ -520,6 +587,26 @@
 
   // Branch modal actions
   async function handleSwitchBranch(name: string) {
+    if (currentStatus && currentStatus.files.length > 0) {
+      requestConfirmation(
+        "Smart Stash & Pindah Branch",
+        `Terdapat ${currentStatus.files.length} file dengan perubahan belum dikomit. Simpan perubahan ke Stash sebelum berpindah ke "${name}"?`,
+        async () => {
+          try {
+            setStatus("Menyimpan perubahan ke stash...");
+            await gitService.gitStashSave(activeRepo, `Auto-stash sebelum checkout ke ${name}`);
+            setStatus(`Berpindah ke branch ${name}...`);
+            await gitService.switchBranch(activeRepo, name);
+            setStatus(`Berhasil pindah ke branch ${name} (perubahan tersimpan di Stash)`);
+            await loadRepo(activeRepo);
+          } catch (err) {
+            setStatus(String(err), true);
+          }
+        }
+      );
+      return;
+    }
+
     closeModal();
     try {
       await gitService.switchBranch(activeRepo, name);
@@ -749,6 +836,40 @@
   }
 
   // Stash modal actions
+  async function selectStash(stashLine: string) {
+    selectedStash = stashLine;
+    const match = stashLine.match(/^stash@\{[0-9]+\}/);
+    const ref = match ? match[0] : undefined;
+    isLoadingStashDiff = true;
+    try {
+      stashDiff = await gitService.gitStashShow(activeRepo, ref);
+    } catch (err) {
+      stashDiff = `Gagal memuat diff stash: ${err}`;
+    } finally {
+      isLoadingStashDiff = false;
+    }
+  }
+
+  async function handleDropStash(stashLine: string) {
+    const match = stashLine.match(/^stash@\{[0-9]+\}/);
+    const ref = match ? match[0] : undefined;
+    requestConfirmation(
+      "Hapus Stash",
+      `Apakah Anda yakin ingin menghapus ${ref || stashLine}? Perubahan di stash ini akan hilang secara permanen.`,
+      async () => {
+        try {
+          await gitService.gitStashDrop(activeRepo, ref);
+          setStatus(`Stash ${ref || stashLine} berhasil dihapus`);
+          stashList = await gitService.gitListStashes(activeRepo);
+          selectedStash = null;
+          stashDiff = "";
+        } catch (err) {
+          setStatus(String(err), true);
+        }
+      }
+    );
+  }
+
   async function handleStashSave() {
     closeModal();
     try {
@@ -968,7 +1089,7 @@
         Clone
       </button>
       <div class="repo-badge">
-        <span>{activeRepo.split("/").pop() || activeRepo}</span>
+        <span>{repoAliases[activeRepo] || activeRepo.split("/").pop() || activeRepo}</span>
       </div>
       <button
         onclick={openBranchModal}
@@ -1086,6 +1207,7 @@
             onAbortRebase={handleAbortRebase}
             onDiscardFile={handleDiscardFile}
             onDiscardAll={handleDiscardAll}
+            onOpenInEditor={(filePath) => gitService.openInEditor(activeRepo + "/" + filePath)}
           />
         {/if}
       {:else}
@@ -1233,20 +1355,72 @@
   </div>
 {:else if activeModal === "open"}
   <div class="modal-overlay">
-    <div class="modal-dialog" style="width: 440px;">
+    <div class="modal-dialog" style="width: 520px;">
       <div class="modal-header">Buka Repositori Git</div>
+      <span style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">Path Folder Repositori:</span>
       <input type="text" class="commit-input" bind:value={openRepoPath} placeholder="/path/ke/repo" />
       {#if recentRepos.length > 0}
-        <span style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">Repositori Terakhir:</span>
-        <div style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-sm); margin-top: 4px;">
+        <span style="font-size: 11px; color: var(--text-secondary); margin-top: 10px;">Repositori Terakhir & Alias:</span>
+        <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-sm); margin-top: 4px;">
           {#each recentRepos as r (r)}
+            {@const isMissing = repoMissingStatus[r]}
+            {@const alias = repoAliases[r]}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
-              onclick={() => { openRepoPath = r; }}
-              style="padding: 6px 10px; cursor: pointer; font-size: 11px; font-family: var(--font-mono); border-bottom: 1px solid var(--border-muted);"
+              style="padding: 6px 10px; font-size: 11px; border-bottom: 1px solid var(--border-muted); display: flex; align-items: center; justify-content: space-between; gap: 8px; background: {r === activeRepo ? 'rgba(56, 139, 253, 0.1)' : 'transparent'};"
             >
-              {r}
+              <div
+                onclick={() => { if (!isMissing) openRepoPath = r; }}
+                style="cursor: {isMissing ? 'default' : 'pointer'}; flex: 1; overflow: hidden;"
+              >
+                <div style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                  <span>{alias || r.split("/").pop() || r}</span>
+                  {#if alias}
+                    <span style="font-size: 10px; font-weight: normal; color: var(--text-muted); font-family: var(--font-mono);">({r.split("/").pop()})</span>
+                  {/if}
+                  {#if isMissing}
+                    <span style="font-size: 9px; padding: 1px 4px; border-radius: 2px; background: rgba(248,81,73,0.2); color: var(--diff-del-text); font-weight: 700;">HILANG</span>
+                  {/if}
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                  {r}
+                </div>
+              </div>
+              <div style="display: flex; gap: 4px; align-items: center;">
+                {#if isMissing}
+                  <button
+                    class="btn-secondary"
+                    style="font-size: 10px; padding: 1px 6px;"
+                    title="Cari lokasi baru untuk repositori ini"
+                    onclick={() => {
+                      const newP = prompt("Masukkan path folder repositori yang baru:", r);
+                      if (newP) relocateRepo(r, newP);
+                    }}
+                  >
+                    Relokasi
+                  </button>
+                {/if}
+                <button
+                  class="btn-secondary"
+                  style="font-size: 10px; padding: 1px 6px;"
+                  title="Ubah alias / nama tampilan repositori"
+                  onclick={() => {
+                    const newAlias = prompt("Ubah alias tampilan untuk repositori ini:", alias || "");
+                    if (newAlias !== null) setRepoAlias(r, newAlias);
+                  }}
+                >
+                  Alias
+                </button>
+                <button
+                  class="btn-secondary"
+                  style="font-size: 10px; padding: 1px 6px; color: var(--diff-del-text);"
+                  title="Hapus dari daftar repositori terakhir"
+                  onclick={() => removeRecentRepo(r)}
+                >
+                  x
+                </button>
+              </div>
             </div>
           {/each}
         </div>
@@ -1348,28 +1522,64 @@
   </div>
 {:else if activeModal === "stash"}
   <div class="modal-overlay">
-    <div class="modal-dialog" style="width: 440px;">
-      <div class="modal-header">Git Stash</div>
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <div style="display: flex; gap: 6px;">
-          <input type="text" class="commit-input" bind:value={stashMsg} placeholder="Pesan stash (opsional)" style="flex: 1;" />
-          <button onclick={handleStashSave} class="btn-primary" style="font-size: 11px;">Simpan Stash</button>
+    <div class="modal-dialog" style="width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
+      <div class="modal-header">Git Stash & Pratinjau Perubahan</div>
+      <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+        <input type="text" class="commit-input" bind:value={stashMsg} placeholder="Pesan stash baru (opsional)" style="flex: 1;" />
+        <button onclick={handleStashSave} class="btn-primary" style="font-size: 11px;">Simpan Stash</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 280px 1fr; gap: 12px; min-height: 240px; max-height: 380px; overflow: hidden;">
+        <!-- Left: Stash list -->
+        <div style="display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--border-default); padding-right: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Daftar Stash ({stashList.length})</span>
+            <button onclick={handleStashPop} class="btn-secondary" style="font-size: 10px; padding: 2px 6px;" disabled={stashList.length === 0} title="Terapkan stash teratas ke working tree">
+              Pop Teratas
+            </button>
+          </div>
+          <div style="overflow-y: auto; flex: 1; border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 11px;">
+            {#if stashList.length === 0}
+              <div style="color: var(--text-muted); text-align: center; padding: 20px;">Tidak ada stash tersimpan</div>
+            {:else}
+              {#each stashList as s (s)}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                  onclick={() => selectStash(s)}
+                  style="padding: 6px 8px; border-bottom: 1px solid var(--border-muted); cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: {selectedStash === s ? 'rgba(56, 139, 253, 0.15)' : 'transparent'}; font-family: var(--font-mono); font-size: 11px;"
+                >
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;" title={s}>{s}</span>
+                  <button
+                    class="btn-secondary"
+                    style="font-size: 9px; padding: 1px 4px; color: var(--diff-del-text); border: none; margin-left: 4px;"
+                    title="Hapus stash ini (Drop)"
+                    onclick={(e) => { e.stopPropagation(); handleDropStash(s); }}
+                  >
+                    x
+                  </button>
+                </div>
+              {/each}
+            {/if}
+          </div>
         </div>
-        <button onclick={handleStashPop} class="btn-secondary" style="align-self: flex-start; font-size: 11px;" disabled={stashList.length === 0}>
-          Terapkan Stash Teratas (Pop)
-        </button>
-        <span style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Daftar Stash ({stashList.length})</span>
-        <div style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 11px; padding: 6px;">
-          {#if stashList.length === 0}
-            <div style="color: var(--text-muted); text-align: center; padding: 12px;">Tidak ada stash tersimpan</div>
-          {:else}
-            {#each stashList as s}
-              <div style="padding: 4px 0; border-bottom: 1px solid var(--border-muted); font-family: var(--font-mono);">{s}</div>
-            {/each}
-          {/if}
+
+        <!-- Right: Stash diff preview -->
+        <div style="display: flex; flex-direction: column; overflow: hidden;">
+          <span style="font-size: 11px; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px;">Pratinjau Perubahan (Diff)</span>
+          <div style="flex: 1; overflow-y: auto; background: var(--bg-canvas); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 8px; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap;">
+            {#if isLoadingStashDiff}
+              <div style="color: var(--text-muted); text-align: center; padding: 24px;">Memuat diff stash...</div>
+            {:else if stashDiff}
+              {stashDiff}
+            {:else}
+              <div style="color: var(--text-muted); text-align: center; padding: 24px;">Pilih entri stash di sebelah kiri untuk melihat isi perubahannya</div>
+            {/if}
+          </div>
         </div>
       </div>
-      <div class="modal-actions" style="margin-top: 10px;">
+
+      <div class="modal-actions" style="margin-top: 12px;">
         <button class="btn-secondary" onclick={closeModal}>Tutup</button>
       </div>
     </div>

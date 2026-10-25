@@ -56,6 +56,32 @@ pub fn list_stashes(repo: &str) -> Result<Vec<String>, String> {
     Ok(out.lines().map(|s| s.to_string()).collect())
 }
 
+pub fn stash_show(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
+    let target = stash_ref.unwrap_or("stash@{0}").trim();
+    if target.contains(';')
+        || target.contains('&')
+        || target.contains('|')
+        || target.contains('`')
+        || target.contains('$')
+    {
+        return Err("Karakter stash ref tidak valid".into());
+    }
+    cli::run(repo, &["stash", "show", "-p", target])
+}
+
+pub fn stash_drop(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
+    let target = stash_ref.unwrap_or("stash@{0}").trim();
+    if target.contains(';')
+        || target.contains('&')
+        || target.contains('|')
+        || target.contains('`')
+        || target.contains('$')
+    {
+        return Err("Karakter stash ref tidak valid".into());
+    }
+    cli::run(repo, &["stash", "drop", target])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,5 +89,11 @@ mod tests {
     #[test]
     fn test_reject_empty_file_discard() {
         assert!(discard_changes("/tmp", "  ").is_err());
+    }
+
+    #[test]
+    fn test_reject_invalid_stash_ref() {
+        assert!(stash_show("/tmp", Some("stash@{0}; rm -rf /")).is_err());
+        assert!(stash_drop("/tmp", Some("stash@{0} && echo bad")).is_err());
     }
 }

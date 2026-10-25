@@ -245,6 +245,21 @@ pub fn git_list_stashes(repo: &str) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+pub fn git_stash_show(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
+    git::stash_show(repo, stash_ref)
+}
+
+#[tauri::command]
+pub fn git_stash_drop(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
+    git::stash_drop(repo, stash_ref)
+}
+
+#[tauri::command]
+pub fn check_repo_exists(path: &str) -> Result<bool, String> {
+    Ok(git::check_repo_exists(path))
+}
+
+#[tauri::command]
 pub fn get_diagnostics(repo: Option<&str>) -> Result<DiagnosticReport, String> {
     Ok(diagnostics::generate_report(repo))
 }

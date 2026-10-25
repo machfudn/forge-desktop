@@ -277,6 +277,24 @@ export async function gitListStashes(repo: string): Promise<string[]> {
   return invoke<string[]>("git_list_stashes", { repo });
 }
 
+export async function gitStashShow(
+  repo: string,
+  stashRef?: string
+): Promise<string> {
+  return invoke<string>("git_stash_show", { repo, stashRef });
+}
+
+export async function gitStashDrop(
+  repo: string,
+  stashRef?: string
+): Promise<string> {
+  return invoke<string>("git_stash_drop", { repo, stashRef });
+}
+
+export async function checkRepoExists(path: string): Promise<boolean> {
+  return invoke<boolean>("check_repo_exists", { path });
+}
+
 export async function getDiagnostics(repo?: string): Promise<DiagnosticReport> {
   return invoke<DiagnosticReport>("get_diagnostics", { repo });
 }

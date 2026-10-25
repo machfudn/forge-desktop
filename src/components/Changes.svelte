@@ -14,6 +14,7 @@
     onAbortRebase?: () => void;
     onDiscardFile?: (file: FileEntry) => void;
     onDiscardAll?: () => void;
+    onOpenInEditor?: (filePath: string) => void;
   }
 
   let {
@@ -29,6 +30,7 @@
     onAbortRebase,
     onDiscardFile,
     onDiscardAll,
+    onOpenInEditor,
   }: Props = $props();
 
   let commitSummary = $state("");
@@ -132,14 +134,25 @@
         />
         <span class="file-status-badge {badge.class}">{badge.text}</span>
         <span class="file-name" title={file.path}>{file.path}</span>
-        <button
-          class="btn-discard"
-          title="Batalkan perubahan"
-          onclick={(e) => { e.stopPropagation(); onDiscardFile?.(file); }}
-          style="margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 2px 6px;"
-        >
-          x
-        </button>
+        {#if file.is_conflict && onOpenInEditor}
+          <button
+            class="btn-secondary"
+            title="Buka file konflik di editor eksternal"
+            onclick={(e) => { e.stopPropagation(); onOpenInEditor(file.path); }}
+            style="font-size: 10px; padding: 1px 6px; margin-left: auto; border-color: var(--diff-del-text); color: var(--diff-del-text);"
+          >
+            Edit Konflik
+          </button>
+        {:else}
+          <button
+            class="btn-discard"
+            title="Batalkan perubahan"
+            onclick={(e) => { e.stopPropagation(); onDiscardFile?.(file); }}
+            style="margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 2px 6px;"
+          >
+            x
+          </button>
+        {/if}
       </li>
     {/each}
   {/if}

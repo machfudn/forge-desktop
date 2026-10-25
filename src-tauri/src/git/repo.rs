@@ -92,6 +92,11 @@ pub fn init_repository(
     Ok(format!("Repositori berhasil diinisialisasi di {path}"))
 }
 
+pub fn check_repo_exists(path: &str) -> bool {
+    let p = std::path::Path::new(path);
+    p.exists() && p.is_dir() && p.join(".git").exists()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
