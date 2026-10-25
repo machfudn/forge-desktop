@@ -13,6 +13,11 @@ const headerRepoName = document.querySelector<HTMLElement>("#header-repo-name")!
 const headerBranchName = document.querySelector<HTMLElement>("#header-branch-name")!;
 const btnBranchSelector = document.querySelector<HTMLButtonElement>("#btn-branch-selector")!;
 const btnOpenRepo = document.querySelector<HTMLButtonElement>("#btn-open-repo")!;
+const btnCloneRepo = document.querySelector<HTMLButtonElement>("#btn-clone-repo")!;
+const btnFetch = document.querySelector<HTMLButtonElement>("#btn-fetch")!;
+const btnPull = document.querySelector<HTMLButtonElement>("#btn-pull")!;
+const btnPush = document.querySelector<HTMLButtonElement>("#btn-push")!;
+const btnAuth = document.querySelector<HTMLButtonElement>("#btn-auth")!;
 const btnRefresh = document.querySelector<HTMLButtonElement>("#btn-refresh")!;
 const sidebarPanel = document.querySelector<HTMLElement>("#sidebar-panel")!;
 const contentPanel = document.querySelector<HTMLElement>("#content-panel")!;
@@ -38,6 +43,19 @@ async function loadRepo(path: string): Promise<void> {
     btnBranchSelector.disabled = false;
     footerPath.textContent = path;
 
+    // Check remotes to enable/disable remote buttons
+    try {
+      const remotes = await gitService.listRemotes(path);
+      const hasRemotes = remotes.length > 0;
+      btnFetch.disabled = !hasRemotes;
+      btnPull.disabled = !hasRemotes;
+      btnPush.disabled = !hasRemotes;
+    } catch {
+      btnFetch.disabled = true;
+      btnPull.disabled = true;
+      btnPush.disabled = true;
+    }
+
     // Default select first file if available
     if (status.files.length > 0) {
       if (!selectedFile || !status.files.some((f) => f.path === selectedFile?.path)) {
@@ -58,10 +76,10 @@ async function renderCurrentView(): Promise<void> {
   if (!currentStatus) return;
 
   if (activeTab === "changes") {
-    renderChangesSidebar(sidebarPanel, currentStatus.files, selectedFile, {
+    renderChangesSidebar(sidebarPanel, currentStatus, selectedFile, {
       onSelectFile: async (file) => {
         selectedFile = file;
-        renderChangesSidebar(sidebarPanel, currentStatus!.files, selectedFile, {
+        renderChangesSidebar(sidebarPanel, currentStatus!, selectedFile, {
           onSelectFile: () => {},
           onToggleStage: () => {},
           onStageAll: () => {},
@@ -108,6 +126,26 @@ async function renderCurrentView(): Promise<void> {
           setStatusMessage(String(err), true);
         }
       },
+      onAbortMerge: async () => {
+        try {
+          setStatusMessage("Membatalkan merge...");
+          await gitService.abortMerge(activeRepo);
+          setStatusMessage("Merge dibatalkan");
+          await loadRepo(activeRepo);
+        } catch (err) {
+          setStatusMessage(String(err), true);
+        }
+      },
+      onAbortRebase: async () => {
+        try {
+          setStatusMessage("Membatalkan rebase...");
+          await gitService.abortRebase(activeRepo);
+          setStatusMessage("Rebase dibatalkan");
+          await loadRepo(activeRepo);
+        } catch (err) {
+          setStatusMessage(String(err), true);
+        }
+      },
     });
 
     if (selectedFile) {
@@ -148,6 +186,168 @@ async function loadAndRenderDiff(file: FileEntry): Promise<void> {
     contentPanel.innerHTML = `<div style="padding: 24px; color: var(--diff-del-text);">${String(err)}</div>`;
   }
 }
+
+// Remote operations: Fetch, Pull, Push
+btnFetch.addEventListener("click", async () => {
+  try {
+    setStatusMessage("Melakukan fetch dari remote...");
+    const res = await gitService.gitFetch(activeRepo);
+    setStatusMessage(res || "Fetch selesai");
+    await loadRepo(activeRepo);
+  } catch (err) {
+    setStatusMessage(String(err), true);
+  }
+});
+
+btnPull.addEventListener("click", async () => {
+  try {
+    setStatusMessage("Melakukan pull dari remote...");
+    const res = await gitService.gitPull(activeRepo);
+    setStatusMessage(res || "Pull selesai");
+    await loadRepo(activeRepo);
+  } catch (err) {
+    setStatusMessage(String(err), true);
+  }
+});
+
+btnPush.addEventListener("click", async () => {
+  try {
+    setStatusMessage("Melakukan push ke remote...");
+    const res = await gitService.gitPush(activeRepo);
+    setStatusMessage(res || "Push selesai");
+    await loadRepo(activeRepo);
+  } catch (err) {
+    setStatusMessage(String(err), true);
+  }
+});
+
+// Clone modal
+btnCloneRepo.addEventListener("click", () => {
+  modalContainer.innerHTML = `
+    <div class="modal-overlay" id="modal-bg">
+      <div class="modal-dialog">
+        <div class="modal-header">Clone Repositori</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label style="font-size: 11px; color: var(--text-secondary);">URL Repositori (HTTPS / SSH)</label>
+          <input type="text" id="clone-url-input" class="commit-input" placeholder="https://github.com/user/repo.git" />
+          <label style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">Folder Tujuan</label>
+          <input type="text" id="clone-target-input" class="commit-input" placeholder="/home/user/Development/my-repo" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="btn-cancel-clone">Batal</button>
+          <button class="btn-primary" id="btn-confirm-clone">Clone</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.querySelector("#btn-cancel-clone")?.addEventListener("click", () => {
+    modalContainer.innerHTML = "";
+  });
+
+  document.querySelector("#btn-confirm-clone")?.addEventListener("click", async () => {
+    const url = document.querySelector<HTMLInputElement>("#clone-url-input")?.value.trim();
+    const target = document.querySelector<HTMLInputElement>("#clone-target-input")?.value.trim();
+    if (!url || !target) {
+      alert("URL dan folder tujuan wajib diisi");
+      return;
+    }
+
+    modalContainer.innerHTML = "";
+    try {
+      setStatusMessage(`Cloning ${url}...`);
+      await gitService.cloneRepository(url, target);
+      setStatusMessage("Clone sukses");
+      await loadRepo(target);
+    } catch (err) {
+      setStatusMessage(String(err), true);
+    }
+  });
+});
+
+// GitHub OAuth Device Flow Modal
+btnAuth.addEventListener("click", () => {
+  modalContainer.innerHTML = `
+    <div class="modal-overlay" id="modal-bg">
+      <div class="modal-dialog" style="width: 420px;">
+        <div class="modal-header">Masuk dengan GitHub</div>
+        <div id="auth-flow-body">
+          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+            Gunakan Device Code Authorization untuk menghubungkan repositori ke akun GitHub Anda.
+          </p>
+          <label style="font-size: 11px; color: var(--text-secondary);">GitHub OAuth Client ID</label>
+          <input type="text" id="oauth-client-id-input" class="commit-input" placeholder="Contoh: Iv1.b507a08c87ecfe98 atau buat di GitHub Developer" />
+          <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+            <button id="btn-start-oauth" class="btn-primary" style="font-size: 12px;">Minta Kode Perangkat</button>
+          </div>
+        </div>
+        <div class="modal-actions" style="margin-top: 8px;">
+          <button class="btn-secondary" id="btn-close-auth">Tutup</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.querySelector("#btn-close-auth")?.addEventListener("click", () => {
+    modalContainer.innerHTML = "";
+  });
+
+  document.querySelector("#btn-start-oauth")?.addEventListener("click", async () => {
+    const clientId = document.querySelector<HTMLInputElement>("#oauth-client-id-input")?.value.trim();
+    if (!clientId) {
+      alert("Client ID wajib diisi");
+      return;
+    }
+
+    const flowBody = document.querySelector<HTMLElement>("#auth-flow-body");
+    if (!flowBody) return;
+
+    try {
+      flowBody.innerHTML = `<div style="text-align: center; padding: 16px;">Meminta kode...</div>`;
+      const flow = await gitService.githubStartDeviceFlow(clientId);
+
+      flowBody.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 12px;">
+          <div>Buka link berikut di browser:</div>
+          <a href="${flow.verification_uri}" target="_blank" style="color: var(--accent-blue); font-family: var(--font-mono);">${flow.verification_uri}</a>
+          <div>Dan masukkan kode perangkat ini:</div>
+          <div style="font-size: 20px; font-weight: 700; font-family: var(--font-mono); text-align: center; padding: 10px; background: var(--bg-subtle); border-radius: var(--radius-sm); letter-spacing: 2px; color: var(--accent-blue);">
+            ${flow.user_code}
+          </div>
+          <div id="poll-status" style="color: var(--text-muted); font-size: 11px; text-align: center;">Menunggu konfirmasi di browser...</div>
+        </div>
+      `;
+
+      // Poll interval
+      const intervalSec = Math.max(flow.interval || 5, 5);
+      const pollTimer = setInterval(async () => {
+        try {
+          const res = await gitService.githubPollToken(clientId, flow.device_code);
+          if (res.access_token) {
+            clearInterval(pollTimer);
+            await gitService.configureGitCredentials("oauth", res.access_token);
+            const statusEl = document.querySelector("#poll-status");
+            if (statusEl) {
+              statusEl.textContent = "Berhasil terhubung ke akun GitHub!";
+              statusEl.setAttribute("style", "color: var(--diff-add-text); font-weight: 600; text-align: center;");
+            }
+          } else if (res.error && res.error !== "authorization_pending") {
+            clearInterval(pollTimer);
+            const statusEl = document.querySelector("#poll-status");
+            if (statusEl) {
+              statusEl.textContent = `Gagal: ${res.error_description || res.error}`;
+              statusEl.setAttribute("style", "color: var(--diff-del-text); text-align: center;");
+            }
+          }
+        } catch {
+          // continue polling
+        }
+      }, intervalSec * 1000);
+    } catch (err) {
+      flowBody.innerHTML = `<div style="color: var(--diff-del-text); padding: 10px;">${String(err)}</div>`;
+    }
+  });
+});
 
 // Branch modal
 btnBranchSelector.addEventListener("click", async () => {

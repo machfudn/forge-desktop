@@ -1,5 +1,5 @@
 use crate::git::{
-    self, BranchInfo, CommitInfo, RepoStatus,
+    self, BranchInfo, CommitInfo, DeviceFlowInit, RemoteInfo, RepoStatus, TokenPollResult,
 };
 
 #[tauri::command]
@@ -56,4 +56,54 @@ pub fn switch_branch(repo: &str, branch_name: &str) -> Result<(), String> {
 #[tauri::command]
 pub fn create_branch(repo: &str, branch_name: &str) -> Result<(), String> {
     git::create_branch(repo, branch_name)
+}
+
+#[tauri::command]
+pub fn abort_merge(repo: &str) -> Result<(), String> {
+    git::abort_merge(repo)
+}
+
+#[tauri::command]
+pub fn abort_rebase(repo: &str) -> Result<(), String> {
+    git::abort_rebase(repo)
+}
+
+#[tauri::command]
+pub fn list_remotes(repo: &str) -> Result<Vec<RemoteInfo>, String> {
+    git::list_remotes(repo)
+}
+
+#[tauri::command]
+pub fn git_fetch(repo: &str, remote: Option<&str>) -> Result<String, String> {
+    git::fetch(repo, remote)
+}
+
+#[tauri::command]
+pub fn git_pull(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<String, String> {
+    git::pull(repo, remote, branch)
+}
+
+#[tauri::command]
+pub fn git_push(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<String, String> {
+    git::push(repo, remote, branch)
+}
+
+#[tauri::command]
+pub fn clone_repository(url: &str, target_dir: &str) -> Result<String, String> {
+    git::clone_repository(url, target_dir)
+}
+
+#[tauri::command]
+pub fn github_start_device_flow(client_id: &str) -> Result<DeviceFlowInit, String> {
+    git::start_device_flow(client_id)
+}
+
+#[tauri::command]
+pub fn github_poll_token(client_id: &str, device_code: &str) -> Result<TokenPollResult, String> {
+    git::poll_device_token(client_id, device_code)
+}
+
+#[tauri::command]
+pub fn configure_git_credentials(username: &str, token: &str) -> Result<(), String> {
+    git::configure_git_credentials(username, token)
 }
