@@ -2,11 +2,13 @@
   import { onMount } from "svelte";
   import type {
     AheadBehind,
+    AppUpdateInfo,
     BranchInfo,
     CommitInfo,
     DeviceFlowInit,
     DiagnosticReport,
     FileEntry,
+    ImageDiffData,
     IssueInfo,
     PullRequestInfo,
     RemoteInfo,
@@ -26,6 +28,8 @@
   let currentStatus: RepoStatus | null = $state(null);
   let selectedFile: FileEntry | null = $state(null);
   let currentDiff = $state("");
+  let currentImageDiff: ImageDiffData | null = $state(null);
+  let appUpdateInfo: AppUpdateInfo | null = $state(null);
   let commitHistory: CommitInfo[] = $state([]);
   let branches: BranchInfo[] = $state([]);
   let currentRemotes: RemoteInfo[] = $state([]);
@@ -337,9 +341,19 @@
   async function loadDiff(file: FileEntry | null) {
     if (!file) {
       currentDiff = "";
+      currentImageDiff = null;
       return;
     }
     try {
+      if (file.path.match(/\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i)) {
+        try {
+          currentImageDiff = await gitService.getImageDiff(activeRepo, file.path);
+        } catch {
+          currentImageDiff = null;
+        }
+      } else {
+        currentImageDiff = null;
+      }
       currentDiff = await gitService.getFileDiff(
         activeRepo,
         file.path,
@@ -348,6 +362,21 @@
       );
     } catch (err) {
       currentDiff = `Error loading diff: ${String(err)}`;
+    }
+  }
+
+  async function checkForUpdates() {
+    try {
+      const info = await gitService.checkAppUpdate();
+      appUpdateInfo = info;
+      if (info.has_update) {
+        sendDesktopNotification(
+          "Pembaruan Forge Desktop Tersedia",
+          `Versi v${info.latest_version} telah dirilis. Silakan unduh pembaruan terbaru.`
+        );
+      }
+    } catch {
+      // background silent
     }
   }
 
@@ -1224,6 +1253,7 @@
   onMount(async () => {
     applyTheme(activeTheme);
     setupAutofetch();
+    checkForUpdates();
     try {
       const cliRepo = await gitService.getCliRepoArg();
       if (cliRepo) {
@@ -1282,6 +1312,16 @@
     </nav>
 
     <div class="header-right">
+      {#if appUpdateInfo?.has_update}
+        <button
+          onclick={() => openSettingsModal()}
+          class="btn-primary"
+          style="font-size: 11px; padding: 4px 8px; background: var(--accent-blue); border-color: var(--accent-blue);"
+          title="Versi {appUpdateInfo.latest_version} tersedia! Buka Settings untuk detail."
+        >
+          Update v{appUpdateInfo.latest_version}
+        </button>
+      {/if}
       {#if !hasRemotes}
         <button
           onclick={openPublishModal}
@@ -1407,6 +1447,7 @@
           <Diff
             filePath={selectedFile.path}
             diffText={currentDiff}
+            imageDiffData={currentImageDiff}
             {ignoreWhitespace}
             isLfs={selectedFile.is_lfs}
             onToggleWhitespace={handleToggleWhitespace}
@@ -1694,6 +1735,35 @@
             <option value={15}>Setiap 15 menit</option>
           </select>
         </div>
+
+        <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; margin-top: 8px;">
+          Pembaruan Aplikasi (Auto-Update Checker)
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+          <span style="color: var(--text-secondary);">Versi Saat Ini: <strong>v1.1.0</strong></span>
+          <button
+            type="button"
+            class="btn-secondary"
+            style="font-size: 11px; padding: 2px 8px;"
+            onclick={checkForUpdates}
+          >
+            Periksa Pembaruan
+          </button>
+        </div>
+        {#if appUpdateInfo}
+          <div style="font-size: 11px; color: {appUpdateInfo.has_update ? 'var(--accent-blue)' : 'var(--accent-primary)'}; background: var(--bg-subtle); padding: 6px 8px; border-radius: var(--radius-sm);">
+            {#if appUpdateInfo.has_update}
+              Versi baru <strong>v{appUpdateInfo.latest_version}</strong> tersedia di GitHub Releases.
+              {#if appUpdateInfo.html_url}
+                <div style="margin-top: 4px;">
+                  <a href={appUpdateInfo.html_url} target="_blank" rel="noreferrer" style="color: var(--text-accent);">Buka Halaman Rilis</a>
+                </div>
+              {/if}
+            {:else}
+              Aplikasi Anda sudah menggunakan versi terbaru (v{appUpdateInfo.current_version}).
+            {/if}
+          </div>
+        {/if}
 
         <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; margin-top: 8px;">
           Preferensi Keamanan

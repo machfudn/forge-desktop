@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AheadBehind,
+  AppUpdateInfo,
   BranchInfo,
   CheckRunInfo,
   CommitInfo,
   DeviceFlowInit,
   DiagnosticReport,
+  ImageDiffData,
   IssueInfo,
   PublishRepoParams,
   PullRequestInfo,
@@ -425,4 +427,15 @@ export async function syncFork(
     upstreamRemote: upstreamRemote || null,
     branch: branch || null,
   });
+}
+
+export async function getImageDiff(
+  repo: string,
+  filePath: string
+): Promise<ImageDiffData> {
+  return invoke<ImageDiffData>("get_image_diff", { repo, filePath });
+}
+
+export async function checkAppUpdate(token?: string): Promise<AppUpdateInfo> {
+  return invoke<AppUpdateInfo>("check_app_update", { token });
 }

@@ -1,7 +1,8 @@
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
-    self, AheadBehind, BranchInfo, CheckRunInfo, CommitInfo, DeviceFlowInit, IssueInfo,
-    PublishRepoParams, PullRequestInfo, RemoteInfo, RepoConfig, RepoStatus, TokenPollResult,
+    self, AheadBehind, AppUpdateInfo, BranchInfo, CheckRunInfo, CommitInfo, DeviceFlowInit,
+    ImageDiffData, IssueInfo, PublishRepoParams, PullRequestInfo, RemoteInfo, RepoConfig,
+    RepoStatus, TokenPollResult,
 };
 use crate::system;
 
@@ -379,4 +380,14 @@ pub fn sync_fork(
     branch: Option<&str>,
 ) -> Result<String, String> {
     git::sync_fork(repo, upstream_remote, branch)
+}
+
+#[tauri::command]
+pub fn get_image_diff(repo: &str, file_path: &str) -> Result<ImageDiffData, String> {
+    git::get_image_diff(repo, file_path)
+}
+
+#[tauri::command]
+pub fn check_app_update(token: Option<&str>) -> Result<AppUpdateInfo, String> {
+    git::check_app_update(token)
 }

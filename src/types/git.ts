@@ -96,3 +96,17 @@ export interface PublishRepoParams {
   description?: string;
   private: boolean;
 }
+
+export interface ImageDiffData {
+  old_image_url?: string | null;
+  new_image_url?: string | null;
+  extension: string;
+}
+
+export interface AppUpdateInfo {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  release_notes?: string | null;
+  html_url?: string | null;
+}

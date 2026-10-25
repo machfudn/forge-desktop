@@ -70,6 +70,8 @@ pub fn run() {
             commands::compare_branches,
             commands::publish_repository_to_github,
             commands::sync_fork,
+            commands::get_image_diff,
+            commands::check_app_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

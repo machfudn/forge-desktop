@@ -42,6 +42,15 @@ pub struct PublishRepoParams {
     pub private: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppUpdateInfo {
+    pub current_version: String,
+    pub latest_version: String,
+    pub has_update: bool,
+    pub release_notes: Option<String>,
+    pub html_url: Option<String>,
+}
+
 pub fn parse_github_repo(remote_url: &str) -> Option<(String, String)> {
     let raw = remote_url.trim();
     if raw.is_empty() {
@@ -396,6 +405,56 @@ pub fn publish_repository_to_github(
     cli::run(repo_path, &["push", "-u", "origin", branch_name])?;
 
     Ok(clone_url)
+}
+
+pub fn check_app_update(token: Option<&str>) -> Result<AppUpdateInfo, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let tok = token.map(|t| t.to_string()).or_else(get_stored_github_token);
+
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-s",
+        "https://api.github.com/repos/machfudin/github-desktop/releases/latest",
+        "-H", "User-Agent: ForgeDesktop/1.1.0",
+        "-H", "Accept: application/vnd.github.v3+json",
+    ]);
+    if let Some(ref t) = tok {
+        cmd.args(["-H", &format!("Authorization: Bearer {t}")]);
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Gagal menghubungi GitHub API: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    #[derive(Deserialize)]
+    struct ReleaseResp {
+        tag_name: Option<String>,
+        body: Option<String>,
+        html_url: Option<String>,
+    }
+
+    if let Ok(rel) = serde_json::from_str::<ReleaseResp>(&stdout) {
+        if let Some(tag) = rel.tag_name {
+            let clean_tag = tag.trim_start_matches('v').trim();
+            let has_update = clean_tag != current_version && !clean_tag.is_empty();
+            return Ok(AppUpdateInfo {
+                current_version,
+                latest_version: clean_tag.to_string(),
+                has_update,
+                release_notes: rel.body,
+                html_url: rel.html_url,
+            });
+        }
+    }
+
+    Ok(AppUpdateInfo {
+        current_version: current_version.clone(),
+        latest_version: current_version,
+        has_update: false,
+        release_notes: None,
+        html_url: None,
+    })
 }
 
 #[cfg(test)]
