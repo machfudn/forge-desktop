@@ -10,7 +10,8 @@
     "open": "Buka",
     "confirmContinue": "Ya, Lanjutkan",
     "none": "Tidak Ada",
-    "detachedHead": "HEAD terlepas"
+    "detachedHead": "HEAD terlepas",
+    "loading": "Memuat..."
   },
   "app": {
     "ready": "Siap",
@@ -213,7 +214,11 @@
       "resetDone": "Reset berhasil",
       "squashDefaultSummary": "Squashed commits",
       "rebaseMinCommits": "Minimal harus ada 2 komit di riwayat untuk melakukan Interactive Rebase.",
-      "rebaseNeedBase": "Tidak cukup komit dasar (base commit) untuk rebase 10 komit terakhir."
+      "rebaseNeedBase": "Tidak cukup komit dasar (base commit) untuk rebase 10 komit terakhir.",
+      "linesStaged": "Baris terpilih berhasil di-stage.",
+      "linesUnstaged": "Baris terpilih berhasil di-unstage.",
+      "mergedBranch": "Berhasil merge branch {branch}.",
+      "rebasedBranch": "Berhasil rebase ke {branch}."
     }
   },
   "changes": {
@@ -274,7 +279,9 @@
       "whiteCheckMark": "Pengujian / tes",
       "lock": "Keamanan",
       "lipstick": "Styling / UI"
-    }
+    },
+    "resolveConflictBtn": "Selesaikan",
+    "resolveConflictTitle": "Buka editor konflik merge 3-arah"
   },
   "diff": {
     "viewModeAria": "Mode tampilan diff",
@@ -301,7 +308,18 @@
     "unstageHunkTitle": "Batalkan stage hunk ini (Unstage hunk)",
     "stageHunkTitle": "Stage hunk ini ke index",
     "unstageHunkBtn": "- Unstage Hunk",
-    "stageHunkBtn": "+ Stage Hunk"
+    "stageHunkBtn": "+ Stage Hunk",
+    "blameBtn": "Blame",
+    "blameTitle": "Lihat git blame per baris untuk file ini",
+    "fileHistoryBtn": "Riwayat File",
+    "fileHistoryTitle": "Lihat riwayat commit untuk file ini",
+    "selectLineAria": "Pilih baris untuk staging",
+    "selectedLinesCount": "{count} baris dipilih",
+    "stageSelectedLinesBtn": "Stage Baris Terpilih",
+    "unstageSelectedLinesBtn": "Unstage Baris Terpilih",
+    "clearSelectionBtn": "Batal Pilih",
+    "stageSingleLineTitle": "Stage baris ini",
+    "unstageSingleLineTitle": "Unstage baris ini"
   },
   "history": {
     "empty": "Belum ada riwayat commit di branch ini.",
@@ -348,7 +366,14 @@
     "filesResizerHorizontalAria": "Ubah lebar daftar file perubahan",
     "filesResizerVerticalTitle": "Seret ke atas/bawah untuk ubah tinggi daftar file (klik ganda untuk reset)",
     "filesResizerHorizontalTitle": "Seret ke kiri/kanan untuk ubah lebar daftar file (klik ganda untuk reset)",
-    "loadingDiff": "Memuat diff perubahan..."
+    "loadingDiff": "Memuat diff perubahan...",
+    "colGraph": "Grafik",
+    "allBranchesShort": "Semua Branch",
+    "currentBranchShort": "Branch Aktif",
+    "toggleAllBranchesTitle": "Alihkan antara semua branch dan branch aktif",
+    "dropPromptTitle": "Jatuhkan {source} ke {target}:",
+    "dropMerge": "Merge {branch}",
+    "dropRebase": "Rebase ke {target}"
   },
   "branchModal": {
     "title": "Pilih atau Kelola Branch",
@@ -660,7 +685,10 @@
       "waitingAuth": "Menunggu konfirmasi otorisasi di browser...",
       "codeExpired": "Kode perangkat kedaluwarsa. Minta kode baru.",
       "authorizedHost": "Terhubung ke {host} sebagai @{login}",
-      "authFailed": "Otorisasi gagal"
+      "authFailed": "Otorisasi gagal",
+      "providerLabel": "Penyedia Hosting Git",
+      "providerHostLabel": "Host Server",
+      "providerPatGuideTitle": "Buat Personal Access Token di {provider}"
     },
     "settings": {
       "localRepoSection": "Konfigurasi Lokal Repositori",
@@ -735,7 +763,9 @@
       "copyFilePath": "Salin Path File",
       "copyRelativePath": "Salin Path Relatif",
       "revealInFileManager": "Tampilkan di File Manager",
-      "openInEditor": "Buka di {editor}"
+      "openInEditor": "Buka di {editor}",
+      "fileBlame": "Git Blame File",
+      "fileHistory": "Riwayat File"
     },
     "changes": {
       "stage": "Stage Perubahan",
@@ -746,7 +776,8 @@
       "stageAll": "Stage Semua Perubahan",
       "unstageAll": "Unstage Semua Perubahan",
       "discardAll": "Batalkan Semua Perubahan...",
-      "stashAll": "Simpan ke Stash..."
+      "stashAll": "Simpan ke Stash...",
+      "openConflictEditor": "Buka Editor Konflik 3-Arah"
     },
     "diff": {
       "wrapLines": "Bungkus Baris (Wrap)",
@@ -794,5 +825,136 @@
       "copiedTag": "Nama tag disalin: {tag}",
       "copiedBranch": "Nama branch disalin: {branch}"
     }
+  },
+  "conflict": {
+    "title": "Editor Konflik Merge 3-Arah",
+    "loading": "Memuat detail konflik...",
+    "filesHeader": "File Konflik",
+    "resolveBtn": "Selesaikan Konflik",
+    "acceptAllOurs": "Pilih Semua Ours",
+    "acceptAllTheirs": "Pilih Semua Theirs",
+    "aiResolveFile": "AI Selesaikan File",
+    "aiResolving": "Menyelesaikan...",
+    "aiResolveBlock": "AI Selesaikan",
+    "aiResolvedBlock": "Blok konflik diselesaikan dengan {model}",
+    "aiResolvedFile": "Konflik file diselesaikan dengan {model}",
+    "acceptOurs": "Pilih Ours",
+    "acceptTheirs": "Pilih Theirs",
+    "acceptBoth": "Pilih Keduanya",
+    "oursPane": "Ours (Saat Ini)",
+    "basePane": "Base (Asal Bersama)",
+    "theirsPane": "Theirs (Masuk)",
+    "outputPane": "Hasil Resolusi",
+    "showBaseBtn": "Tampilkan Base",
+    "hideBaseBtn": "Sembunyikan Base",
+    "stageUnavailable": "Versi base tidak tersedia",
+    "markersClean": "Tidak ada penanda konflik tersisa",
+    "markersRemaining": "{count} penanda konflik tersisa",
+    "saveStageBtn": "Simpan & Stage",
+    "savingBtn": "Menyimpan...",
+    "savedAndStaged": "Tersimpan dan di-stage: {file}"
+  },
+  "inspect": {
+    "tabBlame": "Blame",
+    "tabFileHistory": "Riwayat File",
+    "loadingBlame": "Memuat git blame...",
+    "emptyBlame": "Tidak ada entri blame untuk file ini.",
+    "loadingHistory": "Memuat riwayat file...",
+    "emptyHistory": "Tidak ada commit untuk file ini.",
+    "selectCommit": "Pilih commit di kiri untuk melihat diff."
+  },
+  "tools": {
+    "title": "Alat Workspace",
+    "tabReflog": "Reflog",
+    "tabSubmodules": "Submodul",
+    "tabWorktrees": "Worktree",
+    "reflogDesc": "Pulihkan commit yang hilang atau batalkan perpindahan branch lewat git reflog.",
+    "reflogEmpty": "Tidak ada entri reflog.",
+    "softResetBtn": "Soft Reset",
+    "hardResetBtn": "Hard Reset",
+    "reflogResetDone": "Berhasil reset ke {sha}",
+    "reflogCherryPickDone": "Berhasil cherry-pick {sha}",
+    "submodulesEmpty": "Tidak ada submodul pada repositori ini.",
+    "submoduleUrlPlaceholder": "URL repositori submodul",
+    "submodulePathPlaceholder": "Path tujuan (mis. libs/core)",
+    "addBtn": "Tambah",
+    "updateSubmodulesBtn": "Perbarui Submodul",
+    "syncSubmodulesBtn": "Sinkronkan Submodul",
+    "submoduleAdded": "Submodul ditambahkan.",
+    "submodulesUpdated": "Submodul diperbarui.",
+    "submodulesSynced": "Submodul disinkronkan.",
+    "worktreesEmpty": "Tidak ada worktree tertaut.",
+    "worktreePathPlaceholder": "Path direktori worktree",
+    "worktreeBranchPlaceholder": "Nama branch",
+    "worktreeNewBranch": "Buat branch baru",
+    "pruneBtn": "Bersihkan Usang",
+    "worktreeAdded": "Worktree dibuat.",
+    "worktreeRemoved": "Worktree dihapus.",
+    "worktreePruned": "Worktree usang dibersihkan."
+  },
+  "wsTools": {
+    "menuLabel": "Reflog, Submodul & Worktree",
+    "tabReflog": "Reflog",
+    "tabSubmodules": "Submodul",
+    "tabWorktrees": "Worktree"
+  },
+  "terminal": {
+    "title": "Terminal Terintegrasi",
+    "toggleCommand": "Buka/Tutup Terminal Terintegrasi",
+    "shellLabel": "Shell",
+    "killBtn": "Hentikan",
+    "clearBtn": "Bersihkan",
+    "emptyHint": "Jalankan perintah git, build, atau shell langsung di direktori repositori.",
+    "inputPlaceholder": "Ketik perintah lalu tekan Enter...",
+    "runBtn": "Jalankan",
+    "runningBtn": "Berjalan..."
+  },
+  "palette": {
+    "title": "Palet Perintah",
+    "placeholder": "Ketik perintah atau nama branch...",
+    "noMatch": "Tidak ada perintah yang cocok.",
+    "askAi": "Tanya Asisten AI",
+    "aiReview": "AI Review Perubahan Kerja",
+    "aiGenerateCommit": "AI Buat Pesan Commit",
+    "checkoutPrefix": "Pindah ke branch:"
+  },
+  "ai": {
+    "settingsSection": "Mesin AI Kustom",
+    "enableLabel": "Aktifkan fitur AI Kustom",
+    "providerKindLabel": "Protokol API",
+    "endpointLabel": "URL Endpoint",
+    "modelLabel": "Model",
+    "apiKeyLabel": "Kunci API",
+    "apiKeyKeepExisting": "Kosongkan untuk mempertahankan kunci saat ini",
+    "keyStoredKeyring": "Tersimpan di Keyring OS",
+    "keyStoredMemory": "Hanya di Memori",
+    "systemPromptLabel": "System Prompt Kustom (Opsional)",
+    "systemPromptPlaceholder": "Instruksi tambahan untuk pesan commit, review, dan jawaban AI...",
+    "testConnectionBtn": "Uji Koneksi",
+    "testingBtn": "Menguji...",
+    "testSuccess": "Terhubung ke {model} ({ms} md)",
+    "assistantTitle": "Asisten AI",
+    "configureBtn": "Atur AI",
+    "modeAsk": "Tanya AI",
+    "modeReview": "Review Perubahan",
+    "modeExplainDiff": "Jelaskan Diff",
+    "modeExplainCommit": "Jelaskan Commit",
+    "promptLabel": "Prompt",
+    "promptPlaceholder": "Tanyakan apa saja tentang repositori, diff, atau alur git ini (Ctrl+Enter untuk kirim)...",
+    "promptRequired": "Harap masukkan prompt.",
+    "includeRepoContext": "Sertakan status repositori aktif & commit terbaru sebagai konteks",
+    "responseHeader": "Jawaban AI",
+    "copyBtn": "Salin",
+    "copiedResponse": "Jawaban AI disalin ke papan klip.",
+    "sendBtn": "Kirim ke AI",
+    "runningBtn": "Berpikir...",
+    "generateCommitBtn": "Buat AI",
+    "generateCommitTitle": "Buat pesan commit dari diff menggunakan AI Kustom",
+    "generatingCommit": "Membuat pesan commit dengan AI...",
+    "generatedCommit": "Pesan commit dibuat via {model}.",
+    "explainDiffBtn": "Jelaskan AI",
+    "explainDiffTitle": "Jelaskan diff file ini menggunakan AI Kustom",
+    "explainCommitBtn": "Jelaskan AI",
+    "explainCommitTitle": "Jelaskan commit ini menggunakan AI Kustom"
   }
 }

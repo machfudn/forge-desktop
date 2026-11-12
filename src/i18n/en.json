@@ -10,7 +10,8 @@
     "open": "Open",
     "confirmContinue": "Yes, Continue",
     "none": "None",
-    "detachedHead": "Detached HEAD"
+    "detachedHead": "Detached HEAD",
+    "loading": "Loading..."
   },
   "app": {
     "ready": "Ready",
@@ -213,7 +214,11 @@
       "resetDone": "Reset succeeded",
       "squashDefaultSummary": "Squashed commits",
       "rebaseMinCommits": "At least 2 commits in history are required for Interactive Rebase.",
-      "rebaseNeedBase": "Not enough base commits to rebase the last 10 commits."
+      "rebaseNeedBase": "Not enough base commits to rebase the last 10 commits.",
+      "linesStaged": "Selected lines staged.",
+      "linesUnstaged": "Selected lines unstaged.",
+      "mergedBranch": "Merged branch {branch}.",
+      "rebasedBranch": "Rebased onto {branch}."
     }
   },
   "changes": {
@@ -274,7 +279,9 @@
       "whiteCheckMark": "Testing",
       "lock": "Security",
       "lipstick": "Styling / UI"
-    }
+    },
+    "resolveConflictBtn": "Resolve",
+    "resolveConflictTitle": "Open 3-way merge conflict editor"
   },
   "diff": {
     "viewModeAria": "Diff view mode",
@@ -301,7 +308,18 @@
     "unstageHunkTitle": "Unstage this hunk",
     "stageHunkTitle": "Stage this hunk to index",
     "unstageHunkBtn": "- Unstage Hunk",
-    "stageHunkBtn": "+ Stage Hunk"
+    "stageHunkBtn": "+ Stage Hunk",
+    "blameBtn": "Blame",
+    "blameTitle": "Show line-by-line git blame for this file",
+    "fileHistoryBtn": "File History",
+    "fileHistoryTitle": "Show commit history for this file",
+    "selectLineAria": "Select line for staging",
+    "selectedLinesCount": "{count} line(s) selected",
+    "stageSelectedLinesBtn": "Stage Selected Lines",
+    "unstageSelectedLinesBtn": "Unstage Selected Lines",
+    "clearSelectionBtn": "Clear",
+    "stageSingleLineTitle": "Stage this line",
+    "unstageSingleLineTitle": "Unstage this line"
   },
   "history": {
     "empty": "No commit history on this branch yet.",
@@ -348,7 +366,14 @@
     "filesResizerHorizontalAria": "Resize changed files width",
     "filesResizerVerticalTitle": "Drag up/down to resize file list (double-click to reset)",
     "filesResizerHorizontalTitle": "Drag left/right to resize file list (double-click to reset)",
-    "loadingDiff": "Loading diff..."
+    "loadingDiff": "Loading diff...",
+    "colGraph": "Graph",
+    "allBranchesShort": "All Branches",
+    "currentBranchShort": "Current Branch",
+    "toggleAllBranchesTitle": "Toggle between all branches and current branch",
+    "dropPromptTitle": "Drop {source} onto {target}:",
+    "dropMerge": "Merge {branch}",
+    "dropRebase": "Rebase onto {target}"
   },
   "branchModal": {
     "title": "Select or Manage Branches",
@@ -660,7 +685,10 @@
       "waitingAuth": "Waiting for authorization in browser...",
       "codeExpired": "Device code expired. Request a new code.",
       "authorizedHost": "Connected to {host} as @{login}",
-      "authFailed": "Authorization failed"
+      "authFailed": "Authorization failed",
+      "providerLabel": "Git Hosting Provider",
+      "providerHostLabel": "Server Host",
+      "providerPatGuideTitle": "Create a Personal Access Token on {provider}"
     },
     "settings": {
       "localRepoSection": "Local Repository Configuration",
@@ -735,7 +763,9 @@
       "copyFilePath": "Copy File Path",
       "copyRelativePath": "Copy Relative File Path",
       "revealInFileManager": "Reveal in File Manager",
-      "openInEditor": "Open in {editor}"
+      "openInEditor": "Open in {editor}",
+      "fileBlame": "File Blame",
+      "fileHistory": "File History"
     },
     "changes": {
       "stage": "Stage Changes",
@@ -746,7 +776,8 @@
       "stageAll": "Stage All Changes",
       "unstageAll": "Unstage All Changes",
       "discardAll": "Discard All Changes...",
-      "stashAll": "Stash All Changes..."
+      "stashAll": "Stash All Changes...",
+      "openConflictEditor": "Open 3-Way Conflict Editor"
     },
     "diff": {
       "wrapLines": "Wrap Lines",
@@ -794,5 +825,136 @@
       "copiedTag": "Copied tag name: {tag}",
       "copiedBranch": "Copied branch name: {branch}"
     }
+  },
+  "conflict": {
+    "title": "3-Way Merge Conflict Editor",
+    "loading": "Loading conflict details...",
+    "filesHeader": "Conflicted Files",
+    "resolveBtn": "Resolve Conflict",
+    "acceptAllOurs": "Accept All Ours",
+    "acceptAllTheirs": "Accept All Theirs",
+    "aiResolveFile": "AI Resolve File",
+    "aiResolving": "Resolving...",
+    "aiResolveBlock": "AI Resolve",
+    "aiResolvedBlock": "Conflict block resolved with {model}",
+    "aiResolvedFile": "File conflicts resolved with {model}",
+    "acceptOurs": "Accept Ours",
+    "acceptTheirs": "Accept Theirs",
+    "acceptBoth": "Accept Both",
+    "oursPane": "Ours (Current)",
+    "basePane": "Base (Common Ancestor)",
+    "theirsPane": "Theirs (Incoming)",
+    "outputPane": "Resolved Output",
+    "showBaseBtn": "Show Base",
+    "hideBaseBtn": "Hide Base",
+    "stageUnavailable": "Base version unavailable",
+    "markersClean": "No conflict markers remaining",
+    "markersRemaining": "{count} conflict marker(s) remaining",
+    "saveStageBtn": "Save & Stage",
+    "savingBtn": "Saving...",
+    "savedAndStaged": "Saved and staged {file}"
+  },
+  "inspect": {
+    "tabBlame": "Blame",
+    "tabFileHistory": "File History",
+    "loadingBlame": "Loading git blame...",
+    "emptyBlame": "No blame entries found for this file.",
+    "loadingHistory": "Loading file history...",
+    "emptyHistory": "No commits found for this file.",
+    "selectCommit": "Select a commit on the left to inspect its diff."
+  },
+  "tools": {
+    "title": "Workspace Tools",
+    "tabReflog": "Reflog",
+    "tabSubmodules": "Submodules",
+    "tabWorktrees": "Worktrees",
+    "reflogDesc": "Recover lost commits or undo destructive branch moves via git reflog.",
+    "reflogEmpty": "No reflog entries available.",
+    "softResetBtn": "Soft Reset",
+    "hardResetBtn": "Hard Reset",
+    "reflogResetDone": "Reset to {sha}",
+    "reflogCherryPickDone": "Cherry-picked {sha}",
+    "submodulesEmpty": "No submodules configured in this repository.",
+    "submoduleUrlPlaceholder": "Submodule repository URL",
+    "submodulePathPlaceholder": "Target path (e.g. libs/core)",
+    "addBtn": "Add",
+    "updateSubmodulesBtn": "Update Submodules",
+    "syncSubmodulesBtn": "Sync Submodules",
+    "submoduleAdded": "Submodule added.",
+    "submodulesUpdated": "Submodules updated.",
+    "submodulesSynced": "Submodules synced.",
+    "worktreesEmpty": "No linked worktrees found.",
+    "worktreePathPlaceholder": "Worktree directory path",
+    "worktreeBranchPlaceholder": "Branch name",
+    "worktreeNewBranch": "Create new branch",
+    "pruneBtn": "Prune Stale",
+    "worktreeAdded": "Worktree created.",
+    "worktreeRemoved": "Worktree removed.",
+    "worktreePruned": "Stale worktrees pruned."
+  },
+  "wsTools": {
+    "menuLabel": "Reflog, Submodules & Worktrees",
+    "tabReflog": "Reflog",
+    "tabSubmodules": "Submodules",
+    "tabWorktrees": "Worktrees"
+  },
+  "terminal": {
+    "title": "Integrated Terminal",
+    "toggleCommand": "Toggle Integrated Terminal",
+    "shellLabel": "Shell",
+    "killBtn": "Kill",
+    "clearBtn": "Clear",
+    "emptyHint": "Run git, build, or shell commands directly in the repository directory.",
+    "inputPlaceholder": "Type a command and press Enter...",
+    "runBtn": "Run",
+    "runningBtn": "Running..."
+  },
+  "palette": {
+    "title": "Command Palette",
+    "placeholder": "Type a command or branch name...",
+    "noMatch": "No matching commands.",
+    "askAi": "Ask AI Assistant",
+    "aiReview": "AI Review Working Changes",
+    "aiGenerateCommit": "AI Generate Commit Message",
+    "checkoutPrefix": "Switch to branch:"
+  },
+  "ai": {
+    "settingsSection": "Custom AI Engine",
+    "enableLabel": "Enable Custom AI features",
+    "providerKindLabel": "API Protocol",
+    "endpointLabel": "Endpoint URL",
+    "modelLabel": "Model",
+    "apiKeyLabel": "API Key",
+    "apiKeyKeepExisting": "Leave blank to keep existing key",
+    "keyStoredKeyring": "Stored in OS Keyring",
+    "keyStoredMemory": "Memory Only",
+    "systemPromptLabel": "Custom System Prompt (Optional)",
+    "systemPromptPlaceholder": "Additional instructions for commit messages, reviews, and answers...",
+    "testConnectionBtn": "Test Connection",
+    "testingBtn": "Testing...",
+    "testSuccess": "Connected to {model} ({ms} ms)",
+    "assistantTitle": "AI Assistant",
+    "configureBtn": "Configure AI",
+    "modeAsk": "Ask AI",
+    "modeReview": "Review Changes",
+    "modeExplainDiff": "Explain Diff",
+    "modeExplainCommit": "Explain Commit",
+    "promptLabel": "Prompt",
+    "promptPlaceholder": "Ask anything about this repository, diff, or git workflow (Ctrl+Enter to send)...",
+    "promptRequired": "Please enter a prompt.",
+    "includeRepoContext": "Include active repository status & recent commits as context",
+    "responseHeader": "AI Response",
+    "copyBtn": "Copy",
+    "copiedResponse": "AI response copied to clipboard.",
+    "sendBtn": "Send to AI",
+    "runningBtn": "Thinking...",
+    "generateCommitBtn": "AI Generate",
+    "generateCommitTitle": "Generate commit message from staged/working diff using Custom AI",
+    "generatingCommit": "Generating commit message with AI...",
+    "generatedCommit": "Commit message generated via {model}.",
+    "explainDiffBtn": "AI Explain",
+    "explainDiffTitle": "Explain this file diff using Custom AI",
+    "explainCommitBtn": "AI Explain",
+    "explainCommitTitle": "Explain this commit using Custom AI"
   }
 }
