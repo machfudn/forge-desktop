@@ -2,6 +2,7 @@
   import type { IssueInfo, ParsedGitHubRepo, PullRequestInfo } from "../types/git";
   import * as gitService from "../services/git";
   import { openExternalUrl } from "../utils/path";
+  import { t } from "../i18n/index.svelte";
 
   export type HistoryGithubModalType =
     | "tag"
@@ -97,9 +98,9 @@
     const name = tagNameInput.trim();
     if (!name) return;
     try {
-      onStatus(`Membuat tag ${name}...`);
+      onStatus(t("hgModal.creatingTagStatus", { name }));
       await gitService.createTag(activeRepo, name, tagTargetSha || undefined);
-      onStatus(`Tag ${name} berhasil dibuat`);
+      onStatus(t("hgModal.tagCreatedStatus", { name }));
       await onReloadTags();
       onClose();
     } catch (err) {
@@ -111,14 +112,14 @@
     if (!squashSummary.trim()) return;
     onClose();
     try {
-      onStatus(`Menggabungkan ${squashCount} komit...`);
+      onStatus(t("hgModal.squashingStatus", { count: squashCount }));
       await gitService.squashCommits(
         activeRepo,
         squashCount,
         squashSummary.trim(),
         squashDescription.trim() || undefined
       );
-      onStatus(`Berhasil squash ${squashCount} komit`);
+      onStatus(t("hgModal.squashedStatus", { count: squashCount }));
       await onReloadRepo();
       await onReloadHistory();
     } catch (err) {
@@ -145,18 +146,18 @@
     if (!activeRepo || !rebaseBaseSha) return;
     const activeSteps = rebaseItems.filter((i) => i.action === "pick");
     if (activeSteps.length === 0) {
-      inlineError = "Setidaknya satu komit harus memiliki aksi 'pick'.";
+      inlineError = t("hgModal.rebaseNeedPick");
       return;
     }
     try {
-      onStatus("Menjalankan interactive rebase...");
+      onStatus(t("hgModal.rebasingStatus"));
       await gitService.interactiveRebase(
         activeRepo,
         rebaseBaseSha,
         rebaseItems.map((i) => ({ sha: i.sha, action: i.action }))
       );
       onClose();
-      onStatus("Interactive rebase berhasil diselesaikan");
+      onStatus(t("hgModal.rebasedStatus"));
       await onReloadRepo();
       await onReloadHistory();
     } catch (err) {
@@ -172,10 +173,15 @@
 
   const modalTitle = $derived.by(() => {
     switch (modal) {
-      case "tag": return "Buat Git Tag";
-      case "squash": return `Squash ${squashCount} Komit`;
-      case "rebase": return "Visual Interactive Rebase";
-      case "pr": return `GitHub: ${githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : "Repository"}`;
+      case "tag": return t("hgModal.titleTag");
+      case "squash": return t("hgModal.titleSquash", { count: squashCount });
+      case "rebase": return t("hgModal.titleRebase");
+      case "pr":
+        return t("hgModal.titlePr", {
+          repo: githubRepoInfo
+            ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}`
+            : t("hgModal.titlePrFallback"),
+        });
       case "confirm": return confirmTitle;
     }
   });
@@ -214,12 +220,12 @@
             onclick={handleCreatePR}
             class="btn-primary btn-xs"
             disabled={!githubRepoInfo || currentBranch === "HEAD terlepas"}
-            title="Buka browser untuk membuat Pull Request"
+            title={t("hgModal.openBrowserPrTitle")}
           >
-            + Buat PR di Browser
+            {t("hgModal.createPrBtn")}
           </button>
         {/if}
-        <button type="button" class="icon-btn compact" onclick={onClose} aria-label="Tutup dialog">
+        <button type="button" class="icon-btn compact" onclick={onClose} aria-label={t("common.closeDialog")}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
           </svg>
@@ -236,15 +242,15 @@
     <div class="modal-body">
       {#if modal === "tag"}
         <div style="font-size: 12px; color: var(--text-secondary);">
-          Target komit: <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-primary);">{tagTargetSha?.slice(0, 7) || "HEAD"}</span>
+          {t("hgModal.targetCommit")} <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-primary);">{tagTargetSha?.slice(0, 7) || "HEAD"}</span>
         </div>
         <div class="form-field">
-          <label class="form-label" for="tag-name-input">Nama Tag</label>
+          <label class="form-label" for="tag-name-input">{t("hgModal.tagNameLabel")}</label>
           <input
             id="tag-name-input"
             type="text"
             class="form-input"
-            placeholder="v1.0.0 atau release-2026"
+            placeholder={t("hgModal.tagNamePlaceholder")}
             bind:value={tagNameInput}
             onkeydown={(e) => {
               if (e.key === "Enter") handleCreateTagSubmit();
@@ -254,20 +260,20 @@
 
       {:else if modal === "squash"}
         <div style="font-size: 12px; color: var(--text-secondary);">
-          {squashCount} komit dari HEAD akan digabung menjadi satu komit baru.
+          {t("hgModal.squashInfo", { count: squashCount })}
         </div>
         <div class="form-field">
-          <label class="form-label" for="squash-summary">Ringkasan Komit Baru</label>
-          <input id="squash-summary" type="text" class="form-input" placeholder="Ringkasan komit hasil squash" bind:value={squashSummary} />
+          <label class="form-label" for="squash-summary">{t("hgModal.squashSummaryLabel")}</label>
+          <input id="squash-summary" type="text" class="form-input" placeholder={t("hgModal.squashSummaryPlaceholder")} bind:value={squashSummary} />
         </div>
         <div class="form-field">
-          <label class="form-label" for="squash-desc">Deskripsi Komit (Opsional)</label>
-          <textarea id="squash-desc" class="form-input" placeholder="Rincian deskripsi gabungan" rows="3" bind:value={squashDescription} style="resize: vertical;"></textarea>
+          <label class="form-label" for="squash-desc">{t("hgModal.squashDescLabel")}</label>
+          <textarea id="squash-desc" class="form-input" placeholder={t("hgModal.squashDescPlaceholder")} rows="3" bind:value={squashDescription} style="resize: vertical;"></textarea>
         </div>
 
       {:else if modal === "rebase"}
         <p style="font-size: 12px; color: var(--text-secondary);">
-          Atur urutan komit atau ubah aksi (pick/drop). Komit akan diterapkan di atas basis
+          {t("hgModal.rebaseHint")}
           <code style="font-family: var(--font-mono); color: var(--text-accent);">{rebaseBaseSha.substring(0, 7)}</code>.
         </p>
         <div class="list-box" style="max-height: 300px; padding: 6px; display: flex; flex-direction: column; gap: 5px;">
@@ -279,7 +285,7 @@
                   class="btn-secondary btn-xs"
                   style="padding: 0 5px; font-size: 9px; line-height: 12px; height: 14px;"
                   disabled={idx === 0}
-                  aria-label="Naikkan urutan komit {item.short_sha}"
+                  aria-label={t("hgModal.moveUpAria", { sha: item.short_sha })}
                   onclick={() => moveRebaseItem(idx, "up")}
                 >
                   ▲
@@ -289,7 +295,7 @@
                   class="btn-secondary btn-xs"
                   style="padding: 0 5px; font-size: 9px; line-height: 12px; height: 14px;"
                   disabled={idx === rebaseItems.length - 1}
-                  aria-label="Turunkan urutan komit {item.short_sha}"
+                  aria-label={t("hgModal.moveDownAria", { sha: item.short_sha })}
                   onclick={() => moveRebaseItem(idx, "down")}
                 >
                   ▼
@@ -326,14 +332,14 @@
             class="seg-btn {prTab === 'prs' ? 'active' : ''}"
             onclick={() => onSwitchPrTab("prs")}
           >
-            Pull Requests ({pullRequests.length})
+            {t("hgModal.prsTab", { count: pullRequests.length })}
           </button>
           <button
             type="button"
             class="seg-btn {prTab === 'issues' ? 'active' : ''}"
             onclick={() => onSwitchPrTab("issues")}
           >
-            Issues ({issues.length})
+            {t("hgModal.issuesTab", { count: issues.length })}
           </button>
         </div>
         {#if githubError}
@@ -341,7 +347,7 @@
             <span style="flex: 1; min-width: 180px;">{githubError}</span>
             {#if !hasGithubAccount && onOpenAuth}
               <button type="button" class="btn-secondary btn-xs" onclick={onOpenAuth}>
-                Masuk GitHub
+                {t("hgModal.signInGithub")}
               </button>
             {/if}
           </div>
@@ -349,13 +355,13 @@
 
         {#if isLoadingGithub}
           <div style="padding: 28px; text-align: center; color: var(--text-muted); font-size: 12px;">
-            Memuat data GitHub...
+            {t("hgModal.loadingGithub")}
           </div>
         {:else if prTab === "prs"}
           <div class="list-box" style="max-height: 340px;">
             {#if pullRequests.length === 0}
               <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
-                Tidak ada Pull Request yang sedang terbuka.
+                {t("hgModal.noOpenPrs")}
               </div>
             {:else}
               {#each pullRequests as pr (pr.id)}
@@ -365,15 +371,15 @@
                       <span style="color: var(--text-accent); font-family: var(--font-mono);">#{pr.number}</span> {pr.title}
                     </div>
                     <div style="font-size: 10px; color: var(--text-muted);">
-                      oleh {pr.author} · {pr.head_branch} &rarr; {pr.base_branch}
+                      {t("hgModal.byAuthor", { author: pr.author })} · {pr.head_branch} &rarr; {pr.base_branch}
                     </div>
                   </div>
                   <div style="display: flex; gap: 4px; flex-shrink: 0;">
                     <button type="button" onclick={() => onCheckoutPr(pr.number)} class="btn-primary btn-xs">
-                      Checkout
+                      {t("hgModal.checkout")}
                     </button>
                     <button type="button" onclick={() => openExternalUrl(pr.html_url)} class="btn-secondary btn-xs">
-                      Web
+                      {t("hgModal.web")}
                     </button>
                   </div>
                 </div>
@@ -384,7 +390,7 @@
           <div class="list-box" style="max-height: 340px;">
             {#if issues.length === 0}
               <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
-                Tidak ada Issue yang sedang terbuka.
+                {t("hgModal.noOpenIssues")}
               </div>
             {:else}
               {#each issues as issue (issue.id)}
@@ -394,11 +400,13 @@
                       <span style="color: var(--diff-add-text); font-family: var(--font-mono);">#{issue.number}</span> {issue.title}
                     </div>
                     <div style="font-size: 10px; color: var(--text-muted);">
-                      oleh {issue.author} · {issue.comments_count} komentar
+                      {issue.comments_count === 1
+                        ? t("hgModal.issueMetaOne", { author: issue.author, count: issue.comments_count })
+                        : t("hgModal.issueMetaMany", { author: issue.author, count: issue.comments_count })}
                     </div>
                   </div>
                   <button type="button" onclick={() => openExternalUrl(issue.html_url)} class="btn-secondary btn-xs">
-                    Web
+                    {t("hgModal.web")}
                   </button>
                 </div>
               {/each}
@@ -415,36 +423,36 @@
 
     <div class="modal-actions">
       {#if modal === "tag"}
-        <button type="button" onclick={onClose} class="btn-secondary">Batal</button>
+        <button type="button" onclick={onClose} class="btn-secondary">{t("common.cancel")}</button>
         <button type="button" onclick={handleCreateTagSubmit} class="btn-primary" disabled={!tagNameInput.trim()}>
-          Buat Tag
+          {t("hgModal.createTagBtn")}
         </button>
       {:else if modal === "squash"}
-        <button type="button" class="btn-secondary" onclick={onClose}>Batal</button>
+        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
         <button type="button" class="btn-primary" onclick={handleSquashSubmit} disabled={!squashSummary.trim()}>
-          Konfirmasi Squash
+          {t("hgModal.confirmSquashBtn")}
         </button>
       {:else if modal === "rebase"}
-        <button type="button" class="btn-secondary" onclick={onClose}>Batal</button>
+        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
         <button
           type="button"
           class="btn-primary"
           onclick={executeInteractiveRebase}
           disabled={rebaseItems.filter((i) => i.action === "pick").length === 0}
         >
-          Mulai Rebase
+          {t("hgModal.startRebaseBtn")}
         </button>
       {:else if modal === "confirm"}
-        <button type="button" class="btn-secondary" onclick={onClose}>Batal</button>
+        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
         <button
           type="button"
           class="btn-primary {confirmDanger ? 'btn-danger-solid' : ''}"
           onclick={onConfirmSubmit}
         >
-          Ya, Lanjutkan
+          {t("common.confirmContinue")}
         </button>
       {:else}
-        <button type="button" onclick={onClose} class="btn-secondary">Tutup</button>
+        <button type="button" onclick={onClose} class="btn-secondary">{t("common.close")}</button>
       {/if}
     </div>
   </div>
