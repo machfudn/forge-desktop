@@ -5,11 +5,13 @@
     AccountHealth,
     AccountOverview,
     AccountProfile,
+    AiConfigPublic,
     AppRuntimeInfo,
     AppUpdateInfo,
     DetectedSession,
     DeviceFlowInit,
     DiagnosticReport,
+    HostingProvider,
     LocalSessionSource,
     ParsedGitHubRepo,
     RemoteInfo,
@@ -198,6 +200,23 @@
   let draftEditorPreset = $state("system");
   let draftCustomEditor = $state("");
   let draftUpdateChannel = $state<UpdateChannel>("auto");
+  // Custom AI Engine drafts
+  let aiConfig = $state<AiConfigPublic>({
+    provider_kind: "openai_compatible",
+    endpoint: "https://api.openai.com/v1",
+    model: "gpt-4o-mini",
+    system_prompt: "",
+    max_tokens: 1200,
+    has_api_key: false,
+    api_key_preview: "",
+    memory_only: false,
+  });
+  let aiApiKeyInput = $state("");
+  let showAiApiKey = $state(false);
+  let isTestingAi = $state(false);
+  let aiTestResult = $state<{ ok: boolean; msg: string } | null>(null);
+  let aiKeyringFallbackPending = $state(false);
+  let isLoadingAi = $state(false);
   const EXTERNAL_EDITOR_PRESETS = $derived([
     { value: "system", label: t("wsModal.settings.editorSystem") },
     { value: "code", label: "Visual Studio Code (code)" },
@@ -224,7 +243,9 @@
   }
   // Multi-account Auth states
   let authView = $state<"manager" | "add">("manager");
+  let hostingProvider = $state<HostingProvider>("github");
   let hostKind = $state<"github.com" | "enterprise">("github.com");
+  let providerHostInput = $state("");
   let enterpriseHostInput = $state("");
   let accountLabelInput = $state("");
   let authTab = $state<"token" | "oauth" | "import">("token");
@@ -248,15 +269,25 @@
   let countdownTimer: number | null = null;
 
   const effectiveHost = $derived.by(() => {
-    if (hostKind === "github.com") return "github.com";
-    return (
-      enterpriseHostInput
-        .trim()
-        .replace(/^https?:\/\//i, "")
-        .replace(/\/+$/, "")
-        .replace(/\/api\/v3$/i, "")
-        .toLowerCase() || ""
-    );
+    if (hostingProvider === "github") {
+      if (hostKind === "github.com") return "github.com";
+      return (
+        enterpriseHostInput
+          .trim()
+          .replace(/^https?:\/\//i, "")
+          .replace(/\/+$/, "")
+          .replace(/\/api\/v3$/i, "")
+          .toLowerCase() || ""
+      );
+    }
+    const raw = providerHostInput
+      .trim()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/+$/, "");
+    if (raw) return raw.toLowerCase();
+    if (hostingProvider === "gitlab") return "gitlab.com";
+    if (hostingProvider === "bitbucket") return "bitbucket.org";
+    return "dev.azure.com";
   });
 
   const authorMismatch = $derived.by(() => {
@@ -346,12 +377,27 @@
           draftCustomEditor = savedEditor;
         }
         draftUpdateChannel = initialUpdateChannel;
+        aiApiKeyInput = "";
+        showAiApiKey = false;
+        aiTestResult = null;
+        aiKeyringFallbackPending = false;
+        isLoadingAi = true;
+        gitService
+          .getAiConfig()
+          .then((cfg) => {
+            aiConfig = cfg;
+          })
+          .catch(() => {})
+          .finally(() => {
+            isLoadingAi = false;
+          });
       } else if (m === "auth") {
         clearPollTimer();
         authView = accountOverview.accounts.length > 0 ? "manager" : "add";
+        hostingProvider = "github";
         hostKind = "github.com";
+        providerHostInput = "";
         enterpriseHostInput = "";
-        accountLabelInput = "";
         patInput = "";
         showPat = false;
         isVerifyingAuth = false;
@@ -685,12 +731,21 @@
     pendingSsoUrl = null;
     isVerifyingAuth = true;
     try {
-      const profile = await gitService.verifyAndConnectPat(
-        host,
-        tok,
-        accountLabelInput.trim() || undefined,
-        allowMemoryFallback
-      );
+      const profile =
+        hostingProvider === "github"
+          ? await gitService.verifyAndConnectPat(
+              host,
+              tok,
+              accountLabelInput.trim() || undefined,
+              allowMemoryFallback
+            )
+          : await gitService.connectProviderPat(
+              hostingProvider,
+              host,
+              tok,
+              accountLabelInput.trim() || undefined,
+              allowMemoryFallback
+            );
       const overview = await gitService.listGithubAccounts(activeRepo || undefined);
       patInput = "";
       onAccountsChanged(overview, profile);
@@ -704,6 +759,50 @@
       parseAuthError(err, () => handleConnectPat(true));
     } finally {
       isVerifyingAuth = false;
+    }
+  }
+  async function persistAiConfig(allowMemoryFallback = false): Promise<boolean> {
+    aiKeyringFallbackPending = false;
+    try {
+      const saved = await gitService.saveAiConfig({
+        provider_kind: aiConfig.provider_kind,
+        endpoint: aiConfig.endpoint,
+        model: aiConfig.model,
+        system_prompt: aiConfig.system_prompt,
+        max_tokens: aiConfig.max_tokens,
+        api_key: aiApiKeyInput.trim() ? aiApiKeyInput.trim() : undefined,
+        allow_memory_fallback: allowMemoryFallback,
+      });
+      aiConfig = saved;
+      aiApiKeyInput = "";
+      return true;
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("[KEYRING_UNAVAILABLE]")) {
+        aiKeyringFallbackPending = true;
+        aiTestResult = { ok: false, msg: msg.replace("[KEYRING_UNAVAILABLE]", "").trim() };
+        return false;
+      }
+      aiTestResult = { ok: false, msg };
+      return false;
+    }
+  }
+
+  async function handleTestAiConnection(allowMemoryFallback = false) {
+    isTestingAi = true;
+    aiTestResult = null;
+    try {
+      const ok = await persistAiConfig(allowMemoryFallback);
+      if (!ok) return;
+      const res = await gitService.testAiConnection();
+      aiTestResult = {
+        ok: true,
+        msg: t("ai.testSuccess", { model: res.model, ms: res.latency_ms }),
+      };
+    } catch (err) {
+      aiTestResult = { ok: false, msg: String(err) };
+    } finally {
+      isTestingAi = false;
     }
   }
 
@@ -1667,35 +1766,75 @@
             </div>
           {/if}
 
-          <div class="form-grid-2">
-            <div class="form-field">
-              <span class="form-label">{t("wsModal.auth.githubServerLabel")}</span>
-              <div class="seg-group" role="radiogroup" aria-label={t("wsModal.auth.serverTypeAria")}>
-                <button
-                  type="button"
-                  class="seg-btn {hostKind === 'github.com' ? 'active' : ''}"
-                  onclick={() => {
-                    hostKind = "github.com";
-                    inlineError = "";
-                    oauthClientId = localStorage.getItem("forge_oauth_client_id:github.com") || "";
-                    if (authTab === "import") refreshDetectedSessions();
-                  }}
-                >
-                  {t("wsModal.auth.serverGithub")}
-                </button>
-                <button
-                  type="button"
-                  class="seg-btn {hostKind === 'enterprise' ? 'active' : ''}"
-                  onclick={() => {
-                    hostKind = "enterprise";
-                    inlineError = "";
-                    if (authTab === "import") refreshDetectedSessions();
-                  }}
-                >
-                  {t("wsModal.auth.serverEnterprise")}
-                </button>
-              </div>
+          <div class="form-field">
+            <span class="form-label">{t("wsModal.auth.providerLabel")}</span>
+            <div class="seg-group" role="radiogroup" aria-label={t("wsModal.auth.providerLabel")}>
+              <button
+                type="button"
+                class="seg-btn {hostingProvider === 'github' ? 'active' : ''}"
+                onclick={() => { hostingProvider = "github"; inlineError = ""; authTab = "token"; }}
+              >GitHub</button>
+              <button
+                type="button"
+                class="seg-btn {hostingProvider === 'gitlab' ? 'active' : ''}"
+                onclick={() => { hostingProvider = "gitlab"; inlineError = ""; authTab = "token"; }}
+              >GitLab</button>
+              <button
+                type="button"
+                class="seg-btn {hostingProvider === 'bitbucket' ? 'active' : ''}"
+                onclick={() => { hostingProvider = "bitbucket"; inlineError = ""; authTab = "token"; }}
+              >Bitbucket</button>
+              <button
+                type="button"
+                class="seg-btn {hostingProvider === 'azure_devops' ? 'active' : ''}"
+                onclick={() => { hostingProvider = "azure_devops"; inlineError = ""; authTab = "token"; }}
+              >Azure DevOps</button>
             </div>
+          </div>
+
+          <div class="form-grid-2">
+            {#if hostingProvider === "github"}
+              <div class="form-field">
+                <span class="form-label">{t("wsModal.auth.githubServerLabel")}</span>
+                <div class="seg-group" role="radiogroup" aria-label={t("wsModal.auth.serverTypeAria")}>
+                  <button
+                    type="button"
+                    class="seg-btn {hostKind === 'github.com' ? 'active' : ''}"
+                    onclick={() => {
+                      hostKind = "github.com";
+                      inlineError = "";
+                      oauthClientId = localStorage.getItem("forge_oauth_client_id:github.com") || "";
+                      if (authTab === "import") refreshDetectedSessions();
+                    }}
+                  >
+                    {t("wsModal.auth.serverGithub")}
+                  </button>
+                  <button
+                    type="button"
+                    class="seg-btn {hostKind === 'enterprise' ? 'active' : ''}"
+                    onclick={() => {
+                      hostKind = "enterprise";
+                      inlineError = "";
+                      if (authTab === "import") refreshDetectedSessions();
+                    }}
+                  >
+                    {t("wsModal.auth.serverEnterprise")}
+                  </button>
+                </div>
+              </div>
+            {:else}
+              <div class="form-field">
+                <label class="form-label" for="provider-host-input">{t("wsModal.auth.providerHostLabel")}</label>
+                <input
+                  id="provider-host-input"
+                  type="text"
+                  class="form-input"
+                  style="font-family: var(--font-mono);"
+                  bind:value={providerHostInput}
+                  placeholder={hostingProvider === "gitlab" ? "gitlab.com" : hostingProvider === "bitbucket" ? "bitbucket.org" : "dev.azure.com"}
+                />
+              </div>
+            {/if}
 
             <div class="form-field">
               <label class="form-label" for="account-label-input">{t("wsModal.auth.labelOptional")}</label>
@@ -1709,7 +1848,7 @@
             </div>
           </div>
 
-          {#if hostKind === "enterprise"}
+          {#if hostingProvider === "github" && hostKind === "enterprise"}
             <div class="form-field">
               <label class="form-label" for="enterprise-host-input">{t("wsModal.auth.enterpriseHostLabel")}</label>
               <input
@@ -1733,45 +1872,47 @@
             </div>
           {/if}
 
-          <div class="seg-group" style="align-self: flex-start;" role="tablist" aria-label={t("wsModal.auth.authMethodAria")}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authTab === "token"}
-              class="seg-btn {authTab === 'token' ? 'active' : ''}"
-              onclick={() => {
-                authTab = "token";
-                inlineError = "";
-              }}
-            >
-              {t("wsModal.auth.tabToken")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authTab === "oauth"}
-              class="seg-btn {authTab === 'oauth' ? 'active' : ''}"
-              onclick={() => {
-                authTab = "oauth";
-                inlineError = "";
-              }}
-            >
-              {t("wsModal.auth.tabOauth")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authTab === "import"}
-              class="seg-btn {authTab === 'import' ? 'active' : ''}"
-              onclick={() => {
-                authTab = "import";
-                inlineError = "";
-                refreshDetectedSessions();
-              }}
-            >
-              {t("wsModal.auth.tabImport")}
-            </button>
-          </div>
+          {#if hostingProvider === "github"}
+            <div class="seg-group" style="align-self: flex-start;" role="tablist" aria-label={t("wsModal.auth.authMethodAria")}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authTab === "token"}
+                class="seg-btn {authTab === 'token' ? 'active' : ''}"
+                onclick={() => {
+                  authTab = "token";
+                  inlineError = "";
+                }}
+              >
+                {t("wsModal.auth.tabToken")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authTab === "oauth"}
+                class="seg-btn {authTab === 'oauth' ? 'active' : ''}"
+                onclick={() => {
+                  authTab = "oauth";
+                  inlineError = "";
+                }}
+              >
+                {t("wsModal.auth.tabOauth")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authTab === 'import'}
+                class="seg-btn {authTab === 'import' ? 'active' : ''}"
+                onclick={() => {
+                  authTab = "import";
+                  inlineError = "";
+                  refreshDetectedSessions();
+                }}
+              >
+                {t("wsModal.auth.tabImport")}
+              </button>
+            </div>
+          {/if}
 
           {#if keyringUnavailableAction}
             <div class="warn-callout">
@@ -1804,24 +1945,49 @@
           {/if}
 
           {#if authTab === "token"}
-            <div class="info-callout" style="display: flex; flex-direction: column; gap: 6px;">
-              <span><strong>{t("wsModal.auth.patGuideTitle")}</strong></span>
-              <span>{t("wsModal.auth.patGuideStep1Prefix")}<code style="font-family: var(--font-mono);">repo</code>, <code style="font-family: var(--font-mono);">read:user</code>, &amp; <code style="font-family: var(--font-mono);">user:email</code>{t("wsModal.auth.patGuideStep1Suffix")}</span>
-              <span>{t("wsModal.auth.patGuideStep2")}</span>
-              <div style="padding-top: 2px;">
-                <button
-                  type="button"
-                  class="btn-secondary btn-xs btn-accent"
-                  disabled={!effectiveHost}
-                  onclick={() =>
-                    openExternalUrl(
-                      `https://${effectiveHost || "github.com"}/settings/tokens/new?description=Forge+Desktop&scopes=repo,read:user,user:email`
-                    )}
-                >
-                  {t("wsModal.auth.createTokenOnBtn", { host: effectiveHost || "github.com" })}
-                </button>
+            {#if hostingProvider === "github"}
+              <div class="info-callout" style="display: flex; flex-direction: column; gap: 6px;">
+                <span><strong>{t("wsModal.auth.patGuideTitle")}</strong></span>
+                <span>{t("wsModal.auth.patGuideStep1Prefix")}<code style="font-family: var(--font-mono);">repo</code>, <code style="font-family: var(--font-mono);">read:user</code>, &amp; <code style="font-family: var(--font-mono);">user:email</code>{t("wsModal.auth.patGuideStep1Suffix")}</span>
+                <span>{t("wsModal.auth.patGuideStep2")}</span>
+                <div style="padding-top: 2px;">
+                  <button
+                    type="button"
+                    class="btn-secondary btn-xs btn-accent"
+                    disabled={!effectiveHost}
+                    onclick={() =>
+                      openExternalUrl(
+                        `https://${effectiveHost || "github.com"}/settings/tokens/new?description=Forge+Desktop&scopes=repo,read:user,user:email`
+                      )}
+                  >
+                    {t("wsModal.auth.createTokenOnBtn", { host: effectiveHost || "github.com" })}
+                  </button>
+                </div>
               </div>
-            </div>
+            {:else}
+              <div class="info-callout" style="display: flex; flex-direction: column; gap: 6px;">
+                <span><strong>{t("wsModal.auth.providerPatGuideTitle", { provider: hostingProvider })}</strong></span>
+                <div style="padding-top: 2px;">
+                  <button
+                    type="button"
+                    class="btn-secondary btn-xs btn-accent"
+                    disabled={!effectiveHost}
+                    onclick={() => {
+                      const h = effectiveHost || "gitlab.com";
+                      const url =
+                        hostingProvider === "gitlab"
+                          ? `https://${h}/-/user_settings/personal_access_tokens`
+                          : hostingProvider === "bitbucket"
+                            ? `https://${h}/account/settings/app-passwords`
+                            : `https://${h}/_usersSettings/tokens`;
+                      openExternalUrl(url);
+                    }}
+                  >
+                    {t("wsModal.auth.createTokenOnBtn", { host: effectiveHost })}
+                  </button>
+                </div>
+              </div>
+            {/if}
 
             <div class="form-field">
               <label class="form-label" for="github-pat-input">{t("wsModal.auth.patLabel")}</label>
@@ -2182,6 +2348,89 @@
           <input type="checkbox" bind:checked={draftDesktopNotif} />
           <span>{t("wsModal.settings.desktopNotifLabel")}</span>
         </label>
+        <div class="modal-section-heading">
+          ✦ {t("ai.settingsSection")}{isLoadingAi ? t("wsModal.settings.loadingSuffix") : ""}
+        </div>
+        <div class="settings-row">
+          <label class="form-label" for="ai-provider-select">{t("ai.providerKindLabel")}</label>
+          <select id="ai-provider-select" class="form-select" bind:value={aiConfig.provider_kind}>
+            <option value="openai_compatible">OpenAI-Compatible (/chat/completions)</option>
+            <option value="anthropic">Anthropic (/messages)</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="ai-endpoint-input">{t("ai.endpointLabel")}</label>
+          <input
+            id="ai-endpoint-input"
+            type="text"
+            class="form-input"
+            style="font-family: var(--font-mono);"
+            bind:value={aiConfig.endpoint}
+          />
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="ai-model-input">{t("ai.modelLabel")}</label>
+          <input
+            id="ai-model-input"
+            type="text"
+            class="form-input"
+            style="font-family: var(--font-mono);"
+            bind:value={aiConfig.model}
+            placeholder="gpt-4o-mini"
+          />
+        </div>
+        <div class="form-field">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="form-label" for="ai-apikey-input">{t("ai.apiKeyLabel")}</label>
+            {#if aiConfig.has_api_key}
+              <span class="badge-neutral">{aiConfig.memory_only ? t("ai.keyStoredMemory") : t("ai.keyStoredKeyring")}</span>
+            {/if}
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <input
+              id="ai-apikey-input"
+              type={showAiApiKey ? "text" : "password"}
+              class="form-input"
+              style="flex: 1; font-family: var(--font-mono);"
+              bind:value={aiApiKeyInput}
+              placeholder={aiConfig.has_api_key ? t("ai.apiKeyKeepExisting") : "sk-..."}
+              autocomplete="off"
+            />
+            <button type="button" class="btn-secondary btn-xs" onclick={() => (showAiApiKey = !showAiApiKey)}>
+              {showAiApiKey ? t("wsModal.auth.hidePat") : t("wsModal.auth.showPat")}
+            </button>
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="ai-system-prompt">{t("ai.systemPromptLabel")}</label>
+          <textarea
+            id="ai-system-prompt"
+            class="form-input"
+            rows="2"
+            bind:value={aiConfig.system_prompt}
+            placeholder={t("ai.systemPromptPlaceholder")}
+          ></textarea>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button
+            type="button"
+            class="btn-secondary btn-xs"
+            disabled={isTestingAi || !aiConfig.endpoint.trim() || !aiConfig.model.trim()}
+            onclick={() => void handleTestAiConnection(false)}
+          >
+            {isTestingAi ? t("ai.testingBtn") : t("ai.testConnectionBtn")}
+          </button>
+          {#if aiKeyringFallbackPending}
+            <button type="button" class="btn-primary btn-xs" onclick={() => void handleTestAiConnection(true)}>
+              {t("wsModal.auth.saveMemoryOnlyBtn")}
+            </button>
+          {/if}
+          {#if aiTestResult}
+            <span style="font-size: 11px; color: {aiTestResult.ok ? 'var(--diff-add-text)' : 'var(--diff-del-text)'};">
+              {aiTestResult.msg}
+            </span>
+          {/if}
+        </div>
       {/if}
     </div>
 
@@ -2231,12 +2480,14 @@
         <button
           type="button"
           class="btn-primary"
-          onclick={() => {
+          onclick={async () => {
             if (draftEditorPreset === "custom" && !draftCustomEditor.trim()) {
               inlineError = t("wsModal.settings.customEditorRequired");
               return;
             }
             inlineError = "";
+            const aiOk = await persistAiConfig(aiConfig.memory_only);
+            if (!aiOk && aiKeyringFallbackPending) return;
             onSaveSettings({
               repoConfig: draftRepoConfig,
               globalConfig: draftGlobalConfig,

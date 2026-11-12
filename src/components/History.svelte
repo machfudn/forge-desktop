@@ -4,6 +4,7 @@
   import Diff from "./Diff.svelte";
   import { t } from "../i18n/index.svelte";
   import { joinRepoPath, openExternalUrl } from "../utils/path";
+  import { computeCommitGraph, GRAPH_COLORS } from "../utils/commitGraph";
   import {
     copyTextToClipboard,
     openContextMenu,
@@ -16,15 +17,21 @@
     githubRepoUrl?: string | null;
     commits: CommitInfo[];
     searchQuery?: string;
+    allBranches?: boolean;
     checkRunsMap?: Record<string, { status: string; conclusion?: string }>;
+    onToggleAllBranches?: () => void;
     onCherryPick?: (sha: string) => void;
     onRevert?: (sha: string) => void;
     onTag?: (sha: string) => void;
     onDeleteTag?: (tagName: string) => void;
     onReset?: (sha: string) => void;
     onSquash?: (commitIndex: number, sha: string) => void;
+    onMergeBranch?: (branchName: string) => void;
+    onRebaseBranch?: (baseRef: string) => void;
     onRevealFile?: (filePath: string) => void;
     onOpenInEditor?: (filePath: string) => void;
+    onInspectFile?: (filePath: string, mode: "blame" | "history") => void;
+    onAiExplainCommit?: (sha: string, summary: string) => void;
     onStatus?: (msg: string, isError?: boolean) => void;
   }
 
@@ -34,15 +41,21 @@
     githubRepoUrl = null,
     commits,
     searchQuery = "",
+    allBranches = true,
     checkRunsMap = {},
+    onToggleAllBranches,
     onCherryPick,
     onRevert,
     onTag,
     onDeleteTag,
     onReset,
     onSquash,
+    onMergeBranch,
+    onRebaseBranch,
     onRevealFile,
     onOpenInEditor,
+    onInspectFile,
+    onAiExplainCommit,
     onStatus,
   }: Props = $props();
   let selectedSha = $state<string | null>(null);
@@ -258,10 +271,77 @@
           commit.author.toLowerCase().includes(q) ||
           commit.short_sha.toLowerCase().includes(q) ||
           commit.sha.toLowerCase().includes(q) ||
-          (commit.tags?.some((tag) => tag.toLowerCase().includes(q)) ?? false)
+          (commit.tags?.some((tag) => tag.toLowerCase().includes(q)) ?? false) ||
+          (commit.refs?.some((r) => r.name.toLowerCase().includes(q)) ?? false)
         );
       })
   );
+
+  const LANE_W = 14;
+  const ROW_H = 34;
+
+  let graphLayouts = $derived(
+    computeCommitGraph(indexedCommits.map((x) => x.commit))
+  );
+  let maxGraphCols = $derived(
+    Math.min(10, Math.max(1, ...graphLayouts.map((g) => g.maxLanes)))
+  );
+  let graphColWidth = $derived(maxGraphCols * LANE_W + 10);
+
+  interface DragCommitPayload {
+    sha: string;
+    shortSha: string;
+    branchName: string | null;
+    label: string;
+  }
+
+  let dragSource = $state<DragCommitPayload | null>(null);
+  let dropOverSha = $state<string | null>(null);
+  let dropActionPrompt = $state<{
+    source: DragCommitPayload;
+    target: CommitInfo;
+    targetBranch: string | null;
+  } | null>(null);
+
+  function handleCommitDragStart(e: DragEvent, commit: CommitInfo, explicitBranch?: string | null) {
+    const branchRef =
+      explicitBranch ??
+      commit.refs?.find((r) => r.kind === "branch" || r.kind === "remote")?.name ??
+      null;
+    dragSource = {
+      sha: commit.sha,
+      shortSha: commit.short_sha,
+      branchName: branchRef,
+      label: branchRef || commit.short_sha,
+    };
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", commit.sha);
+    }
+  }
+
+  function handleCommitDragOver(e: DragEvent, targetSha: string) {
+    if (!dragSource || dragSource.sha === targetSha) return;
+    e.preventDefault();
+    dropOverSha = targetSha;
+  }
+
+  function handleCommitDrop(e: DragEvent, targetCommit: CommitInfo) {
+    e.preventDefault();
+    dropOverSha = null;
+    if (!dragSource || dragSource.sha === targetCommit.sha) {
+      dragSource = null;
+      return;
+    }
+    const targetBranch =
+      targetCommit.refs?.find((r) => r.kind === "branch" || r.kind === "remote")?.name ?? null;
+    dropActionPrompt = {
+      source: dragSource,
+      target: targetCommit,
+      targetBranch,
+    };
+    dragSource = null;
+  }
 
   let selectedCommitSummary = $derived(
     commits.find((c) => c.sha === selectedSha) ?? null
@@ -471,6 +551,19 @@
       },
     });
 
+    if (onInspectFile) {
+      items.push({ type: "divider" });
+      items.push({
+        label: t("ctx.common.fileBlame"),
+        disabled: isDeleted,
+        onSelect: () => onInspectFile(file.path, "blame"),
+      });
+      items.push({
+        label: t("ctx.common.fileHistory"),
+        onSelect: () => onInspectFile(file.path, "history"),
+      });
+    }
+
     if (onRevealFile || onOpenInEditor) {
       items.push({ type: "divider" });
       if (onRevealFile) {
@@ -503,7 +596,20 @@
     style="--detail-pane-pct: {detailHeightPct}%; --commit-files-w: {filesWidthPx}px; --commit-files-h: {filesHeightPx}px;"
   >
     <div class="history-container {selectedSha ? 'has-detail' : ''}">
-    <div class="history-header-bar">
+    <div class="history-header-bar history-header-with-graph" style="--graph-col-w: {graphColWidth}px;">
+      <span class="history-graph-col-header">
+        <span>{t("history.colGraph")}</span>
+        {#if onToggleAllBranches}
+          <button
+            type="button"
+            class="graph-scope-btn {allBranches ? 'active' : ''}"
+            onclick={onToggleAllBranches}
+            title={t("history.toggleAllBranchesTitle")}
+          >
+            {allBranches ? t("history.allBranchesShort") : t("history.currentBranchShort")}
+          </button>
+        {/if}
+      </span>
       <span>{t("history.colSha")}</span>
       <span>{t("history.colCommit")}</span>
       <span>{t("history.colStatus")}</span>
@@ -511,20 +617,142 @@
       <span style="text-align: right;">{t("history.colDate")}</span>
     </div>
 
+    {#if dropActionPrompt}
+      <div class="graph-drop-banner">
+        <span class="graph-drop-title">
+          {t("history.dropPromptTitle", {
+            source: dropActionPrompt.source.label,
+            target: dropActionPrompt.targetBranch || dropActionPrompt.target.short_sha,
+          })}
+        </span>
+        <div class="graph-drop-actions">
+          {#if onMergeBranch && dropActionPrompt.source.branchName}
+            <button
+              type="button"
+              class="btn-primary btn-xs"
+              onclick={() => {
+                const b = dropActionPrompt!.source.branchName!;
+                dropActionPrompt = null;
+                onMergeBranch(b);
+              }}
+            >
+              {t("history.dropMerge", { branch: dropActionPrompt.source.branchName })}
+            </button>
+          {/if}
+          {#if onRebaseBranch}
+            <button
+              type="button"
+              class="btn-secondary btn-xs"
+              onclick={() => {
+                const refName = dropActionPrompt!.targetBranch || dropActionPrompt!.target.sha;
+                dropActionPrompt = null;
+                onRebaseBranch(refName);
+              }}
+            >
+              {t("history.dropRebase", { target: dropActionPrompt.targetBranch || dropActionPrompt.target.short_sha })}
+            </button>
+          {/if}
+          {#if onCherryPick}
+            <button
+              type="button"
+              class="btn-secondary btn-xs"
+              onclick={() => {
+                const sha = dropActionPrompt!.source.sha;
+                dropActionPrompt = null;
+                onCherryPick(sha);
+              }}
+            >
+              {t("history.cherryPickBtn")} ({dropActionPrompt.source.shortSha})
+            </button>
+          {/if}
+          {#if onReset}
+            <button
+              type="button"
+              class="btn-secondary btn-xs btn-danger"
+              onclick={() => {
+                const sha = dropActionPrompt!.target.sha;
+                dropActionPrompt = null;
+                onReset(sha);
+              }}
+            >
+              {t("history.resetHereBtn")}
+            </button>
+          {/if}
+          <button type="button" class="btn-secondary btn-xs" onclick={() => (dropActionPrompt = null)}>
+            {t("common.cancel")}
+          </button>
+        </div>
+      </div>
+    {/if}
+
     {#if indexedCommits.length === 0}
       <div class="empty-state">
         <span>{t("history.noSearchMatch", { query: searchQuery })}</span>
       </div>
     {:else}
-      {#each indexedCommits as { commit, index } (commit.sha)}
+      {#each indexedCommits as { commit, index }, rowIdx (commit.sha)}
         {@const isSelected = selectedSha === commit.sha}
+        {@const layout = graphLayouts[rowIdx]}
+        {@const nodeX = (layout?.lane ?? 0) * LANE_W + LANE_W / 2 + 4}
+        {@const nodeY = ROW_H / 2}
+        {@const nodeColor = GRAPH_COLORS[(layout?.colorIndex ?? 0) % GRAPH_COLORS.length]}
+        {@const isHead = commit.refs?.some((r) => r.is_current) ?? false}
         <button
           type="button"
-          class="commit-row {isSelected ? 'selected' : ''}"
+          draggable="true"
+          class="commit-row commit-row-with-graph {isSelected ? 'selected' : ''} {dropOverSha === commit.sha ? 'is-drop-target' : ''}"
+          style="--graph-col-w: {graphColWidth}px;"
           aria-expanded={isSelected}
           onclick={() => handleSelectCommit(commit.sha)}
           oncontextmenu={(e) => openCommitContextMenu(e, commit, index)}
+          ondragstart={(e) => handleCommitDragStart(e, commit)}
+          ondragover={(e) => handleCommitDragOver(e, commit.sha)}
+          ondragleave={() => {
+            if (dropOverSha === commit.sha) dropOverSha = null;
+          }}
+          ondrop={(e) => handleCommitDrop(e, commit)}
+          ondragend={() => {
+            dragSource = null;
+            dropOverSha = null;
+          }}
         >
+          <span class="commit-graph-cell" aria-hidden="true">
+            <svg class="commit-graph-svg" width={graphColWidth} height={ROW_H} viewBox="0 0 {graphColWidth} {ROW_H}">
+              {#if layout}
+                {#each layout.incomingLanes as inLane}
+                  {@const x = inLane * LANE_W + LANE_W / 2 + 4}
+                  {@const c = GRAPH_COLORS[inLane % GRAPH_COLORS.length]}
+                  <line x1={x} y1={0} x2={x} y2={nodeY} stroke={c} stroke-width="2" />
+                {/each}
+                {#each layout.segments as seg}
+                  {@const x1 = seg.fromLane * LANE_W + LANE_W / 2 + 4}
+                  {@const x2 = seg.toLane * LANE_W + LANE_W / 2 + 4}
+                  {@const segColor = GRAPH_COLORS[seg.colorIndex % GRAPH_COLORS.length]}
+                  {#if seg.fromLane === seg.toLane}
+                    <line x1={x1} y1={nodeY} x2={x2} y2={ROW_H} stroke={segColor} stroke-width="2" />
+                  {:else if seg.kind === "branch-in"}
+                    <path
+                      d="M {x1} 0 C {x1} {nodeY * 0.65}, {x2} {nodeY * 0.35}, {x2} {nodeY}"
+                      fill="none"
+                      stroke={segColor}
+                      stroke-width="2"
+                    />
+                  {:else}
+                    <path
+                      d="M {x1} {nodeY} C {x1} {nodeY + (ROW_H - nodeY) * 0.55}, {x2} {nodeY + (ROW_H - nodeY) * 0.45}, {x2} {ROW_H}"
+                      fill="none"
+                      stroke={segColor}
+                      stroke-width="2"
+                    />
+                  {/if}
+                {/each}
+              {/if}
+              {#if isHead}
+                <circle cx={nodeX} cy={nodeY} r="6.5" fill="var(--bg-app)" stroke={nodeColor} stroke-width="2" />
+              {/if}
+              <circle cx={nodeX} cy={nodeY} r={isHead ? 3.8 : 4.2} fill={nodeColor} />
+            </svg>
+          </span>
           <span class="commit-sha">
             {#if checkRunsMap[commit.sha]}
               {@const ci = checkRunsMap[commit.sha]}
@@ -541,8 +769,30 @@
             {commit.short_sha}
           </span>
           <span class="commit-summary-cell">
-            <span class="commit-summary" title={commit.summary}>{commit.summary}</span>
-            {#if commit.tags?.length}
+            {#if commit.refs?.length}
+              <span class="commit-ref-list">
+                {#each commit.refs as refItem (refItem.kind + ":" + refItem.name)}
+                  {#if refItem.kind === "tag"}
+                    <span class="tag-badge commit-tag-badge" data-tag={refItem.name} title={refItem.name}>
+                      <span class="tag-badge-label">{refItem.name}</span>
+                    </span>
+                  {:else}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <span
+                      class="graph-ref-badge kind-{refItem.kind} {refItem.is_current ? 'is-current' : ''}"
+                      draggable="true"
+                      ondragstart={(e) => {
+                        e.stopPropagation();
+                        handleCommitDragStart(e, commit, refItem.name);
+                      }}
+                      title={refItem.name}
+                    >
+                      {refItem.is_current ? `HEAD → ${refItem.name}` : refItem.name}
+                    </span>
+                  {/if}
+                {/each}
+              </span>
+            {:else if commit.tags?.length}
               <span class="commit-tag-list">
                 {#each commit.tags as tagName (tagName)}
                   <span class="tag-badge commit-tag-badge" data-tag={tagName} title={tagName}>
@@ -551,6 +801,7 @@
                 {/each}
               </span>
             {/if}
+            <span class="commit-summary" title={commit.summary}>{commit.summary}</span>
           </span>
           <span
             class="commit-push-badge {commit.is_pushed ? 'is-pushed' : 'is-local'}"
@@ -576,7 +827,6 @@
           <span class="commit-author">{commit.author}</span>
           <span class="commit-date">{commit.date}</span>
         </button>
-
         {#if isSelected}
           <div class="history-action-bar">
             <span class="badge-neutral">{commit.author}</span>
@@ -618,6 +868,16 @@
                 title={t("history.createTagTitle")}
               >
                 {t("history.createTagBtn")}
+              </button>
+            {/if}
+            {#if onAiExplainCommit}
+              <button
+                type="button"
+                onclick={() => onAiExplainCommit(commit.sha, commit.summary)}
+                class="btn-secondary btn-xs"
+                title={t("ai.explainCommitTitle")}
+              >
+                ✦ {t("ai.explainCommitBtn")}
               </button>
             {/if}
             {#if onReset}

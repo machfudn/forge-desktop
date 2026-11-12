@@ -26,6 +26,9 @@
     onAddToGitignore?: (pattern: string) => void;
     onRevealFile?: (filePath: string) => void;
     onOpenInEditor?: (filePath: string) => void;
+    onOpenConflictEditor?: (filePath: string) => void;
+    onInspectFile?: (filePath: string, mode: "blame" | "history") => void;
+    onAiGenerateCommit?: () => Promise<{ summary?: string | null; description?: string | null } | null>;
     onOpenStash?: () => void;
     onStatus?: (msg: string, isError?: boolean) => void;
     issues?: { number: number; title: string }[];
@@ -49,6 +52,9 @@
     onAddToGitignore,
     onRevealFile,
     onOpenInEditor,
+    onOpenConflictEditor,
+    onInspectFile,
+    onAiGenerateCommit,
     onOpenStash,
     onStatus,
     issues = [],
@@ -140,10 +146,27 @@
   let showCoAuthors = $state(false);
   let coAuthorName = $state("");
   let coAuthorEmail = $state("");
+  let isGeneratingAiCommit = $state(false);
 
   let stagedCount = $derived(status.files.filter((f) => f.staged).length);
   let totalCount = $derived(status.files.length);
 
+  async function handleAiGenerateCommit() {
+    if (!onAiGenerateCommit || isGeneratingAiCommit) return;
+    isGeneratingAiCommit = true;
+    try {
+      const res = await onAiGenerateCommit();
+      if (res?.summary) {
+        commitSummary = res.summary;
+      }
+      if (res?.description) {
+        commitDescription = res.description;
+        showDescription = true;
+      }
+    } finally {
+      isGeneratingAiCommit = false;
+    }
+  }
   function handleCommit() {
     const summary = commitSummary.trim();
     let desc = commitDescription.trim();
@@ -237,6 +260,27 @@
         void copyTextToClipboard(file.path, onStatus, t("ctx.status.copiedPath"));
       },
     });
+
+    if (file.is_conflict && onOpenConflictEditor) {
+      items.push({ type: "divider" });
+      items.push({
+        label: t("ctx.changes.openConflictEditor"),
+        onSelect: () => onOpenConflictEditor(file.path),
+      });
+    }
+
+    if (onInspectFile && !file.status_code.trim().startsWith("?")) {
+      items.push({ type: "divider" });
+      items.push({
+        label: t("ctx.common.fileBlame"),
+        disabled: isDeleted,
+        onSelect: () => onInspectFile(file.path, "blame"),
+      });
+      items.push({
+        label: t("ctx.common.fileHistory"),
+        onSelect: () => onInspectFile(file.path, "history"),
+      });
+    }
 
     if (onRevealFile || onOpenInEditor) {
       items.push({ type: "divider" });
@@ -395,14 +439,14 @@
           </span>
         </button>
 
-        {#if file.is_conflict && onOpenInEditor}
+        {#if file.is_conflict && (onOpenConflictEditor || onOpenInEditor)}
           <button
             type="button"
             class="btn-secondary btn-xs btn-danger"
-            title={t("changes.editConflictTitle")}
-            onclick={() => onOpenInEditor(file.path)}
+            title={onOpenConflictEditor ? t("changes.resolveConflictTitle") : t("changes.editConflictTitle")}
+            onclick={() => (onOpenConflictEditor ? onOpenConflictEditor(file.path) : onOpenInEditor?.(file.path))}
           >
-            {t("changes.editConflictBtn")}
+            {onOpenConflictEditor ? t("changes.resolveConflictBtn") : t("changes.editConflictBtn")}
           </button>
         {:else if onDiscardFile}
           <button
@@ -437,6 +481,17 @@
         {prefix.trim()}
       </button>
     {/each}
+    {#if onAiGenerateCommit}
+      <button
+        type="button"
+        class="prefix-chip ai-chip"
+        disabled={isGeneratingAiCommit || totalCount === 0}
+        onclick={handleAiGenerateCommit}
+        title={t("ai.generateCommitTitle")}
+      >
+        {isGeneratingAiCommit ? "…" : `✦ ${t("ai.generateCommitBtn")}`}
+      </button>
+    {/if}
   </div>
 
   {#if autocompleteType === "emoji" && filteredEmojis.length > 0}

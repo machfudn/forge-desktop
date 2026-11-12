@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { IssueInfo, ParsedGitHubRepo, PullRequestInfo } from "../types/git";
+  import type { IssueInfo, ParsedGitHubRepo, ParsedHostingRepo, PullRequestInfo } from "../types/git";
   import * as gitService from "../services/git";
   import { openExternalUrl } from "../utils/path";
   import { t } from "../i18n/index.svelte";
@@ -24,6 +24,7 @@
     activeRepo: string;
     currentBranch: string;
     githubRepoInfo: ParsedGitHubRepo | null;
+    hostingRepoInfo?: ParsedHostingRepo | null;
     pullRequests: PullRequestInfo[];
     issues: IssueInfo[];
     prTab: "prs" | "issues";
@@ -41,7 +42,7 @@
     confirmDanger: boolean;
     onConfirmSubmit: () => Promise<void>;
     onSwitchPrTab: (tab: "prs" | "issues") => Promise<void>;
-    onCheckoutPr: (prNumber: number) => Promise<void>;
+    onCheckoutPr: (prNumber: number, headBranch?: string) => Promise<void>;
     onReloadRepo: () => Promise<void>;
     onReloadHistory: () => Promise<void>;
     onReloadTags: () => Promise<void>;
@@ -54,6 +55,7 @@
     activeRepo,
     currentBranch,
     githubRepoInfo,
+    hostingRepoInfo = null,
     pullRequests,
     issues,
     prTab,
@@ -166,9 +168,24 @@
   }
 
   function handleCreatePR() {
-    if (!githubRepoInfo || !currentBranch || currentBranch === "HEAD terlepas") return;
-    const url = `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}/compare/${encodeURIComponent(currentBranch)}?expand=1`;
-    openExternalUrl(url);
+    if (!currentBranch || currentBranch === "HEAD terlepas") return;
+    if (hostingRepoInfo) {
+      const base = hostingRepoInfo.web_url.replace(/\/+$/, "");
+      let url = `${base}/compare/${encodeURIComponent(currentBranch)}?expand=1`;
+      if (hostingRepoInfo.provider === "gitlab") {
+        url = `${base}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(currentBranch)}`;
+      } else if (hostingRepoInfo.provider === "bitbucket") {
+        url = `${base}/pull-requests/new?source=${encodeURIComponent(currentBranch)}`;
+      } else if (hostingRepoInfo.provider === "azure_devops") {
+        url = `${base}/pullrequestcreate?sourceRef=${encodeURIComponent(currentBranch)}`;
+      }
+      openExternalUrl(url);
+      return;
+    }
+    if (!githubRepoInfo) return;
+    openExternalUrl(
+      `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}/compare/${encodeURIComponent(currentBranch)}?expand=1`
+    );
   }
 
   const modalTitle = $derived.by(() => {
@@ -176,12 +193,14 @@
       case "tag": return t("hgModal.titleTag");
       case "squash": return t("hgModal.titleSquash", { count: squashCount });
       case "rebase": return t("hgModal.titleRebase");
-      case "pr":
-        return t("hgModal.titlePr", {
-          repo: githubRepoInfo
+      case "pr": {
+        const label = hostingRepoInfo
+          ? `${hostingRepoInfo.namespace}/${hostingRepoInfo.repo}`
+          : githubRepoInfo
             ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}`
-            : t("hgModal.titlePrFallback"),
-        });
+            : t("hgModal.titlePrFallback");
+        return t("hgModal.titlePr", { repo: label });
+      }
       case "confirm": return confirmTitle;
     }
   });
@@ -219,8 +238,7 @@
             type="button"
             onclick={handleCreatePR}
             class="btn-primary btn-xs"
-            disabled={!githubRepoInfo || currentBranch === "HEAD terlepas"}
-            title={t("hgModal.openBrowserPrTitle")}
+            disabled={(!hostingRepoInfo && !githubRepoInfo) || currentBranch === "HEAD terlepas"}
           >
             {t("hgModal.createPrBtn")}
           </button>
@@ -375,7 +393,7 @@
                     </div>
                   </div>
                   <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                    <button type="button" onclick={() => onCheckoutPr(pr.number)} class="btn-primary btn-xs">
+                    <button type="button" onclick={() => onCheckoutPr(pr.number, pr.head_branch)} class="btn-primary btn-xs">
                       {t("hgModal.checkout")}
                     </button>
                     <button type="button" onclick={() => openExternalUrl(pr.html_url)} class="btn-secondary btn-xs">

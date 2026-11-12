@@ -12,6 +12,7 @@
     CommitInfo,
     DiagnosticReport,
     FileEntry,
+    ParsedHostingRepo,
     ImageDiffData,
     IssueInfo,
     ParsedGitHubRepo,
@@ -31,6 +32,12 @@
     type HistoryGithubModalType,
     type RebaseItem,
   } from "./components/HistoryGithubModals.svelte";
+  import ConflictEditorModal from "./components/ConflictEditorModal.svelte";
+  import FileInspectModal from "./components/FileInspectModal.svelte";
+  import WorkspaceToolsModal from "./components/WorkspaceToolsModal.svelte";
+  import TerminalDrawer from "./components/TerminalDrawer.svelte";
+  import AiAssistantModal from "./components/AiAssistantModal.svelte";
+  import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
   import { joinRepoPath, openExternalUrl, pathBaseName } from "./utils/path";
   import {
     copyTextToClipboard,
@@ -91,6 +98,17 @@
 
   // Active modal
   let activeModal = $state<ModalType>(null);
+  let allBranches = $state(true);
+  let conflictFilePath = $state<string | null>(null);
+  let inspectFileState = $state<{ path: string; mode: "blame" | "history" } | null>(null);
+  let workspaceToolsTab = $state<"reflog" | "submodules" | "worktrees" | null>(null);
+  let terminalOpen = $state(false);
+  let aiModalState = $state<{
+    task: "custom_ask" | "explain_diff" | "explain_commit" | "review_changes";
+    prompt: string;
+    context: string;
+  } | null>(null);
+  let paletteOpen = $state(false);
 
   // Shared modal states
   let recentRepos = $state<string[]>([]);
@@ -224,6 +242,7 @@
   });
   let accountHealthMap = $state<Record<string, AccountHealth>>({});
   let githubRepoInfo = $state<ParsedGitHubRepo | null>(null);
+  let hostingRepoInfo = $state<ParsedHostingRepo | null>(null);
   let pullRequests = $state<PullRequestInfo[]>([]);
   let issues = $state<IssueInfo[]>([]);
   let prTab = $state<"prs" | "issues">("prs");
@@ -234,8 +253,8 @@
   const activeRepoAccount = $derived.by<AccountProfile | null>(() => {
     const list = accountOverview.accounts;
     if (list.length === 0) return null;
-    if (currentStatus && githubRepoInfo) {
-      const host = githubRepoInfo.host;
+    const host = hostingRepoInfo?.host || githubRepoInfo?.host;
+    if (currentStatus && host) {
       if (accountOverview.active_repo_account_id) {
         const bound = list.find(
           (a) => a.id === accountOverview.active_repo_account_id && a.host === host
@@ -598,10 +617,12 @@
       }
       const origin = remotes.find((r) => r.name === "origin") || remotes[0];
       githubRepoInfo = origin ? await gitService.parseGithubRepository(origin.url) : null;
+      hostingRepoInfo = origin ? await gitService.parseHostingRepository(origin.url).catch(() => null) : null;
     } catch {
       repoRemotes = [];
       hasRemote = false;
       githubRepoInfo = null;
+      hostingRepoInfo = null;
     }
   }
 
@@ -728,7 +749,9 @@
           : Promise.resolve({ ...EMPTY_AHEAD_BEHIND, is_unborn: !status.has_commits }),
         status.files.length > 0 ? loadDiffForFile(status.files[0]) : Promise.resolve(),
         gitService.listTags(repoPath),
-        activeView === "history" ? gitService.getCommitHistory(repoPath, 80) : Promise.resolve(null),
+        activeView === "history"
+          ? gitService.getCommitHistory(repoPath, 100, allBranches)
+          : Promise.resolve(null),
         gitService.listRemotes(repoPath),
         refreshAccounts(repoPath),
       ]);
@@ -750,9 +773,13 @@
         const origin = remotes.find((r) => r.name === "origin") || remotes[0];
         if (origin) {
           try {
-            const ghParsed = await gitService.parseGithubRepository(origin.url);
+            const [ghParsed, hostParsed] = await Promise.all([
+              gitService.parseGithubRepository(origin.url).catch(() => null),
+              gitService.parseHostingRepository(origin.url).catch(() => null),
+            ]);
             if (reqSeq !== loadRepoSeq) return;
             githubRepoInfo = ghParsed;
+            hostingRepoInfo = hostParsed;
             if (ghParsed && activeRepoAccount && !githubRateLimited) {
               gitService
                 .listGithubIssues(ghParsed.owner, ghParsed.repo, ghParsed.host, repoPath)
@@ -767,11 +794,12 @@
             }
           } catch {
             githubRepoInfo = null;
+            hostingRepoInfo = null;
           }
         } else {
           githubRepoInfo = null;
+          hostingRepoInfo = null;
         }
-      } else {
         repoRemotes = [];
         hasRemote = false;
         githubRepoInfo = null;
@@ -814,6 +842,106 @@
       setStatus(t("app.status.hunkFailed", { err: String(err) }), true);
     }
   }
+  async function handleStageLines(
+    hunkPatch: string,
+    selectedIndices: number[],
+    reverse: boolean
+  ) {
+    try {
+      await gitService.stageLines(activeRepo, hunkPatch, selectedIndices, reverse);
+      await loadRepo(activeRepo);
+      setStatus(reverse ? t("app.status.linesUnstaged") : t("app.status.linesStaged"));
+    } catch (err) {
+      setStatus(t("app.status.hunkFailed", { err: String(err) }), true);
+    }
+  }
+
+  async function handleAiGenerateCommit(): Promise<{
+    summary?: string | null;
+    description?: string | null;
+  } | null> {
+    if (!activeRepo) return null;
+    try {
+      setStatus(t("ai.generatingCommit"));
+      const res = await gitService.aiRunTask("commit_message", "", activeRepo);
+      const raw = res.content.trim();
+      const summaryMatch = raw.match(/^SUMMARY:\s*(.+)$/im);
+      const descMatch = raw.match(/^DESCRIPTION:\s*([\s\S]+)$/im);
+      let summary = summaryMatch ? summaryMatch[1].trim() : "";
+      let description = descMatch ? descMatch[1].trim() : "";
+      if (!summary) {
+        const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        summary = (lines[0] || "").replace(/^[-*`#]+\s*/, "");
+        description = lines.slice(1).join("\n");
+      }
+      setStatus(t("ai.generatedCommit", { model: res.model }));
+      return { summary, description };
+    } catch (err) {
+      setStatus(String(err), true);
+      return null;
+    }
+  }
+
+  function handleAiExplainDiff(filePath: string, diffText: string) {
+    aiModalState = {
+      task: "explain_diff",
+      prompt: `Explain changes in ${filePath}`,
+      context: diffText.slice(0, 12000),
+    };
+  }
+
+  function handleAiExplainCommit(sha: string, summary: string) {
+    aiModalState = {
+      task: "explain_commit",
+      prompt: `Explain commit ${sha.slice(0, 8)}: ${summary}`,
+      context: `Commit SHA: ${sha}\nSummary: ${summary}`,
+    };
+  }
+
+  async function handleMergeBranchFromGraph(branchName: string) {
+    if (!activeRepo) return;
+    try {
+      isLoading = true;
+      const res = await gitService.mergeBranch(activeRepo, branchName);
+      setStatus(res || t("app.status.mergedBranch", { branch: branchName }));
+      await loadRepo(activeRepo);
+      if (activeView === "history") {
+        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
+      }
+    } catch (err) {
+      setStatus(String(err), true);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleRebaseBranchFromGraph(baseRef: string) {
+    if (!activeRepo) return;
+    try {
+      isLoading = true;
+      const res = await gitService.rebaseBranch(activeRepo, baseRef);
+      setStatus(res || t("app.status.rebasedBranch", { branch: baseRef }));
+      await loadRepo(activeRepo);
+      if (activeView === "history") {
+        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
+      }
+    } catch (err) {
+      setStatus(String(err), true);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function toggleAllBranches() {
+    allBranches = !allBranches;
+    if (activeRepo && activeView === "history") {
+      try {
+        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
+      } catch (err) {
+        setStatus(String(err), true);
+      }
+    }
+  }
 
   async function toggleStage(file: FileEntry) {
     try {
@@ -852,7 +980,7 @@
       setStatus(amend ? t("app.status.commitAmended") : t("app.status.commitCreated"));
       await loadRepo(activeRepo);
       if (activeView === "history") {
-        commits = await gitService.getCommitHistory(activeRepo, 80);
+        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
       }
     } catch (err) {
       setStatus(String(err), true);
@@ -869,7 +997,7 @@
           setStatus(t("app.status.undoCommitDone"));
           await loadRepo(activeRepo);
           if (activeView === "history") {
-            commits = await gitService.getCommitHistory(activeRepo, 80);
+            commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
           }
         } catch (err) {
           setStatus(String(err), true);
@@ -957,7 +1085,7 @@
     activeView = view;
     if (view === "history" && activeRepo) {
       try {
-        commits = await gitService.getCommitHistory(activeRepo, 80);
+        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
         tags = await gitService.listTags(activeRepo);
         if (githubRepoInfo && activeRepoAccount && !githubRateLimited && commits.length > 0) {
           const checkPromises = commits.slice(0, 12).map(async (c) => {
@@ -1065,28 +1193,39 @@
   }
 
   async function openPrModal() {
-    if (!githubRepoInfo) return;
+    const hostInfo = hostingRepoInfo;
+    if (!githubRepoInfo && !hostInfo) return;
     activeModal = "pr";
     prTab = "prs";
     isLoadingGithub = true;
     githubError = "";
     try {
-      const [prs, iss] = await Promise.all([
-        gitService.listGithubPullRequests(
-          githubRepoInfo.owner,
-          githubRepoInfo.repo,
-          githubRepoInfo.host,
-          activeRepo
-        ),
-        gitService.listGithubIssues(
-          githubRepoInfo.owner,
-          githubRepoInfo.repo,
-          githubRepoInfo.host,
-          activeRepo
-        ),
-      ]);
-      pullRequests = prs;
-      issues = iss;
+      if (hostInfo && hostInfo.provider !== "github") {
+        const originUrl = (repoRemotes.find((r) => r.name === "origin") || repoRemotes[0])?.url || "";
+        const [prs, iss] = await Promise.all([
+          gitService.listProviderPullRequests(originUrl, activeRepo),
+          gitService.listProviderIssues(originUrl, activeRepo),
+        ]);
+        pullRequests = prs;
+        issues = iss;
+      } else if (githubRepoInfo) {
+        const [prs, iss] = await Promise.all([
+          gitService.listGithubPullRequests(
+            githubRepoInfo.owner,
+            githubRepoInfo.repo,
+            githubRepoInfo.host,
+            activeRepo
+          ),
+          gitService.listGithubIssues(
+            githubRepoInfo.owner,
+            githubRepoInfo.repo,
+            githubRepoInfo.host,
+            activeRepo
+          ),
+        ]);
+        pullRequests = prs;
+        issues = iss;
+      }
     } catch (err) {
       const msg = formatGithubError(err);
       githubError = msg;
@@ -1098,24 +1237,34 @@
 
   async function handleSwitchPrTab(tab: "prs" | "issues") {
     prTab = tab;
-    if (!githubRepoInfo) return;
+    const hostInfo = hostingRepoInfo;
+    if (!githubRepoInfo && !hostInfo) return;
     isLoadingGithub = true;
     githubError = "";
     try {
-      if (tab === "prs") {
-        pullRequests = await gitService.listGithubPullRequests(
-          githubRepoInfo.owner,
-          githubRepoInfo.repo,
-          githubRepoInfo.host,
-          activeRepo
-        );
-      } else {
-        issues = await gitService.listGithubIssues(
-          githubRepoInfo.owner,
-          githubRepoInfo.repo,
-          githubRepoInfo.host,
-          activeRepo
-        );
+      if (hostInfo && hostInfo.provider !== "github") {
+        const originUrl = (repoRemotes.find((r) => r.name === "origin") || repoRemotes[0])?.url || "";
+        if (tab === "prs") {
+          pullRequests = await gitService.listProviderPullRequests(originUrl, activeRepo);
+        } else {
+          issues = await gitService.listProviderIssues(originUrl, activeRepo);
+        }
+      } else if (githubRepoInfo) {
+        if (tab === "prs") {
+          pullRequests = await gitService.listGithubPullRequests(
+            githubRepoInfo.owner,
+            githubRepoInfo.repo,
+            githubRepoInfo.host,
+            activeRepo
+          );
+        } else {
+          issues = await gitService.listGithubIssues(
+            githubRepoInfo.owner,
+            githubRepoInfo.repo,
+            githubRepoInfo.host,
+            activeRepo
+          );
+        }
       }
     } catch (err) {
       const msg = formatGithubError(err);
@@ -1126,11 +1275,19 @@
     }
   }
 
-  async function handleCheckoutPr(prNumber: number) {
+  async function handleCheckoutPr(prNumber: number, headBranch = "") {
     activeModal = null;
     try {
       setStatus(t("app.status.checkingOutPr", { num: prNumber }));
-      const res = await gitService.checkoutGithubPullRequest(activeRepo, prNumber);
+      const res =
+        hostingRepoInfo && hostingRepoInfo.provider !== "github"
+          ? await gitService.checkoutProviderPullRequest(
+              activeRepo,
+              hostingRepoInfo.provider,
+              prNumber,
+              headBranch
+            )
+          : await gitService.checkoutGithubPullRequest(activeRepo, prNumber);
       setStatus(res || t("app.status.checkedOutPr", { num: prNumber }));
       await loadRepo(activeRepo);
     } catch (err) {
@@ -1432,7 +1589,7 @@
           const [nextTags, nextCommits] = await Promise.all([
             gitService.listTags(activeRepo),
             activeView === "history"
-              ? gitService.getCommitHistory(activeRepo, 80)
+              ? gitService.getCommitHistory(activeRepo, 100, allBranches)
               : Promise.resolve(null),
           ]);
           tags = nextTags;
@@ -1456,7 +1613,7 @@
           setStatus(res || t("app.status.resetDone"));
           await loadRepo(activeRepo);
           if (activeView === "history") {
-            commits = await gitService.getCommitHistory(activeRepo, 80);
+            commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
           }
         } catch (err) {
           setStatus(String(err), true);
@@ -1679,7 +1836,28 @@
       if (e.key === "Escape") {
         syncMenuOpen = false;
         toolsMenuOpen = false;
-        if (activeModal) activeModal = null;
+        if (paletteOpen) {
+          paletteOpen = false;
+        } else if (aiModalState) {
+          aiModalState = null;
+        } else if (conflictFilePath) {
+          conflictFilePath = null;
+        } else if (inspectFileState) {
+          inspectFileState = null;
+        } else if (workspaceToolsTab) {
+          workspaceToolsTab = null;
+        } else if (activeModal) {
+          activeModal = null;
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        paletteOpen = !paletteOpen;
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        paletteOpen = !paletteOpen;
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "`" && activeRepo) {
+        e.preventDefault();
+        terminalOpen = !terminalOpen;
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o" && !activeModal) {
         e.preventDefault();
         openOpenModal();
@@ -1778,6 +1956,61 @@
       ? activeModal
       : null
   );
+  const paletteCommands = $derived.by<PaletteCommand[]>(() => {
+    const cmds: PaletteCommand[] = [
+      { id: "open-repo", category: "Repo", label: t("app.menu.openRepo"), shortcut: "Ctrl+O", action: openOpenModal },
+      { id: "clone-repo", category: "Repo", label: t("app.menu.cloneUrl"), action: () => { activeModal = "clone"; } },
+      { id: "init-repo", category: "Repo", label: t("app.menu.initRepo"), action: () => { activeModal = "init"; } },
+      { id: "ask-ai", category: "AI", label: t("palette.askAi"), action: () => { aiModalState = { task: "custom_ask", prompt: "", context: "" }; } },
+      { id: "settings", category: "App", label: t("app.menu.settings"), action: openSettingsModal },
+      { id: "accounts", category: "App", label: t("app.menu.manageGithubAccounts"), action: () => { activeModal = "auth"; } },
+    ];
+    if (activeRepo && currentStatus) {
+      cmds.push(
+        { id: "view-changes", category: "View", label: t("app.tabChanges"), action: () => switchView("changes") },
+        { id: "view-history", category: "View", label: t("app.tabHistory"), action: () => switchView("history") },
+        { id: "toggle-terminal", category: "Tools", label: t("terminal.toggleCommand"), shortcut: "Ctrl+`", action: () => { terminalOpen = !terminalOpen; } },
+        { id: "open-reflog", category: "Tools", label: t("wsTools.tabReflog"), action: () => { workspaceToolsTab = "reflog"; } },
+        { id: "open-submodules", category: "Tools", label: t("wsTools.tabSubmodules"), action: () => { workspaceToolsTab = "submodules"; } },
+        { id: "open-worktrees", category: "Tools", label: t("wsTools.tabWorktrees"), action: () => { workspaceToolsTab = "worktrees"; } },
+        { id: "open-branches", category: "Git", label: t("ctx.branch.manage"), action: openBranchModal },
+        { id: "open-stash", category: "Git", label: t("app.manageStash"), action: () => { activeModal = "stash"; } },
+        { id: "ai-review", category: "AI", label: t("palette.aiReview"), action: () => { aiModalState = { task: "review_changes", prompt: "Review staged & unstaged changes", context: "" }; } },
+        { id: "ai-commit", category: "AI", label: t("palette.aiGenerateCommit"), action: () => void handleAiGenerateCommit() },
+        { id: "git-fetch", category: "Git", label: t("app.fetch"), action: handleFetch },
+        { id: "git-pull", category: "Git", label: t("app.pull"), action: handlePull },
+        { id: "git-push", category: "Git", label: t("app.push"), action: handlePush }
+      );
+      const conflicted = currentStatus.files.find((f) => f.is_conflict);
+      if (conflicted) {
+        cmds.push({
+          id: "resolve-conflict",
+          category: "Git",
+          label: `${t("conflict.resolveBtn")}: ${conflicted.path}`,
+          action: () => { conflictFilePath = conflicted.path; },
+        });
+      }
+      if (selectedFile) {
+        const fp = selectedFile.path;
+        cmds.push(
+          { id: "file-blame", category: "Inspect", label: `Blame: ${fp}`, action: () => { inspectFileState = { path: fp, mode: "blame" }; } },
+          { id: "file-history", category: "Inspect", label: `File History: ${fp}`, action: () => { inspectFileState = { path: fp, mode: "history" }; } }
+        );
+      }
+      for (const b of branches.filter((x) => !x.is_current).slice(0, 15)) {
+        cmds.push({
+          id: `checkout-${b.name}`,
+          category: "Branch",
+          label: `${t("palette.checkoutPrefix")} ${b.name}`,
+          action: async () => {
+            await gitService.switchBranch(activeRepo, b.name);
+            await loadRepo(activeRepo);
+          },
+        });
+      }
+    }
+    return cmds;
+  });
 </script>
 
 <div class="app-container">
@@ -1958,7 +2191,7 @@
           </div>
         {/if}
 
-        {#if githubRepoInfo}
+        {#if githubRepoInfo || hostingRepoInfo}
           <button
             type="button"
             class="btn-secondary header-pr-btn"
@@ -1969,6 +2202,33 @@
             {t("app.prIssuesBtn")}
           </button>
         {/if}
+        <button
+          type="button"
+          class="btn-secondary"
+          style="height: 28px; padding: 0 9px; font-size: 12px;"
+          onclick={() => (aiModalState = { task: "custom_ask", prompt: "", context: "" })}
+          title={t("ai.assistantTitle")}
+        >
+          ✦ AI
+        </button>
+        <button
+          type="button"
+          class="btn-secondary {terminalOpen ? 'is-highlighted' : ''}"
+          style="height: 28px; padding: 0 9px; font-size: 12px;"
+          onclick={() => (terminalOpen = !terminalOpen)}
+          title={t("terminal.toggleCommand")}
+        >
+          &gt;_
+        </button>
+        <button
+          type="button"
+          class="btn-secondary"
+          style="height: 28px; padding: 0 8px; font-size: 11px; font-family: var(--font-mono);"
+          onclick={() => (paletteOpen = true)}
+          title={t("palette.title")}
+        >
+          ⌘K
+        </button>
 
         <div class="header-divider header-quick-divider"></div>
 
@@ -2104,6 +2364,53 @@
                 <span>{t("app.menu.createTagHead")}</span>
               </button>
             {/if}
+              <div class="popover-divider"></div>
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                onclick={() => {
+                  toolsMenuOpen = false;
+                  paletteOpen = true;
+                }}
+              >
+                <span>{t("palette.title")}</span>
+                <span class="popover-item-hint">Ctrl+K</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                onclick={() => {
+                  toolsMenuOpen = false;
+                  terminalOpen = !terminalOpen;
+                }}
+              >
+                <span>{t("terminal.toggleCommand")}</span>
+                <span class="popover-item-hint">Ctrl+`</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                onclick={() => {
+                  toolsMenuOpen = false;
+                  workspaceToolsTab = "reflog";
+                }}
+              >
+                <span>{t("wsTools.menuLabel")}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                onclick={() => {
+                  toolsMenuOpen = false;
+                  aiModalState = { task: "custom_ask", prompt: "", context: "" };
+                }}
+              >
+                <span>✦ {t("ai.assistantTitle")}</span>
+              </button>
 
             <div class="popover-divider"></div>
             <button
@@ -2283,6 +2590,9 @@
             onAddToGitignore={handleAddToGitignore}
             onRevealFile={openInFileManagerTarget}
             onOpenInEditor={openInEditorFile}
+            onOpenConflictEditor={(fp) => (conflictFilePath = fp)}
+            onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })}
+            onAiGenerateCommit={handleAiGenerateCommit}
             onOpenStash={() => (activeModal = "stash")}
             onStatus={setStatus}
             issues={issues.map((i) => ({ number: i.number, title: i.title }))}
@@ -2371,6 +2681,9 @@
               onToggleWhitespace={toggleWhitespace}
               onAddToGitignore={handleAddToGitignore}
               onStageHunk={handleStageHunk}
+              onStageLines={handleStageLines}
+              onInspectFile={(fp: string, mode: "blame" | "history") => (inspectFileState = { path: fp, mode })}
+              onAiExplainDiff={handleAiExplainDiff}
               onRevealFile={openInFileManagerTarget}
               onOpenInEditor={openInEditorFile}
               onStatus={setStatus}
@@ -2433,7 +2746,9 @@
             githubRepoUrl={githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null}
             {commits}
             searchQuery={historySearch}
+            {allBranches}
             {checkRunsMap}
+            onToggleAllBranches={toggleAllBranches}
             onStatus={setStatus}
             onCherryPick={handleCherryPick}
             onRevert={handleRevert}
@@ -2441,12 +2756,24 @@
             onDeleteTag={handleDeleteTag}
             onReset={handleReset}
             onSquash={(idx) => handleOpenSquash(idx)}
+            onMergeBranch={handleMergeBranchFromGraph}
+            onRebaseBranch={handleRebaseBranchFromGraph}
+            onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })}
+            onAiExplainCommit={handleAiExplainCommit}
             onRevealFile={openInFileManagerTarget}
             onOpenInEditor={openInEditorFile}
           />
         {/if}
       </section>
     </main>
+  {/if}
+
+  {#if terminalOpen && activeRepo}
+    <TerminalDrawer
+      repoPath={activeRepo}
+      onClose={() => (terminalOpen = false)}
+      onRefreshRepo={() => loadRepo(activeRepo)}
+    />
   {/if}
 
   <footer class="app-footer">
@@ -2534,6 +2861,7 @@
     {activeRepo}
     currentBranch={currentStatus?.branch || ""}
     {githubRepoInfo}
+    {hostingRepoInfo}
     {pullRequests}
     {issues}
     {prTab}
@@ -2554,13 +2882,13 @@
     onCheckoutPr={handleCheckoutPr}
     onReloadRepo={() => loadRepo(activeRepo)}
     onReloadHistory={async () => {
-      commits = await gitService.getCommitHistory(activeRepo, 80);
+      commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
     }}
     onReloadTags={async () => {
       const [nextTags, nextCommits] = await Promise.all([
         gitService.listTags(activeRepo),
         activeView === "history"
-          ? gitService.getCommitHistory(activeRepo, 80)
+          ? gitService.getCommitHistory(activeRepo, 100, allBranches)
           : Promise.resolve(null),
       ]);
       tags = nextTags;
@@ -2578,4 +2906,55 @@
   />
 {/if}
 
+
+{#if conflictFilePath && activeRepo}
+  <ConflictEditorModal
+    repoPath={activeRepo}
+    conflictedFiles={(currentStatus?.files.filter((f) => f.is_conflict).map((f) => f.path)) || [conflictFilePath]}
+    initialFilePath={conflictFilePath}
+    onClose={() => (conflictFilePath = null)}
+    onResolved={async () => {
+      conflictFilePath = null;
+      await loadRepo(activeRepo);
+    }}
+    onStatus={setStatus}
+  />
+{/if}
+
+{#if inspectFileState && activeRepo}
+  <FileInspectModal
+    repoPath={activeRepo}
+    filePath={inspectFileState.path}
+    initialMode={inspectFileState.mode}
+    onClose={() => (inspectFileState = null)}
+    onStatus={setStatus}
+  />
+{/if}
+
+{#if workspaceToolsTab && activeRepo}
+  <WorkspaceToolsModal
+    repoPath={activeRepo}
+    initialTab={workspaceToolsTab}
+    onClose={() => (workspaceToolsTab = null)}
+    onRefreshRepo={() => loadRepo(activeRepo)}
+    onOpenWorktreeRepo={loadRepo}
+    onStatus={setStatus}
+  />
+{/if}
+
+{#if aiModalState}
+  <AiAssistantModal
+    repoPath={activeRepo}
+    initialTask={aiModalState.task}
+    initialPrompt={aiModalState.prompt}
+    initialContext={aiModalState.context}
+    onClose={() => (aiModalState = null)}
+    onOpenSettings={openSettingsModal}
+    onStatus={setStatus}
+  />
+{/if}
+
+{#if paletteOpen}
+  <CommandPalette commands={paletteCommands} onClose={() => (paletteOpen = false)} />
+{/if}
 <ContextMenu />

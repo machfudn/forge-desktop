@@ -20,6 +20,9 @@
     onToggleWhitespace?: () => void;
     onAddToGitignore?: (path: string) => void;
     onStageHunk?: (patchText: string, reverse: boolean) => void;
+    onStageLines?: (hunkPatch: string, selectedIndices: number[], reverse: boolean) => void;
+    onInspectFile?: (filePath: string, mode: "blame" | "history") => void;
+    onAiExplainDiff?: (filePath: string, diffText: string) => void;
     onRevealFile?: (filePath: string) => void;
     onOpenInEditor?: (filePath: string) => void;
     onStatus?: (msg: string, isError?: boolean) => void;
@@ -29,7 +32,7 @@
     repoPath = "",
     externalEditorLabel = "Editor",
     filePath,
-    diffText,
+    diffText = "",
     imageDiffData = null,
     ignoreWhitespace = false,
     isLfs = false,
@@ -37,6 +40,9 @@
     onToggleWhitespace,
     onAddToGitignore,
     onStageHunk,
+    onStageLines,
+    onInspectFile,
+    onAiExplainDiff,
     onRevealFile,
     onOpenInEditor,
     onStatus,
@@ -136,8 +142,9 @@
     html: string;
     isHunkHeader: boolean;
     hunkPatch?: string;
+    hunkKey?: string;
+    bodyIdx?: number;
   }
-
   interface HunkBlock {
     lines: string[];
     minusHeader: string;
@@ -174,10 +181,13 @@
   }
 
   function parseLines(diff: string, path: string): ParsedLine[] {
-    if (!diff.trim()) return [];
+    if (!diff || !diff.trim()) return [];
     const rawLines = diff.split("\n");
     const hunks = extractHunks(diff, path);
     let hunkIdx = 0;
+    let activeHunkPatch: string | undefined = undefined;
+    let activeHunkKey: string | undefined = undefined;
+    let activeBodyIdx = 0;
     let oldLn = 0;
     let newLn = 0;
     let inHunk = false;
@@ -188,10 +198,14 @@
         oldLn = starts.oldStart;
         newLn = starts.newStart;
         inHunk = true;
+        const curIdx = hunkIdx;
         const hunk = hunks[hunkIdx++];
         const hunkPatch = hunk
           ? `${hunk.minusHeader}\n${hunk.plusHeader}\n${hunk.lines.join("\n")}\n`
           : undefined;
+        activeHunkPatch = hunkPatch;
+        activeHunkKey = `hunk-${curIdx}`;
+        activeBodyIdx = 0;
         return {
           line,
           kind: "meta",
@@ -200,6 +214,7 @@
           html: highlightLine(line),
           isHunkHeader: true,
           hunkPatch,
+          hunkKey: activeHunkKey,
         };
       }
 
@@ -221,6 +236,7 @@
 
       if (line.startsWith("+")) {
         const ln = inHunk ? newLn++ : null;
+        const bIdx = inHunk ? activeBodyIdx++ : undefined;
         return {
           line,
           kind: "add",
@@ -228,11 +244,15 @@
           newLn: ln,
           html: highlightLine(line),
           isHunkHeader: false,
+          hunkPatch: activeHunkPatch,
+          hunkKey: activeHunkKey,
+          bodyIdx: bIdx,
         };
       }
 
       if (line.startsWith("-")) {
         const ln = inHunk ? oldLn++ : null;
+        const bIdx = inHunk ? activeBodyIdx++ : undefined;
         return {
           line,
           kind: "del",
@@ -240,11 +260,18 @@
           newLn: null,
           html: highlightLine(line),
           isHunkHeader: false,
+          hunkPatch: activeHunkPatch,
+          hunkKey: activeHunkKey,
+          bodyIdx: bIdx,
         };
       }
 
       const o = inHunk && !line.startsWith("\\") ? oldLn++ : null;
       const n = inHunk && !line.startsWith("\\") ? newLn++ : null;
+      const bIdx = inHunk && !line.startsWith("\\") ? activeBodyIdx++ : undefined;
+      if (inHunk && line.startsWith("\\")) {
+        activeBodyIdx++;
+      }
       return {
         line,
         kind: "ctx",
@@ -252,6 +279,9 @@
         newLn: n,
         html: highlightLine(line),
         isHunkHeader: false,
+        hunkPatch: activeHunkPatch,
+        hunkKey: activeHunkKey,
+        bodyIdx: bIdx,
       };
     });
   }
@@ -268,7 +298,7 @@
   }
 
   function parseSplit(diff: string, path: string): SplitRow[] {
-    if (!diff.trim()) return [];
+    if (!diff || !diff.trim()) return [];
     const rawLines = diff.split("\n");
     const hunks = extractHunks(diff, path);
     let hunkIdx = 0;
@@ -369,7 +399,7 @@
   }
 
   function renderMarkdownDiff(text: string): { type: "add" | "del" | "ctx"; html: string }[] {
-    const rawLines = text.split("\n");
+    const rawLines = (text || "").split("\n");
     const result: { type: "add" | "del" | "ctx"; html: string }[] = [];
 
     for (const line of rawLines) {
@@ -418,13 +448,57 @@
     return result;
   }
 
-  let lines = $derived(parseLines(diffText, filePath));
-  let splitRows = $derived(parseSplit(diffText, filePath));
+  let safeDiffText = $derived(diffText ?? "");
+  let lines = $derived(parseLines(safeDiffText, filePath));
+  let splitRows = $derived(parseSplit(safeDiffText, filePath));
   let stats = $derived({
     adds: lines.filter((l) => l.kind === "add").length,
     dels: lines.filter((l) => l.kind === "del").length,
   });
 
+  let selectedLineMap = $state<Record<string, true>>({});
+  let selectedLineCount = $derived(Object.keys(selectedLineMap).length);
+
+  $effect(() => {
+    // Clear line selections whenever file or diff changes
+    void filePath;
+    void diffText;
+    selectedLineMap = {};
+  });
+
+  function lineSelectKey(item: ParsedLine): string | null {
+    if (!item.hunkKey || item.bodyIdx === undefined) return null;
+    return `${item.hunkKey}:${item.bodyIdx}`;
+  }
+
+  function toggleLineSelection(item: ParsedLine) {
+    const key = lineSelectKey(item);
+    if (!key) return;
+    if (selectedLineMap[key]) {
+      const next = { ...selectedLineMap };
+      delete next[key];
+      selectedLineMap = next;
+    } else {
+      selectedLineMap = { ...selectedLineMap, [key]: true };
+    }
+  }
+
+  async function applySelectedLines() {
+    if (!onStageLines || selectedLineCount === 0) return;
+    // Group selected indices by hunkKey and apply sequentially
+    const byHunk = new Map<string, { patch: string; indices: number[] }>();
+    for (const item of lines) {
+      const k = lineSelectKey(item);
+      if (!k || !selectedLineMap[k] || !item.hunkPatch || item.bodyIdx === undefined) continue;
+      const bucket = byHunk.get(item.hunkKey!) ?? { patch: item.hunkPatch, indices: [] };
+      bucket.indices.push(item.bodyIdx);
+      byHunk.set(item.hunkKey!, bucket);
+    }
+    selectedLineMap = {};
+    for (const { patch, indices } of byHunk.values()) {
+      await onStageLines(patch, indices, isStaged);
+    }
+  }
   function openDiffContextMenu(e: MouseEvent) {
     if (e.target instanceof HTMLInputElement) return;
     const selectedText = window.getSelection()?.toString() || "";
@@ -573,6 +647,34 @@
           {ignoreWhitespace ? t("diff.wsIgnored") : t("diff.ignoreWs")}
         </button>
       {/if}
+      {#if onInspectFile && repoPath && filePath}
+        <button
+          type="button"
+          onclick={() => onInspectFile(filePath, "blame")}
+          class="btn-secondary btn-xs"
+          title={t("diff.blameTitle")}
+        >
+          {t("diff.blameBtn")}
+        </button>
+        <button
+          type="button"
+          onclick={() => onInspectFile(filePath, "history")}
+          class="btn-secondary btn-xs"
+          title={t("diff.fileHistoryTitle")}
+        >
+          {t("diff.fileHistoryBtn")}
+        </button>
+      {/if}
+      {#if onAiExplainDiff && !isImage && safeDiffText.trim()}
+        <button
+          type="button"
+          onclick={() => onAiExplainDiff(filePath, safeDiffText)}
+          class="btn-secondary btn-xs"
+          title={t("ai.explainDiffTitle")}
+        >
+          ✦ {t("ai.explainDiffBtn")}
+        </button>
+      {/if}
       {#if onAddToGitignore}
         <button
           type="button"
@@ -672,7 +774,7 @@
     </div>
   {:else if viewMode === "markdown"}
     <div class="md-diff-view">
-      {#each renderMarkdownDiff(diffText) as item}
+      {#each renderMarkdownDiff(safeDiffText) as item}
         <div
           class="diff-line {item.type === 'add' ? 'add' : item.type === 'del' ? 'del' : ''}"
           style="padding: 3px 10px; font-family: inherit; white-space: normal;"
@@ -686,6 +788,25 @@
       <span>{t("diff.emptyDiff")}</span>
     </div>
   {:else if viewMode === "unified"}
+    {#if onStageLines && selectedLineCount > 0}
+      <div class="line-stage-bar">
+        <span class="tabular-nums">{t("diff.selectedLinesCount", { count: selectedLineCount })}</span>
+        <button
+          type="button"
+          class="btn-primary btn-xs"
+          onclick={applySelectedLines}
+        >
+          {isStaged ? t("diff.unstageSelectedLinesBtn") : t("diff.stageSelectedLinesBtn")}
+        </button>
+        <button
+          type="button"
+          class="btn-secondary btn-xs"
+          onclick={() => (selectedLineMap = {})}
+        >
+          {t("diff.clearSelectionBtn")}
+        </button>
+      </div>
+    {/if}
     <div class="diff-content {wrapLines ? 'is-wrapped' : ''}">
       {#each lines as item}
         {#if item.isHunkHeader}
@@ -704,10 +825,36 @@
             {/if}
           </div>
         {:else}
-          <div class="diff-line-row {item.kind === 'add' ? 'add' : item.kind === 'del' ? 'del' : ''}">
+          {@const canStageLine = !!onStageLines && (item.kind === "add" || item.kind === "del") && !!item.hunkPatch && item.bodyIdx !== undefined}
+          {@const selKey = lineSelectKey(item)}
+          {@const isLineSelected = !!(selKey && selectedLineMap[selKey])}
+          <div class="diff-line-row {item.kind === 'add' ? 'add' : item.kind === 'del' ? 'del' : ''} {isLineSelected ? 'is-line-selected' : ''}">
+            {#if onStageLines}
+              <span class="diff-line-select-cell">
+                {#if canStageLine}
+                  <input
+                    type="checkbox"
+                    class="diff-line-cb"
+                    checked={isLineSelected}
+                    onchange={() => toggleLineSelection(item)}
+                    aria-label={t("diff.selectLineAria")}
+                  />
+                {/if}
+              </span>
+            {/if}
             <span class="diff-ln">{item.oldLn ?? ""}</span>
             <span class="diff-ln">{item.newLn ?? ""}</span>
             <span class="diff-line {item.kind === 'meta' ? 'meta' : ''} diff-code">{@html item.html}</span>
+            {#if canStageLine}
+              <button
+                type="button"
+                class="diff-single-line-btn {isStaged ? 'is-unstage' : 'is-stage'}"
+                title={isStaged ? t("diff.unstageSingleLineTitle") : t("diff.stageSingleLineTitle")}
+                onclick={() => onStageLines!(item.hunkPatch!, [item.bodyIdx!], isStaged)}
+              >
+                {isStaged ? "−" : "+"}
+              </button>
+            {/if}
           </div>
         {/if}
       {/each}
