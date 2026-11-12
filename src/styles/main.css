@@ -415,6 +415,32 @@ a {
   margin: 4px 2px;
 }
 
+.context-menu {
+  position: fixed;
+  min-width: 210px;
+  max-width: min(320px, calc(100vw - 16px));
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 320;
+  user-select: none;
+}
+
+.context-menu .popover-item:focus-visible {
+  outline: none;
+  background-color: var(--bg-hover);
+}
+
+.context-menu .popover-item:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
 /* Main Layout */
 .app-body {
   display: grid;
@@ -572,9 +598,15 @@ a {
 }
 
 .file-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  min-height: 16px;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
+  line-height: 1;
   padding: 1px 4px;
   border-radius: 3px;
   flex-shrink: 0;
@@ -594,11 +626,6 @@ a {
 .file-status-badge.status-D {
   color: var(--diff-del-text);
   background: var(--diff-del-bg);
-}
-
-.file-status-badge.status-Q {
-  color: var(--text-muted);
-  background: var(--bg-subtle);
 }
 
 .file-status-badge.status-R,
@@ -721,7 +748,7 @@ a {
   transition: background-color 0.12s var(--ease-ui), border-color 0.12s var(--ease-ui);
 }
 
-.tag-badge:hover {
+button.tag-badge:hover {
   background-color: var(--bg-selected);
   border-color: var(--accent-blue);
 }
@@ -1296,13 +1323,39 @@ a {
   flex-shrink: 0;
 }
 
+.commit-summary-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .commit-summary {
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+.commit-tag-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.commit-tag-badge {
+  font-size: 10px;
+  line-height: 1.25;
+  padding: 1px 7px;
+  max-width: 160px;
+  flex-shrink: 0;
 }
 
 .commit-push-badge {

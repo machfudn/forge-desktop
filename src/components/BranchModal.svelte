@@ -1,7 +1,12 @@
 <script lang="ts">
   import type { AheadBehind, BranchInfo } from "../types/git";
   import * as gitService from "../services/git";
-
+  import { formatBranchDisplay, t } from "../i18n/index.svelte";
+  import {
+    copyTextToClipboard,
+    openContextMenu,
+    type ContextMenuItem,
+  } from "../lib/contextMenu.svelte";
   interface Props {
     activeRepo: string;
     currentBranch: string;
@@ -57,15 +62,15 @@
   async function handleSwitchBranch(name: string) {
     if (hasDirtyFiles) {
       onRequestConfirm(
-        "Smart Stash & Pindah Branch",
-        `Terdapat ${dirtyFileCount} file dengan perubahan belum dikomit. Simpan perubahan ke Stash sebelum berpindah ke "${name}"?`,
+        t("branchModal.smartStashTitle"),
+        t("branchModal.smartStashMsg", { count: dirtyFileCount, name }),
         async () => {
           try {
-            onStatus("Menyimpan perubahan ke stash...");
-            await gitService.gitStashSave(activeRepo, `Auto-stash sebelum checkout ke ${name}`);
-            onStatus(`Berpindah ke branch ${name}...`);
+            onStatus(t("branchModal.stashingStatus"));
+            await gitService.gitStashSave(activeRepo, t("branchModal.autoStashMsg", { name }));
+            onStatus(t("branchModal.switchingStatus", { name }));
             await gitService.switchBranch(activeRepo, name);
-            onStatus(`Berhasil pindah ke branch ${name} (perubahan tersimpan di Stash)`);
+            onStatus(t("branchModal.switchedWithStash", { name }));
             await onReloadRepo();
           } catch (err) {
             onStatus(String(err), true);
@@ -88,14 +93,14 @@
   async function handleCreateBranch() {
     const name = newBranchName.trim();
     if (!name) {
-      inlineError = "Nama branch baru tidak boleh kosong.";
+      inlineError = t("branchModal.emptyNameError");
       return;
     }
     inlineError = "";
     onClose();
     try {
       await gitService.createBranch(activeRepo, name);
-      onStatus(`Branch ${name} dibuat dan diaktifkan`);
+      onStatus(t("branchModal.createdStatus", { name }));
       await onReloadRepo();
     } catch (err) {
       onStatus(String(err), true);
@@ -104,17 +109,17 @@
 
   function handleDeleteBranch(name: string, isCurrent: boolean) {
     if (isCurrent) {
-      inlineError = "Tidak dapat menghapus branch yang sedang aktif.";
+      inlineError = t("branchModal.deleteCurrentError");
       return;
     }
     onRequestConfirm(
-      "Hapus Branch Lokal",
-      `Yakin ingin menghapus branch "${name}" secara paksa (-D)?`,
+      t("branchModal.deleteTitle"),
+      t("branchModal.deleteMsg", { name }),
       async () => {
         try {
           await gitService.deleteBranch(activeRepo, name, true);
           branches = await gitService.listBranches(activeRepo);
-          onStatus(`Branch ${name} berhasil dihapus`);
+          onStatus(t("branchModal.deletedStatus", { name }));
         } catch (err) {
           onStatus(String(err), true);
         }
@@ -141,7 +146,7 @@
       branchToRename = null;
       branches = await gitService.listBranches(activeRepo);
       await onReloadRepo();
-      onStatus(`Branch berhasil diubah menjadi ${newName}`);
+      onStatus(t("branchModal.renamedStatus", { name: newName }));
     } catch (err) {
       inlineError = String(err);
     }
@@ -149,13 +154,13 @@
 
   function handleMergeBranch(targetName: string) {
     onRequestConfirm(
-      "Gabungkan Branch (Merge)",
-      `Gabungkan branch "${targetName}" ke branch aktif "${currentBranch}"?`,
+      t("branchModal.mergeConfirmTitle"),
+      t("branchModal.mergeConfirmMsg", { target: targetName, current: formatBranchDisplay(currentBranch) }),
       async () => {
         try {
-          onStatus(`Menggabungkan ${targetName}...`);
+          onStatus(t("branchModal.mergingStatus", { name: targetName }));
           const res = await gitService.mergeBranch(activeRepo, targetName);
-          onStatus(res || "Merge berhasil");
+          onStatus(res || t("branchModal.mergedStatus"));
           await onReloadRepo();
         } catch (err) {
           onStatus(String(err), true);
@@ -167,13 +172,13 @@
 
   function handleRebase(targetName: string) {
     onRequestConfirm(
-      "Rebase Branch",
-      `Rebase branch aktif "${currentBranch}" ke atas "${targetName}"?`,
+      t("branchModal.rebaseConfirmTitle"),
+      t("branchModal.rebaseConfirmMsg", { current: formatBranchDisplay(currentBranch), target: targetName }),
       async () => {
         try {
-          onStatus(`Me-rebase ke ${targetName}...`);
+          onStatus(t("branchModal.rebasingStatus", { name: targetName }));
           const res = await gitService.rebaseBranch(activeRepo, targetName);
-          onStatus(res || "Rebase berhasil");
+          onStatus(res || t("branchModal.rebasedStatus"));
           await onReloadRepo();
         } catch (err) {
           onStatus(String(err), true);
@@ -187,17 +192,79 @@
     inlineError = "";
     pushingBranch = name;
     try {
-      onStatus(`Melakukan push branch ${name}...`);
+      onStatus(t("branchModal.pushingStatus", { name }));
       const res = await gitService.gitPush(activeRepo, undefined, name);
       branches = await gitService.listBranches(activeRepo);
       await onReloadRepo();
-      onStatus(res || `Branch ${name} berhasil di-push ke remote`);
+      onStatus(res || t("branchModal.pushedStatus", { name }));
     } catch (err) {
       inlineError = String(err);
-      onStatus(`Gagal push ${name}: ${err}`, true);
+      onStatus(t("branchModal.pushFailedStatus", { name, err: String(err) }), true);
     } finally {
       pushingBranch = null;
     }
+  }
+
+  function openBranchContextMenu(e: MouseEvent, b: BranchInfo) {
+    const items: ContextMenuItem[] = [];
+
+    if (!b.is_current) {
+      items.push({
+        label: t("ctx.branch.switchTo"),
+        onSelect: () => {
+          void handleSwitchBranch(b.name);
+        },
+      });
+    }
+    if (hasRemote && hasCommits && (!b.is_pushed || b.ahead > 0)) {
+      items.push({
+        label: t("ctx.branch.push"),
+        disabled: pushingBranch === b.name,
+        onSelect: () => {
+          void handlePushBranch(b.name);
+        },
+      });
+    }
+    if (!b.is_current) {
+      items.push({
+        label: t("ctx.branch.mergeInto", { target: formatBranchDisplay(currentBranch) }),
+        onSelect: () => handleMergeBranch(b.name),
+      });
+      items.push({
+        label: t("ctx.branch.rebaseOnto", {
+          current: formatBranchDisplay(currentBranch),
+          target: b.name,
+        }),
+        onSelect: () => handleRebase(b.name),
+      });
+    }
+
+    items.push({ type: "divider" });
+    if (!b.is_current) {
+      items.push({
+        label: t("ctx.branch.rename"),
+        onSelect: () => handleStartRename(b.name),
+      });
+    }
+    items.push({
+      label: t("ctx.branch.copyName"),
+      onSelect: () => {
+        void copyTextToClipboard(
+          b.name,
+          onStatus,
+          t("ctx.status.copiedBranch", { branch: b.name })
+        );
+      },
+    });
+    if (!b.is_current) {
+      items.push({
+        label: t("ctx.branch.delete"),
+        danger: true,
+        onSelect: () => handleDeleteBranch(b.name, b.is_current),
+      });
+    }
+
+    openContextMenu(e, items);
   }
 </script>
 
@@ -220,8 +287,8 @@
     aria-labelledby="branch-modal-title"
   >
     <div class="modal-header">
-      <span id="branch-modal-title">Pilih atau Kelola Branch</span>
-      <button type="button" class="icon-btn compact" onclick={onClose} aria-label="Tutup dialog">
+      <span id="branch-modal-title">{t("branchModal.title")}</span>
+      <button type="button" class="icon-btn compact" onclick={onClose} aria-label={t("common.closeDialog")}>
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
         </svg>
@@ -232,23 +299,23 @@
       <input
         type="search"
         class="form-input"
-        aria-label="Filter nama branch"
-        placeholder="Cari / filter branch..."
+        aria-label={t("branchModal.filterAria")}
+        placeholder={t("branchModal.filterPlaceholder")}
         bind:value={branchSearch}
       />
       <div style="display: flex; flex-wrap: wrap; gap: 6px;">
         <input
           type="text"
           class="form-input"
-          aria-label="Nama branch baru"
-          placeholder="Nama branch baru..."
+          aria-label={t("branchModal.newNameAria")}
+          placeholder={t("branchModal.newNamePlaceholder")}
           style="flex: 1 1 180px;"
           bind:value={newBranchName}
           onkeydown={(e) => {
             if (e.key === "Enter") handleCreateBranch();
           }}
         />
-        <button type="button" onclick={handleCreateBranch} class="btn-primary">Buat Branch</button>
+        <button type="button" onclick={handleCreateBranch} class="btn-primary">{t("branchModal.createBtn")}</button>
       </div>
 
       {#if inlineError}
@@ -260,20 +327,20 @@
       {#if branchToRename}
         <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--bg-subtle); border-radius: var(--radius-sm); align-items: center;">
           <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
-            Ubah '{branchToRename}':
+            {t("branchModal.renameLabel", { name: branchToRename })}
           </span>
           <input
             type="text"
             class="form-input"
-            aria-label="Nama branch pengganti"
+            aria-label={t("branchModal.renameAria")}
             bind:value={renameBranchInput}
             style="flex: 1 1 140px; font-size: 11px;"
             onkeydown={(e) => {
               if (e.key === "Enter") handleConfirmRename();
             }}
           />
-          <button type="button" onclick={handleConfirmRename} class="btn-primary btn-xs">Simpan</button>
-          <button type="button" onclick={() => (branchToRename = null)} class="btn-secondary btn-xs">Batal</button>
+          <button type="button" onclick={handleConfirmRename} class="btn-primary btn-xs">{t("common.save")}</button>
+          <button type="button" onclick={() => (branchToRename = null)} class="btn-secondary btn-xs">{t("common.cancel")}</button>
         </div>
       {/if}
 
@@ -281,16 +348,17 @@
         {#if filteredBranches.length === 0}
           <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;">
             {#if isLoadingBranches}
-              Memuat daftar branch...
+              {t("branchModal.loading")}
             {:else if !hasCommits && branches.length === 0}
-              Branch '{currentBranch}' belum punya komit. Buat komit pertama agar branch tercatat di daftar.
+              {t("branchModal.unbornEmpty", { branch: formatBranchDisplay(currentBranch) })}
             {:else}
-              Tidak ada branch ditemukan
+              {t("branchModal.noneFound")}
             {/if}
           </div>
         {:else}
           {#each filteredBranches as b (b.name)}
-            <div class="list-row {b.is_current ? 'is-active' : ''}">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="list-row {b.is_current ? 'is-active' : ''}" oncontextmenu={(e) => openBranchContextMenu(e, b)}>
               <button
                 type="button"
                 onclick={() => handleSwitchBranch(b.name)}
@@ -306,39 +374,39 @@
                   {b.name}
                 </span>
                 {#if b.is_current}
-                  <span style="color: var(--text-accent); font-size: 10px; font-weight: 600; flex-shrink: 0;">(aktif)</span>
+                  <span style="color: var(--text-accent); font-size: 10px; font-weight: 600; flex-shrink: 0;">{t("branchModal.activeTag")}</span>
                 {/if}
                 {#if b.upstream_gone}
-                  <span class="badge-warn" style="flex-shrink: 0;" title="Branch remote ({b.upstream}) sudah dihapus">
-                    Remote Hilang
+                  <span class="badge-warn" style="flex-shrink: 0;" title={t("branchModal.remoteGoneTitle", { upstream: b.upstream || "" })}>
+                    {t("branchModal.remoteGone")}
                   </span>
                 {:else if !hasRemote}
-                  <span class="badge-neutral" style="flex-shrink: 0;" title="Belum ada remote terhubung">
-                    Lokal
+                  <span class="badge-neutral" style="flex-shrink: 0;" title={t("branchModal.localOnlyTitle")}>
+                    {t("branchModal.localOnly")}
                   </span>
                 {:else if b.upstream}
                   {#if b.ahead === 0 && b.behind === 0}
-                    <span class="badge-success" style="flex-shrink: 0;" title="Sudah di-push & sinkron dengan {b.upstream}">
-                      Sudah Push
+                    <span class="badge-success" style="flex-shrink: 0;" title={t("branchModal.syncedTitle", { upstream: b.upstream })}>
+                      {t("branchModal.synced")}
                     </span>
                   {:else}
-                    <span class="badge-warning tabular-nums" style="flex-shrink: 0;" title="Upstream: {b.upstream}">
-                      {b.ahead > 0 ? `Belum Push ↑${b.ahead}` : ""}{b.ahead > 0 && b.behind > 0 ? " " : ""}{b.behind > 0 ? `↓${b.behind}` : ""}
+                    <span class="badge-warning tabular-nums" style="flex-shrink: 0;" title={t("branchModal.upstreamTitle", { upstream: b.upstream })}>
+                      {b.ahead > 0 ? `${t("branchModal.unpushedPrefix")} ↑${b.ahead}` : ""}{b.ahead > 0 && b.behind > 0 ? " " : ""}{b.behind > 0 ? `↓${b.behind}` : ""}
                     </span>
                   {/if}
                 {:else if b.is_pushed}
-                  <span class="badge-neutral" style="flex-shrink: 0;" title="Ada di remote, belum set upstream tracking">
-                    Di Remote
+                  <span class="badge-neutral" style="flex-shrink: 0;" title={t("branchModal.onRemoteTitle")}>
+                    {t("branchModal.onRemote")}
                   </span>
                 {:else}
-                  <span class="badge-warning" style="flex-shrink: 0;" title="Branch belum pernah di-push ke remote">
-                    Belum Push
+                  <span class="badge-warning" style="flex-shrink: 0;" title={t("branchModal.neverPushedTitle")}>
+                    {t("branchModal.unpushedPrefix")}
                   </span>
                 {/if}
                 {#if !b.is_current && branchDivergenceMap[b.name]}
                   {@const div = branchDivergenceMap[b.name]}
                   {#if div.ahead > 0 || div.behind > 0}
-                    <span class="tabular-nums" style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); display: inline-flex; gap: 4px; flex-shrink: 0;" title="Perbandingan terhadap {currentBranch}">
+                    <span class="tabular-nums" style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); display: inline-flex; gap: 4px; flex-shrink: 0;" title={t("branchModal.divergenceTitle", { branch: formatBranchDisplay(currentBranch) })}>
                       {#if div.ahead > 0}<span style="color: var(--diff-add-text);">+{div.ahead}</span>{/if}
                       {#if div.behind > 0}<span style="color: var(--diff-del-text);">-{div.behind}</span>{/if}
                     </span>
@@ -353,23 +421,25 @@
                     onclick={() => handlePushBranch(b.name)}
                     disabled={pushingBranch === b.name}
                     class="btn-primary btn-xs"
-                    title={b.upstream ? `Push ke ${b.upstream}` : `Push & set upstream untuk ${b.name}`}
+                    title={b.upstream
+                      ? t("branchModal.pushToTitle", { upstream: b.upstream })
+                      : t("branchModal.pushSetUpstreamTitle", { name: b.name })}
                   >
-                    {pushingBranch === b.name ? "Push..." : "Push"}
+                    {pushingBranch === b.name ? t("branchModal.pushingBtn") : t("branchModal.pushBtn")}
                   </button>
                 {/if}
                 {#if !b.is_current}
-                  <button type="button" onclick={() => handleMergeBranch(b.name)} class="btn-secondary btn-xs" title="Merge ke branch aktif">
-                    Merge
+                  <button type="button" onclick={() => handleMergeBranch(b.name)} class="btn-secondary btn-xs" title={t("branchModal.mergeTitle")}>
+                    {t("branchModal.mergeBtn")}
                   </button>
-                  <button type="button" onclick={() => handleRebase(b.name)} class="btn-secondary btn-xs" title="Rebase ke atas branch ini">
-                    Rebase
+                  <button type="button" onclick={() => handleRebase(b.name)} class="btn-secondary btn-xs" title={t("branchModal.rebaseTitle")}>
+                    {t("branchModal.rebaseBtn")}
                   </button>
-                  <button type="button" onclick={() => handleStartRename(b.name)} class="btn-secondary btn-xs" title="Ganti nama branch">
-                    Rename
+                  <button type="button" onclick={() => handleStartRename(b.name)} class="btn-secondary btn-xs" title={t("branchModal.renameTitle")}>
+                    {t("branchModal.renameBtn")}
                   </button>
-                  <button type="button" onclick={() => handleDeleteBranch(b.name, b.is_current)} class="btn-secondary btn-xs btn-danger branch-delete-btn" title="Hapus branch lokal">
-                    Hapus
+                  <button type="button" onclick={() => handleDeleteBranch(b.name, b.is_current)} class="btn-secondary btn-xs btn-danger branch-delete-btn" title={t("branchModal.deleteBtnTitle")}>
+                    {t("branchModal.deleteBtn")}
                   </button>
                 {/if}
               </div>
@@ -380,7 +450,7 @@
     </div>
 
     <div class="modal-actions">
-      <button type="button" class="btn-secondary" onclick={onClose}>Tutup</button>
+      <button type="button" class="btn-secondary" onclick={onClose}>{t("common.close")}</button>
     </div>
   </div>
 </div>

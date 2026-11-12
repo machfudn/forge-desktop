@@ -25,12 +25,27 @@
   import Diff from "./components/Diff.svelte";
   import History from "./components/History.svelte";
   import BranchModal from "./components/BranchModal.svelte";
+  import ContextMenu from "./components/ContextMenu.svelte";
   import WorkspaceModals, { type WorkspaceModalType } from "./components/WorkspaceModals.svelte";
   import HistoryGithubModals, {
     type HistoryGithubModalType,
     type RebaseItem,
   } from "./components/HistoryGithubModals.svelte";
-  import { joinRepoPath, pathBaseName } from "./utils/path";
+  import { joinRepoPath, openExternalUrl, pathBaseName } from "./utils/path";
+  import {
+    copyTextToClipboard,
+    handleGlobalContextMenu,
+    openContextMenu,
+    type ContextMenuItem,
+  } from "./lib/contextMenu.svelte";
+  import {
+    formatBranchDisplay,
+    getLocale,
+    initLocale,
+    setLocale,
+    t,
+    type Locale,
+  } from "./i18n/index.svelte";
 
   type ModalType = "branch" | WorkspaceModalType | HistoryGithubModalType | null;
 
@@ -64,7 +79,7 @@
   let initDirRemoteUrl = $state("");
   let initDirCommit = $state(false);
   let initDirCommitMsg = $state("chore: initial commit");
-  let statusMessage = $state("Siap");
+  let statusMessage = $state(t("app.ready"));
   let statusIsError = $state(false);
   let isLoading = $state(false);
   // Header popover menus
@@ -95,6 +110,7 @@
   const pendingBranchCompares = new Set<string>();
 
   // Settings & preferences
+  let activeLocale = $state<Locale>(getLocale());
   let activeTheme = $state(localStorage.getItem("forge_theme") || "dark");
   let autofetchMinutes = $state(Number(localStorage.getItem("forge_autofetch") || "5"));
   let confirmDiscard = $state(localStorage.getItem("forge_confirm_discard") !== "false");
@@ -113,7 +129,6 @@
   let isInstallingUpdate = $state(false);
   let updateError = $state("");
   const EDITOR_LABELS: Record<string, string> = {
-    system: "Default Sistem OS",
     code: "Visual Studio Code",
     cursor: "Cursor",
     windsurf: "Windsurf",
@@ -125,7 +140,9 @@
     kate: "Kate",
   };
   let externalEditorLabel = $derived(
-    EDITOR_LABELS[externalEditor] || pathBaseName(externalEditor) || "Default Sistem OS"
+    externalEditor === "system"
+      ? t("wsModal.settings.editorSystemShort")
+      : EDITOR_LABELS[externalEditor] || pathBaseName(externalEditor) || t("wsModal.settings.editorSystemShort")
   );
 
   const SIDEBAR_MIN = 230;
@@ -250,33 +267,42 @@
     if (!currentStatus) return null;
     if (!currentStatus.has_commits || aheadBehind.is_unborn) {
       return {
-        text: "0 komit",
+        text: t("app.branchMeta.zeroCommits"),
         tone: "is-neutral",
-        title: "Repositori baru belum memiliki komit. Buat komit pertama sebelum push.",
+        title: t("app.branchMeta.zeroCommitsTitle"),
       };
     }
     if (!hasRemote) {
       const localCount = aheadBehind.unpushed_commits;
       return {
-        text: localCount > 0 ? `Lokal · ${localCount}` : "Lokal",
+        text:
+          localCount > 0
+            ? t("app.branchMeta.localWithCount", { count: localCount })
+            : t("app.branchMeta.local"),
         tone: "is-warn",
-        title: "Belum ada remote terhubung. Hubungkan remote atau publikasikan ke GitHub.",
+        title: t("app.branchMeta.localTitle"),
       };
     }
     if (!aheadBehind.has_upstream && !aheadBehind.remote_branch_exists) {
-      const count = aheadBehind.unpushed_commits > 0 ? ` · ↑${aheadBehind.unpushed_commits}` : "";
       return {
-        text: `Belum Push${count}`,
+        text:
+          aheadBehind.unpushed_commits > 0
+            ? t("app.branchMeta.unpushedWithCount", { count: aheadBehind.unpushed_commits })
+            : t("app.branchMeta.unpushed"),
         tone: "is-warn",
-        title: `Branch '${currentStatus.branch}' belum pernah di-push ke remote`,
+        title: t("app.branchMeta.unpushedTitle", {
+          branch: formatBranchDisplay(currentStatus.branch),
+        }),
       };
     }
     if (!aheadBehind.has_upstream && aheadBehind.remote_branch_exists) {
-      const count = aheadBehind.ahead > 0 ? `↑${aheadBehind.ahead} · ` : "";
       return {
-        text: `${count}No Upstream`,
+        text:
+          aheadBehind.ahead > 0
+            ? t("app.branchMeta.noUpstreamWithCount", { count: aheadBehind.ahead })
+            : t("app.branchMeta.noUpstream"),
         tone: "is-warn",
-        title: "Branch sudah ada di remote, namun upstream lokal belum ditautkan. Klik Push untuk menautkan.",
+        title: t("app.branchMeta.noUpstreamTitle"),
       };
     }
     if (aheadBehind.ahead > 0 || aheadBehind.behind > 0) {
@@ -289,13 +315,13 @@
       return {
         text: parts,
         tone: aheadBehind.ahead > 0 ? "is-warn" : "",
-        title: `Upstream: ${aheadBehind.upstream}`,
+        title: t("app.branchMeta.upstreamTitle", { upstream: aheadBehind.upstream ?? "" }),
       };
     }
     return {
-      text: "✓ Tersinkron",
+      text: t("app.branchMeta.synced"),
       tone: "is-synced",
-      title: `Sudah di-push & sinkron dengan ${aheadBehind.upstream || "remote"}`,
+      title: t("app.branchMeta.syncedTitle", { upstream: aheadBehind.upstream || "remote" }),
     };
   });
   let autofetchTimer: number | null = null;
@@ -315,9 +341,9 @@
     if (isGithubRateLimitError(raw)) {
       githubRateLimited = true;
       if (!activeRepoAccount) {
-        return "Limit GitHub API (60 req/jam tanpa login) tercapai. Masuk dengan akun GitHub untuk menaikkan limit hingga 5.000 req/jam.";
+        return t("app.status.githubRateLimitGuest");
       }
-      return "Limit GitHub API sementara tercapai (HTTP 403). Coba lagi beberapa saat.";
+      return t("app.status.githubRateLimitAuth");
     }
     return raw;
   }
@@ -389,7 +415,7 @@
     if (!activeRepo) return;
     await gitService.setRepoConfig(activeRepo, name, email);
     repoConfig = { user_name: name, user_email: email };
-    setStatus(`Author repo disinkronkan: ${name} <${email}>`);
+    setStatus(t("app.status.authorSynced", { name, email }));
   }
 
   function applyTheme(theme: string) {
@@ -514,7 +540,7 @@
     try {
       const exists = await gitService.checkRepoExists(trimmed);
       if (!exists) {
-        setStatus(`Lokasi baru '${trimmed}' bukan repositori Git yang valid.`, true);
+        setStatus(t("app.status.relocateInvalid", { path: trimmed }), true);
         return;
       }
       recentRepos = recentRepos.map((r) => (r === oldPath ? trimmed : r));
@@ -527,9 +553,9 @@
       }
       await checkMissingRepos();
       await loadRepo(trimmed);
-      setStatus(`Repositori berhasil direlokasi ke ${trimmed}`);
+      setStatus(t("app.status.relocateSuccess", { path: trimmed }));
     } catch (err) {
-      setStatus(`Gagal relokasi: ${err}`, true);
+      setStatus(t("app.status.relocateFailed", { err: String(err) }), true);
     }
   }
 
@@ -584,7 +610,7 @@
     if (!target) return;
     try {
       isLoading = true;
-      setStatus(`Menginisialisasi Git di ${pathBaseName(target)}...`);
+      setStatus(t("app.status.initializingGit", { name: pathBaseName(target) }));
       let giContent: string | undefined;
       if (initDirGitignore === "Node") {
         giContent = "node_modules/\ndist/\n.env\n*.log";
@@ -610,22 +636,22 @@
             );
           }
         } catch (commitErr) {
-          warnMsg = ` (komit awal dilewati: ${commitErr})`;
+          warnMsg = t("app.status.initialCommitSkipped", { err: String(commitErr) });
         }
       }
       pendingInitRepo = "";
       await loadRepo(target);
       if (warnMsg) {
-        setStatus(`Repositori diinisialisasi${warnMsg}`, true);
+        setStatus(t("app.status.repoInitializedWithWarn", { warn: warnMsg }), true);
       } else {
         setStatus(
           remUrl
-            ? `Git diinisialisasi dan remote origin ditautkan di ${pathBaseName(target)}`
-            : `Git berhasil diinisialisasi di ${pathBaseName(target)}`
+            ? t("app.status.repoInitializedWithRemote", { name: pathBaseName(target) })
+            : t("app.status.repoInitialized", { name: pathBaseName(target) })
         );
       }
     } catch (err) {
-      setStatus(`Gagal inisialisasi Git: ${err}`, true);
+      setStatus(t("app.status.initGitFailed", { err: String(err) }), true);
     } finally {
       isLoading = false;
     }
@@ -637,13 +663,13 @@
     const isNewRepo = activeRepo !== repoPath;
     try {
       isLoading = true;
-      setStatus(`Memeriksa ${pathBaseName(repoPath)}...`);
+      setStatus(t("app.status.inspectingRepo", { name: pathBaseName(repoPath) }));
       try {
         const pathState = await gitService.getRepoPathState(repoPath);
         if (reqSeq !== loadRepoSeq) return;
         if (pathState === "missing") {
           pendingInitRepo = "";
-          setStatus(`Folder tidak ditemukan: ${repoPath}`, true);
+          setStatus(t("app.status.folderNotFound", { path: repoPath }), true);
           return;
         }
         if (pathState === "non_git") {
@@ -662,7 +688,7 @@
           initDirRemoteUrl = "";
           initDirCommit = false;
           initDirCommitMsg = "chore: initial commit";
-          setStatus(`Folder '${pathBaseName(repoPath)}' belum diinisialisasi sebagai repository Git`);
+          setStatus(t("app.status.folderNotGit", { name: pathBaseName(repoPath) }));
           return;
         }
       } catch {
@@ -752,9 +778,14 @@
       }
 
       setupAutofetch(autofetchMinutes);
-      setStatus(`Terbuka: ${pathBaseName(repoPath)} (${status.branch})`);
+      setStatus(
+        t("app.status.repoOpened", {
+          name: pathBaseName(repoPath),
+          branch: formatBranchDisplay(status.branch),
+        })
+      );
     } catch (err) {
-      setStatus(`Gagal memuat repositori: ${err}`, true);
+      setStatus(t("app.status.loadRepoFailed", { err: String(err) }), true);
     } finally {
       if (reqSeq === loadRepoSeq) {
         isLoading = false;
@@ -778,9 +809,9 @@
     try {
       await gitService.stageHunk(activeRepo, patchText, reverse);
       await loadRepo(activeRepo);
-      setStatus(reverse ? "Hunk berhasil di-unstage" : "Hunk berhasil di-stage");
+      setStatus(reverse ? t("app.status.hunkUnstaged") : t("app.status.hunkStaged"));
     } catch (err) {
-      setStatus(`Gagal memproses hunk: ${err}`, true);
+      setStatus(t("app.status.hunkFailed", { err: String(err) }), true);
     }
   }
 
@@ -818,7 +849,7 @@
   async function handleCommit(summary: string, description?: string, amend?: boolean) {
     try {
       await gitService.commitChanges(activeRepo, summary, description, amend);
-      setStatus(amend ? "Komit terakhir diamandemen" : "Komit berhasil dibuat");
+      setStatus(amend ? t("app.status.commitAmended") : t("app.status.commitCreated"));
       await loadRepo(activeRepo);
       if (activeView === "history") {
         commits = await gitService.getCommitHistory(activeRepo, 80);
@@ -830,12 +861,12 @@
 
   function handleUndoCommit() {
     requestConfirmation(
-      "Undo Komit Terakhir",
-      "Batalkan komit terakhir? Perubahan akan tetap ada di area staging.",
+      t("app.status.undoCommitTitle"),
+      t("app.status.undoCommitMsg"),
       async () => {
         try {
           await gitService.undoLastCommit(activeRepo);
-          setStatus("Komit terakhir dibatalkan (perubahan di staging)");
+          setStatus(t("app.status.undoCommitDone"));
           await loadRepo(activeRepo);
           if (activeView === "history") {
             commits = await gitService.getCommitHistory(activeRepo, 80);
@@ -851,7 +882,7 @@
   async function handleAddToGitignore(filePath: string) {
     try {
       await gitService.addToGitignore(activeRepo, filePath);
-      setStatus(`Menambahkan '${filePath}' ke .gitignore`);
+      setStatus(t("app.status.addedGitignore", { path: filePath }));
       await loadRepo(activeRepo);
     } catch (err) {
       setStatus(String(err), true);
@@ -861,7 +892,7 @@
   async function handleAbortMerge() {
     try {
       await gitService.abortMerge(activeRepo);
-      setStatus("Proses merge dibatalkan");
+      setStatus(t("app.status.mergeAborted"));
       await loadRepo(activeRepo);
     } catch (err) {
       setStatus(String(err), true);
@@ -871,7 +902,7 @@
   async function handleAbortRebase() {
     try {
       await gitService.abortRebase(activeRepo);
-      setStatus("Proses rebase dibatalkan");
+      setStatus(t("app.status.rebaseAborted"));
       await loadRepo(activeRepo);
     } catch (err) {
       setStatus(String(err), true);
@@ -882,7 +913,7 @@
     const execute = async () => {
       try {
         await gitService.discardFileChanges(activeRepo, file.path);
-        setStatus(`Perubahan pada ${file.path} dibatalkan`);
+        setStatus(t("app.status.fileDiscarded", { path: file.path }));
         await loadRepo(activeRepo);
       } catch (err) {
         setStatus(String(err), true);
@@ -890,8 +921,8 @@
     };
     if (confirmDiscard) {
       requestConfirmation(
-        "Batalkan Perubahan File",
-        `Apakah Anda yakin ingin membatalkan semua perubahan pada '${file.path}'? Tindakan ini tidak dapat dikembalikan.`,
+        t("app.status.discardFileTitle"),
+        t("app.status.discardFileMsg", { path: file.path }),
         execute,
         true
       );
@@ -904,7 +935,7 @@
     const execute = async () => {
       try {
         await gitService.discardAllChanges(activeRepo);
-        setStatus("Semua perubahan pada working tree dibatalkan");
+        setStatus(t("app.status.allDiscarded"));
         await loadRepo(activeRepo);
       } catch (err) {
         setStatus(String(err), true);
@@ -912,8 +943,8 @@
     };
     if (confirmDiscard) {
       requestConfirmation(
-        "Batalkan Semua Perubahan",
-        "Hapus permanen SEMUA perubahan yang belum dikomit (termasuk file baru untracked)?",
+        t("app.status.discardAllTitle"),
+        t("app.status.discardAllMsg"),
         execute,
         true
       );
@@ -950,8 +981,8 @@
                   };
                   if (commits[0]?.sha === c.sha) {
                     sendNotification(
-                      `CI Gagal pada ${c.short_sha}`,
-                      `Commit '${c.summary}' memiliki status build failure.`
+                      t("app.status.ciFailedTitle", { sha: c.short_sha }),
+                      t("app.status.ciFailedBody", { summary: c.summary })
                     );
                   }
                 } else if (pending) {
@@ -1059,7 +1090,7 @@
     } catch (err) {
       const msg = formatGithubError(err);
       githubError = msg;
-      setStatus(`Gagal memuat data GitHub: ${msg}`, true);
+      setStatus(t("app.status.loadGithubDataFailed", { msg }), true);
     } finally {
       isLoadingGithub = false;
     }
@@ -1089,7 +1120,7 @@
     } catch (err) {
       const msg = formatGithubError(err);
       githubError = msg;
-      setStatus(`Gagal memuat GitHub: ${msg}`, true);
+      setStatus(t("app.status.loadGithubFailed", { msg }), true);
     } finally {
       isLoadingGithub = false;
     }
@@ -1098,12 +1129,12 @@
   async function handleCheckoutPr(prNumber: number) {
     activeModal = null;
     try {
-      setStatus(`Melakukan checkout PR #${prNumber}...`);
+      setStatus(t("app.status.checkingOutPr", { num: prNumber }));
       const res = await gitService.checkoutGithubPullRequest(activeRepo, prNumber);
-      setStatus(res || `Berhasil checkout PR #${prNumber}`);
+      setStatus(res || t("app.status.checkedOutPr", { num: prNumber }));
       await loadRepo(activeRepo);
     } catch (err) {
-      setStatus(`Gagal checkout PR: ${err}`, true);
+      setStatus(t("app.status.checkoutPrFailed", { err: String(err) }), true);
     }
   }
 
@@ -1140,6 +1171,7 @@
     repoConfig: RepoConfig;
     globalConfig: RepoConfig;
     activeTheme: string;
+    locale: Locale;
     autofetchMinutes: number;
     confirmDiscard: boolean;
     confirmForcePush: boolean;
@@ -1162,6 +1194,8 @@
       repoConfig = cfg.repoConfig;
       globalConfig = cfg.globalConfig;
       activeTheme = cfg.activeTheme;
+      activeLocale = cfg.locale;
+      setLocale(cfg.locale);
       autofetchMinutes = cfg.autofetchMinutes;
       confirmDiscard = cfg.confirmDiscard;
       confirmForcePush = cfg.confirmForcePush;
@@ -1184,7 +1218,7 @@
       }
 
       activeModal = null;
-      setStatus("Pengaturan repositori, global, dan aplikasi disimpan");
+      setStatus(t("app.status.settingsSaved"));
     } catch (err) {
       setStatus(String(err), true);
     }
@@ -1195,17 +1229,20 @@
     isCheckingUpdate = true;
     updateError = "";
     try {
-      setStatus("Memeriksa pembaruan di GitHub Releases...");
+      setStatus(t("app.status.checkingUpdates"));
       appUpdateInfo = await gitService.checkAppUpdate(targetChannel);
       setStatus(
         appUpdateInfo.has_update
-          ? `Versi baru v${appUpdateInfo.latest_version} (${appUpdateInfo.is_prerelease ? "Beta" : "Stable"}) tersedia!`
-          : `Aplikasi sudah versi terbaru (${appUpdateInfo.channel})`
+          ? t("app.status.updateFound", {
+              version: appUpdateInfo.latest_version,
+              tier: appUpdateInfo.is_prerelease ? "Beta" : "Stable",
+            })
+          : t("app.status.upToDate", { channel: appUpdateInfo.channel })
       );
     } catch (err) {
       const msg = String(err);
       updateError = msg;
-      setStatus(`Gagal memeriksa pembaruan: ${msg}`, true);
+      setStatus(t("app.status.checkUpdateFailed", { msg }), true);
     } finally {
       isCheckingUpdate = false;
     }
@@ -1216,13 +1253,13 @@
     isInstallingUpdate = true;
     updateError = "";
     try {
-      setStatus("Mengunduh dan memverifikasi SHA-256 pembaruan...");
+      setStatus(t("app.status.installingUpdate"));
       const res = await gitService.installAppUpdate(targetChannel);
       setStatus(res.message);
     } catch (err) {
       const msg = String(err);
       updateError = msg;
-      setStatus(`Pembaruan gagal: ${msg}`, true);
+      setStatus(t("app.status.installUpdateFailed", { msg }), true);
     } finally {
       isInstallingUpdate = false;
     }
@@ -1257,10 +1294,10 @@
     if (!activeRepo) return;
     try {
       isLoading = true;
-      setStatus("Melakukan fetch...");
+      setStatus(t("app.status.fetching"));
       await gitService.gitFetch(activeRepo);
       await loadRepo(activeRepo);
-      setStatus("Fetch selesai");
+      setStatus(t("app.status.fetchDone"));
     } catch (err) {
       setStatus(String(err), true);
     } finally {
@@ -1272,10 +1309,10 @@
     if (!activeRepo) return;
     try {
       isLoading = true;
-      setStatus("Melakukan pull...");
+      setStatus(t("app.status.pulling"));
       const res = await gitService.gitPull(activeRepo);
       await loadRepo(activeRepo);
-      setStatus(res || "Pull selesai");
+      setStatus(res || t("app.status.pullDone"));
     } catch (err) {
       setStatus(String(err), true);
     } finally {
@@ -1287,10 +1324,10 @@
     if (!activeRepo) return;
     try {
       isLoading = true;
-      setStatus("Melakukan push...");
+      setStatus(t("app.status.pushing"));
       const res = await gitService.gitPush(activeRepo);
       await loadRepo(activeRepo);
-      setStatus(res || "Push selesai");
+      setStatus(res || t("app.status.pushDone"));
     } catch (err) {
       setStatus(String(err), true);
     } finally {
@@ -1304,10 +1341,10 @@
     const execute = async () => {
       try {
         isLoading = true;
-        setStatus("Melakukan force push (--force-with-lease)...");
+        setStatus(t("app.status.forcePushing"));
         const res = await gitService.gitForcePush(activeRepo);
         await loadRepo(activeRepo);
-        setStatus(res || "Force push berhasil");
+        setStatus(res || t("app.status.forcePushDone"));
       } catch (err) {
         setStatus(String(err), true);
       } finally {
@@ -1316,8 +1353,12 @@
     };
     if (confirmForcePush) {
       requestConfirmation(
-        "Force Push ke Remote",
-        `Lakukan Force Push (--force-with-lease) pada branch '${currentStatus?.branch || "aktif"}'?`,
+        t("app.status.forcePushTitle"),
+        t("app.status.forcePushMsg", {
+          branch: currentStatus?.branch
+            ? formatBranchDisplay(currentStatus.branch)
+            : t("app.status.activeFallbackBranch"),
+        }),
         execute,
         true
       );
@@ -1331,13 +1372,16 @@
     if (!activeRepo) return;
     try {
       isLoading = true;
-      setStatus("Menyinkronkan fork dengan upstream...");
+      setStatus(t("app.status.syncingFork"));
       const res = await gitService.syncFork(activeRepo);
       await loadRepo(activeRepo);
-      setStatus(res || "Fork berhasil disinkronkan");
-      sendNotification("Sync Fork Selesai", res || "Branch lokal telah diperbarui dari upstream.");
+      setStatus(res || t("app.status.syncForkDone"));
+      sendNotification(
+        t("app.status.syncForkNotifTitle"),
+        res || t("app.status.syncForkNotifBody")
+      );
     } catch (err) {
-      setStatus(`Gagal sync fork: ${err}`, true);
+      setStatus(t("app.status.syncForkFailed", { err: String(err) }), true);
     } finally {
       isLoading = false;
     }
@@ -1346,7 +1390,7 @@
   async function handleCherryPick(sha: string) {
     try {
       const res = await gitService.cherryPick(activeRepo, sha);
-      setStatus(res || "Cherry-pick berhasil");
+      setStatus(res || t("app.status.cherryPickDone"));
       await loadRepo(activeRepo);
     } catch (err) {
       setStatus(String(err), true);
@@ -1355,12 +1399,12 @@
 
   function handleRevert(sha: string) {
     requestConfirmation(
-      "Revert Komit",
-      `Buat komit baru yang membalikkan perubahan dari ${sha.slice(0, 7)}?`,
+      t("app.status.revertTitle"),
+      t("app.status.revertMsg", { sha: sha.slice(0, 7) }),
       async () => {
         try {
           const res = await gitService.revertCommit(activeRepo, sha);
-          setStatus(res || "Revert berhasil");
+          setStatus(res || t("app.status.revertDone"));
           await loadRepo(activeRepo);
           if (activeView === "history") {
             commits = await gitService.getCommitHistory(activeRepo, 80);
@@ -1380,13 +1424,20 @@
 
   function handleDeleteTag(tagName: string) {
     requestConfirmation(
-      "Hapus Tag Lokal",
-      `Yakin ingin menghapus tag "${tagName}"?`,
+      t("app.status.deleteTagTitle"),
+      t("app.status.deleteTagMsg", { name: tagName }),
       async () => {
         try {
           await gitService.deleteTag(activeRepo, tagName);
-          tags = await gitService.listTags(activeRepo);
-          setStatus(`Tag ${tagName} berhasil dihapus`);
+          const [nextTags, nextCommits] = await Promise.all([
+            gitService.listTags(activeRepo),
+            activeView === "history"
+              ? gitService.getCommitHistory(activeRepo, 80)
+              : Promise.resolve(null),
+          ]);
+          tags = nextTags;
+          if (nextCommits !== null) commits = nextCommits;
+          setStatus(t("app.status.tagDeleted", { name: tagName }));
         } catch (err) {
           setStatus(String(err), true);
         }
@@ -1397,12 +1448,12 @@
 
   function handleReset(sha: string) {
     requestConfirmation(
-      "Soft Reset ke Komit",
-      `Reset HEAD branch ke ${sha.slice(0, 7)} (--soft)? Perubahan komit setelahnya akan masuk ke staging.`,
+      t("app.status.resetTitle"),
+      t("app.status.resetMsg", { sha: sha.slice(0, 7) }),
       async () => {
         try {
           const res = await gitService.resetToCommit(activeRepo, sha, false);
-          setStatus(res || "Reset berhasil");
+          setStatus(res || t("app.status.resetDone"));
           await loadRepo(activeRepo);
           if (activeView === "history") {
             commits = await gitService.getCommitHistory(activeRepo, 80);
@@ -1420,20 +1471,20 @@
     if (count < 2) return;
     squashCount = count;
     const selectedCommits = commits.slice(0, count);
-    squashInitialSummary = selectedCommits[count - 1]?.summary || "Squashed commits";
+    squashInitialSummary = selectedCommits[count - 1]?.summary || t("app.status.squashDefaultSummary");
     activeModal = "squash";
   }
 
   function openInteractiveRebase() {
     if (commits.length < 2) {
-      setStatus("Minimal harus ada 2 komit di riwayat untuk melakukan Interactive Rebase.", true);
+      setStatus(t("app.status.rebaseMinCommits"), true);
       return;
     }
     const targetCommits = commits.slice(0, Math.min(10, commits.length));
     const oldestDisplayedIdx = targetCommits.length - 1;
     const baseCommit = commits[oldestDisplayedIdx + 1];
     if (!baseCommit) {
-      setStatus("Tidak cukup komit dasar (base commit) untuk rebase 10 komit terakhir.", true);
+      setStatus(t("app.status.rebaseNeedBase"), true);
       return;
     }
     rebaseBaseSha = baseCommit.sha;
@@ -1463,6 +1514,123 @@
     } catch (err) {
       setStatus(String(err), true);
     }
+  }
+
+  async function openInFileManagerTarget(filePath: string) {
+    if (!activeRepo) return;
+    try {
+      await gitService.openInFileManager(joinRepoPath(activeRepo, filePath));
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  function openRepoHeaderContextMenu(e: MouseEvent) {
+    if (!activeRepo) return;
+    const items: ContextMenuItem[] = [
+      {
+        label: t("ctx.repo.openInEditor", { editor: externalEditorLabel }),
+        onSelect: () => {
+          void openInEditor();
+        },
+      },
+      {
+        label: t("ctx.repo.openInTerminal"),
+        onSelect: () => {
+          void openInTerminal();
+        },
+      },
+      {
+        label: t("ctx.repo.openInFileManager"),
+        onSelect: () => {
+          void openInFileManager();
+        },
+      },
+      { type: "divider" },
+      {
+        label: t("ctx.repo.copyPath"),
+        onSelect: () => {
+          void copyTextToClipboard(activeRepo, setStatus, t("ctx.status.copiedPath"));
+        },
+      },
+    ];
+    if (githubRepoInfo) {
+      const ghUrl = `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}`;
+      items.push({
+        label: t("ctx.repo.viewOnGithub"),
+        onSelect: () => {
+          void openExternalUrl(ghUrl);
+        },
+      });
+    }
+    openContextMenu(e, items);
+  }
+
+  function openBranchHeaderContextMenu(e: MouseEvent) {
+    if (!currentStatus) return;
+    const branchName = currentStatus.branch;
+    const items: ContextMenuItem[] = [
+      {
+        label: t("ctx.branch.manage"),
+        onSelect: openBranchModal,
+      },
+      {
+        label: t("ctx.branch.copyName"),
+        onSelect: () => {
+          void copyTextToClipboard(
+            branchName,
+            setStatus,
+            t("ctx.status.copiedBranch", { branch: branchName })
+          );
+        },
+      },
+    ];
+    if (hasRemote && currentStatus.has_commits) {
+      items.push({ type: "divider" });
+      items.push({
+        label: t("app.fetch"),
+        disabled: isLoading,
+        onSelect: () => {
+          void handleFetch();
+        },
+      });
+      items.push({
+        label: t("app.pull"),
+        disabled: isLoading,
+        onSelect: () => {
+          void handlePull();
+        },
+      });
+      items.push({
+        label: t("app.push"),
+        disabled: isLoading,
+        onSelect: () => {
+          void handlePush();
+        },
+      });
+    }
+    openContextMenu(e, items);
+  }
+
+  function openSidebarTagContextMenu(e: MouseEvent, tagName: string) {
+    openContextMenu(e, [
+      {
+        label: t("ctx.tag.copyName"),
+        onSelect: () => {
+          void copyTextToClipboard(
+            tagName,
+            setStatus,
+            t("ctx.status.copiedTag", { tag: tagName })
+          );
+        },
+      },
+      { type: "divider" },
+      {
+        label: t("ctx.tag.deleteTag", { tag: tagName }),
+        danger: true,
+        onSelect: () => handleDeleteTag(tagName),
+      },
+    ]);
   }
 
   async function openInTerminal() {
@@ -1498,6 +1666,7 @@
       recentRepos = [];
     }
 
+    initLocale();
     applyTheme(activeTheme);
 
     const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
@@ -1525,9 +1694,13 @@
       }
     };
 
+    const onDocContextMenu = (e: MouseEvent) => {
+      handleGlobalContextMenu(e, setStatus);
+    };
+
     window.addEventListener("keydown", handleGlobalKeydown);
     window.addEventListener("click", handleGlobalClick);
-
+    document.addEventListener("contextmenu", onDocContextMenu);
     const initApp = async () => {
       let initialRepo = "";
       try {
@@ -1555,7 +1728,7 @@
       if (initialRepo) {
         startupTasks.push(loadRepo(initialRepo));
       } else {
-        setStatus("Pilih atau clone repositori untuk memulai");
+        setStatus(t("app.selectOrCloneStart"));
       }
       await Promise.allSettled(startupTasks);
 
@@ -1574,6 +1747,7 @@
       mediaQuery.removeEventListener("change", handleSystemTheme);
       window.removeEventListener("keydown", handleGlobalKeydown);
       window.removeEventListener("click", handleGlobalClick);
+      document.removeEventListener("contextmenu", onDocContextMenu);
       if (autofetchTimer !== null) {
         clearInterval(autofetchTimer);
         autofetchTimer = null;
@@ -1613,13 +1787,14 @@
         type="button"
         class="picker-pill"
         onclick={openOpenModal}
-        title={activeRepo || "Pilih atau buka repositori Git"}
+        oncontextmenu={openRepoHeaderContextMenu}
+        title={activeRepo || t("app.openRepoTooltip")}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink: 0; color: var(--text-secondary);">
           <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z" />
         </svg>
         <span class="picker-pill-label">
-          {activeRepo ? repoAliases[activeRepo] || pathBaseName(activeRepo) : "Buka Repositori"}
+          {activeRepo ? repoAliases[activeRepo] || pathBaseName(activeRepo) : t("app.openRepo")}
         </span>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink: 0; opacity: 0.65;">
           <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
@@ -1631,12 +1806,13 @@
           type="button"
           class="picker-pill"
           onclick={openBranchModal}
-          title="Branch aktif: {currentStatus.branch}"
+          oncontextmenu={openBranchHeaderContextMenu}
+          title={t("app.activeBranchTooltip", { branch: formatBranchDisplay(currentStatus.branch) })}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink: 0; color: var(--text-accent);">
             <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
           </svg>
-          <span class="picker-pill-label">{currentStatus.branch}</span>
+          <span class="picker-pill-label">{formatBranchDisplay(currentStatus.branch)}</span>
           {#if branchPushMeta}
             <span class="picker-pill-meta tabular-nums {branchPushMeta.tone}" title={branchPushMeta.title}>
               {branchPushMeta.text}
@@ -1647,7 +1823,7 @@
     </div>
 
     <div class="header-center">
-      <div class="nav-tabs" role="tablist" aria-label="Tampilan utama">
+      <div class="nav-tabs" role="tablist" aria-label={t("app.mainViewAria")}>
         <button
           type="button"
           role="tab"
@@ -1655,7 +1831,7 @@
           class="nav-tab {activeView === 'changes' ? 'active' : ''}"
           onclick={() => switchView("changes")}
         >
-          <span>Perubahan</span>
+          <span>{t("app.tabChanges")}</span>
           {#if currentStatus}
             <span class="count-pill">{currentStatus.files.length}</span>
           {/if}
@@ -1667,7 +1843,7 @@
           class="nav-tab {activeView === 'history' ? 'active' : ''}"
           onclick={() => switchView("history")}
         >
-          <span>Riwayat</span>
+          <span>{t("app.tabHistory")}</span>
         </button>
       </div>
     </div>
@@ -1680,9 +1856,9 @@
             class="btn-secondary"
             style="height: 28px; padding: 0 10px; font-size: 12px;"
             onclick={() => (activeModal = "remote")}
-            title="Hubungkan repositori lokal ke URL remote yang sudah ada"
+            title={t("app.connectRemoteTooltip")}
           >
-            Hubungkan Remote
+            {t("app.connectRemote")}
           </button>
           <button
             type="button"
@@ -1690,24 +1866,24 @@
             style="height: 28px; padding: 0 10px; font-size: 12px;"
             onclick={() => (activeModal = "publish")}
           >
-            Publikasikan ke GitHub
+            {t("app.publishToGithub")}
           </button>
         {:else}
           {@const pushCount = aheadBehind.has_upstream ? aheadBehind.ahead : aheadBehind.unpushed_commits}
           {@const needsPublishBranch = currentStatus.has_commits && !aheadBehind.has_upstream}
           <div class="menu-wrapper" data-menu-root>
             <div class="btn-group">
-              <button type="button" onclick={handleFetch} disabled={isLoading} title="Fetch dari remote">
-                Fetch
+              <button type="button" onclick={handleFetch} disabled={isLoading} title={t("app.fetchTooltip")}>
+                {t("app.fetch")}
               </button>
               <button
                 type="button"
                 onclick={handlePull}
                 disabled={isLoading || !currentStatus.has_commits}
                 class={aheadBehind.behind > 0 ? "is-highlighted" : ""}
-                title={currentStatus.has_commits ? "Pull perubahan dari remote" : "Belum ada komit"}
+                title={currentStatus.has_commits ? t("app.pullTooltip") : t("app.noCommitsYet")}
               >
-                Pull{#if aheadBehind.behind > 0}<span class="tabular-nums">↓{aheadBehind.behind}</span>{/if}
+                {t("app.pull")}{#if aheadBehind.behind > 0}<span class="tabular-nums">↓{aheadBehind.behind}</span>{/if}
               </button>
               <button
                 type="button"
@@ -1715,16 +1891,16 @@
                 disabled={isLoading || !currentStatus.has_commits}
                 class={(aheadBehind.ahead > 0 || needsPublishBranch) && currentStatus.has_commits ? "is-highlighted" : ""}
                 title={!currentStatus.has_commits
-                  ? "Buat komit pertama sebelum push"
+                  ? t("app.makeFirstCommitBeforePush")
                   : needsPublishBranch
-                    ? `Push branch '${currentStatus.branch}' dan atur upstream ke remote`
-                    : "Push komit lokal ke remote"}
+                    ? t("app.pushBranchTooltip", { branch: formatBranchDisplay(currentStatus.branch) })
+                    : t("app.pushTooltip")}
               >
-                {needsPublishBranch ? "Push Branch" : "Push"}{#if pushCount > 0}<span class="tabular-nums">↑{pushCount}</span>{/if}
+                {needsPublishBranch ? t("app.pushBranch") : t("app.push")}{#if pushCount > 0}<span class="tabular-nums">↑{pushCount}</span>{/if}
               </button>
               <button
                 type="button"
-                aria-label="Opsi sinkronisasi lanjutan"
+                aria-label={t("app.advancedSyncAria")}
                 aria-expanded={syncMenuOpen}
                 style="padding: 0 6px;"
                 onclick={() => {
@@ -1749,8 +1925,12 @@
                     activeModal = "remote";
                   }}
                 >
-                  <span>Kelola Remote...</span>
-                  <span class="popover-item-hint">{repoRemotes.length} remote</span>
+                  <span>{t("app.manageRemotesMenu")}</span>
+                  <span class="popover-item-hint">
+                    {repoRemotes.length === 1
+                      ? t("app.remoteCountOne", { count: repoRemotes.length })
+                      : t("app.remoteCountMany", { count: repoRemotes.length })}
+                  </span>
                 </button>
                 <div class="popover-divider"></div>
                 <button
@@ -1760,7 +1940,7 @@
                   disabled={!currentStatus.has_commits}
                   onclick={handleForcePush}
                 >
-                  <span>Force Push (Lease)</span>
+                  <span>{t("app.forcePushMenu")}</span>
                   <span class="popover-item-hint">--force-with-lease</span>
                 </button>
                 <button
@@ -1770,7 +1950,7 @@
                   disabled={!currentStatus.has_commits}
                   onclick={handleSyncFork}
                 >
-                  <span>Sync Upstream Fork</span>
+                  <span>{t("app.syncForkMenu")}</span>
                   <span class="popover-item-hint">upstream</span>
                 </button>
               </div>
@@ -1784,9 +1964,9 @@
             class="btn-secondary header-pr-btn"
             style="height: 28px; padding: 0 9px; font-size: 12px;"
             onclick={openPrModal}
-            title="Lihat Pull Requests dan Issues GitHub"
+            title={t("app.prIssuesTooltip")}
           >
-            PR / Issues
+            {t("app.prIssuesBtn")}
           </button>
         {/if}
 
@@ -1797,30 +1977,30 @@
             type="button"
             class="icon-btn"
             onclick={openInEditor}
-            title="Buka di Editor Eksternal ({externalEditorLabel})"
-            aria-label="Buka di Editor Eksternal"
+            title={t("app.openInEditorTitle", { editor: externalEditorLabel })}
+            aria-label={t("app.openInEditorAria")}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M4.72 3.22a.75.75 0 0 1 1.06 1.06L2.06 8l3.72 3.72a.75.75 0 1 1-1.06 1.06L.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25Zm6.56 0a.75.75 0 1 0-1.06 1.06L13.94 8l-3.72 3.72a.75.75 0 1 0 1.06 1.06l4.25-4.25a.75.75 0 0 0 0-1.06l-4.25-4.25Z" />
             </svg>
           </button>
-          <button type="button" class="icon-btn" onclick={openInTerminal} title="Buka di Terminal" aria-label="Buka di Terminal">
+          <button type="button" class="icon-btn" onclick={openInTerminal} title={t("app.openInTerminal")} aria-label={t("app.openInTerminal")}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.749.749 0 0 1-.22.53l-2.25 2.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L5.44 8 3.72 6.28a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
             </svg>
           </button>
-          <button type="button" class="icon-btn" onclick={openInFileManager} title="Buka di File Manager" aria-label="Buka di File Manager">
+          <button type="button" class="icon-btn" onclick={openInFileManager} title={t("app.openInFileManager")} aria-label={t("app.openInFileManager")}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
             </svg>
           </button>
-          <button type="button" class="icon-btn" onclick={() => (activeModal = "stash")} title="Kelola Git Stash" aria-label="Kelola Git Stash">
+          <button type="button" class="icon-btn" onclick={() => (activeModal = "stash")} title={t("app.manageStash")} aria-label={t("app.manageStash")}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 14H1.75A1.75 1.75 0 0 1 0 12.25v-8.5C0 2.784.784 2 1.75 2Zm0 1.5a.25.25 0 0 0-.25.25v2.75h13V3.75a.25.25 0 0 0-.25-.25H1.75ZM1.5 8v4.25c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V8H1.5Zm4 1.5h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5Z" />
             </svg>
           </button>
         </div>
-        <button type="button" class="icon-btn" onclick={() => loadRepo(activeRepo)} disabled={isLoading} title="Segarkan Repositori" aria-label="Segarkan Repositori">
+        <button type="button" class="icon-btn" onclick={() => loadRepo(activeRepo)} disabled={isLoading} title={t("app.refreshRepo")} aria-label={t("app.refreshRepo")}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z" />
           </svg>
@@ -1836,15 +2016,15 @@
           class="header-account-chip"
           onclick={() => (activeModal = "auth")}
           title={activeRepoAccount
-            ? `Akun GitHub aktif: @${activeRepoAccount.login} (${activeRepoAccount.host})`
-            : "Hubungkan akun GitHub"}
+            ? t("app.githubAccountActiveTooltip", { login: activeRepoAccount.login, host: activeRepoAccount.host })
+            : t("app.connectGithubAccountTooltip")}
         >
           <span class="header-account-dot {isHeaderAccWarn ? 'is-warn' : ''}"></span>
           <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             {#if activeRepoAccount}
               @{activeRepoAccount.login}{#if activeRepoAccount.host !== "github.com"}<span class="header-account-host"> · {activeRepoAccount.host}</span>{/if}
             {:else}
-              Masuk GitHub
+              {t("app.signInGithub")}
             {/if}
           </span>
         </button>
@@ -1854,7 +2034,7 @@
         <button
           type="button"
           class="icon-btn"
-          aria-label="Menu Alat dan Pengaturan"
+          aria-label={t("app.toolsMenuAria")}
           aria-expanded={toolsMenuOpen}
           onclick={() => {
             toolsMenuOpen = !toolsMenuOpen;
@@ -1862,7 +2042,7 @@
           }}
         >
           {#if appUpdateInfo?.has_update}
-            <span class="update-dot" title="Pembaruan tersedia: v{appUpdateInfo.latest_version}"></span>
+            <span class="update-dot" title={t("app.updateAvailableDotTitle", { version: appUpdateInfo.latest_version })}></span>
           {/if}
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM1.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
@@ -1872,7 +2052,7 @@
         {#if toolsMenuOpen}
           <div class="popover-menu" role="menu">
             <button type="button" role="menuitem" class="popover-item" onclick={openOpenModal}>
-              <span>Buka Repositori...</span>
+              <span>{t("app.menu.openRepo")}</span>
               <span class="popover-item-hint">Ctrl+O</span>
             </button>
             <button
@@ -1884,7 +2064,7 @@
                 activeModal = "clone";
               }}
             >
-              <span>Clone dari URL...</span>
+              <span>{t("app.menu.cloneUrl")}</span>
             </button>
             <button
               type="button"
@@ -1895,7 +2075,7 @@
                 activeModal = "init";
               }}
             >
-              <span>Inisialisasi Repo Baru...</span>
+              <span>{t("app.menu.initRepo")}</span>
             </button>
 
             {#if currentStatus}
@@ -1909,7 +2089,7 @@
                   activeModal = "remote";
                 }}
               >
-                <span>Kelola Remote...</span>
+                <span>{t("app.menu.manageRemotes")}</span>
                 <span class="popover-item-hint">{repoRemotes.length}</span>
               </button>
               <button
@@ -1921,7 +2101,7 @@
                   openCreateTagModal(null);
                 }}
               >
-                <span>Buat Git Tag (HEAD)...</span>
+                <span>{t("app.menu.createTagHead")}</span>
               </button>
             {/if}
 
@@ -1937,23 +2117,22 @@
             >
               <span>
                 {activeRepoAccount
-                  ? `Akun GitHub (@${activeRepoAccount.login})`
-                  : "Kelola Akun GitHub..."}
+                  ? t("app.menu.githubAccountNamed", { login: activeRepoAccount.login })
+                  : t("app.menu.manageGithubAccounts")}
               </span>
               {#if accountOverview.accounts.length > 0}
                 <span class="popover-item-hint" style="color: var(--diff-add-text);">
-                  {accountOverview.accounts.length} akun
+                  {accountOverview.accounts.length === 1
+                    ? t("app.menu.accountsCountOne", { count: accountOverview.accounts.length })
+                    : t("app.menu.accountsCountMany", { count: accountOverview.accounts.length })}
                 </span>
               {/if}
             </button>
             <button type="button" role="menuitem" class="popover-item" onclick={openDiagModal}>
-              <span>Diagnostik Sistem...</span>
+              <span>{t("app.menu.diagnostics")}</span>
             </button>
             <button type="button" role="menuitem" class="popover-item" onclick={openSettingsModal}>
-              <span>Pengaturan &amp; Tema...</span>
-              {#if appUpdateInfo?.has_update}
-                <span class="popover-item-hint" style="color: var(--text-accent);">Update</span>
-              {/if}
+              <span>{t("app.menu.settings")}</span>
             </button>
           </div>
         {/if}
@@ -1968,26 +2147,26 @@
           <div class="welcome-panel">
             <div>
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                <span class="badge-warning">Belum Ada Git</span>
+                <span class="badge-warning">{t("app.onboarding.noGitBadge")}</span>
                 <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                   {pendingInitRepo}
                 </span>
               </div>
-              <h1 class="welcome-title">Folder Belum Diinisialisasi sebagai Git</h1>
+              <h1 class="welcome-title">{t("app.onboarding.title")}</h1>
               <p class="welcome-sub">
-                Direktori ini belum memiliki repositori Git. Inisialisasi sekarang agar bisa melacak perubahan, menautkan remote, dan push ke server.
+                {t("app.onboarding.subtitle")}
               </p>
             </div>
 
             <div class="form-grid-2">
               <div class="form-field">
-                <label class="form-label" for="onboard-branch">Default Branch</label>
+                <label class="form-label" for="onboard-branch">{t("app.onboarding.defaultBranch")}</label>
                 <input id="onboard-branch" type="text" class="form-input" bind:value={initDirBranch} placeholder="main" />
               </div>
               <div class="form-field">
-                <label class="form-label" for="onboard-gitignore">Template .gitignore</label>
+                <label class="form-label" for="onboard-gitignore">{t("app.onboarding.gitignoreTemplate")}</label>
                 <select id="onboard-gitignore" class="form-select" bind:value={initDirGitignore}>
-                  <option value="None">Biarkan / Tidak Ada</option>
+                  <option value="None">{t("app.onboarding.gitignoreNone")}</option>
                   <option value="Node">Node.js</option>
                   <option value="Rust">Rust</option>
                   <option value="Python">Python</option>
@@ -1996,71 +2175,71 @@
             </div>
 
             <div class="form-field">
-              <label class="form-label" for="onboard-remote">URL Remote origin (Opsional)</label>
+              <label class="form-label" for="onboard-remote">{t("app.onboarding.remoteUrlOptional")}</label>
               <input
                 id="onboard-remote"
                 type="text"
                 class="form-input"
                 bind:value={initDirRemoteUrl}
-                placeholder="https://github.com/user/repo-kosong.git"
+                placeholder={t("app.onboarding.remotePlaceholder")}
               />
             </div>
 
             <label class="checkbox-label">
               <input type="checkbox" bind:checked={initDirCommit} />
-              <span>Buat komit awal otomatis jika sudah ada file</span>
+              <span>{t("app.onboarding.autoInitialCommit")}</span>
             </label>
 
             {#if initDirCommit}
               <div class="form-field">
-                <label class="form-label" for="onboard-commit-msg">Pesan Komit Awal</label>
+                <label class="form-label" for="onboard-commit-msg">{t("app.onboarding.initialCommitMsgLabel")}</label>
                 <input id="onboard-commit-msg" type="text" class="form-input" bind:value={initDirCommitMsg} />
               </div>
             {/if}
 
             <div class="welcome-actions">
               <button type="button" class="btn-primary" disabled={isLoading} onclick={handleInitPendingDir}>
-                {isLoading ? "Memproses..." : "Inisialisasi Git di Folder Ini"}
+                {isLoading ? t("app.onboarding.processing") : t("app.onboarding.initHereBtn")}
               </button>
-              <button type="button" class="btn-secondary" onclick={openOpenModal}>Buka Folder Lain</button>
+              <button type="button" class="btn-secondary" onclick={openOpenModal}>{t("app.onboarding.openAnotherFolder")}</button>
               <button
                 type="button"
                 class="btn-secondary"
                 onclick={() => {
                   pendingInitRepo = "";
-                  setStatus("Siap");
+                  setStatus(t("app.ready"));
                 }}
               >
-                Kembali
+                {t("app.onboarding.back")}
               </button>
             </div>
           </div>
         {:else}
           <div class="welcome-panel">
             <div style="display: flex; align-items: center; gap: 14px;">
-              <img src="/icon.svg" alt="Forge Desktop Logo" width="56" height="56" style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 12px;" />
+              <img src="/icon.svg" alt={t("app.welcome.logoAlt")} width="56" height="56" style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 12px;" />
               <div>
                 <h1 class="welcome-title">Forge Desktop</h1>
                 <p class="welcome-sub">
-                  Klien Git native cepat untuk memeriksa perubahan, membandingkan diff, mengelola branch, dan sinkronisasi GitHub.
+                  {t("app.welcome.tagline")}
                 </p>
               </div>
             </div>
             <div class="welcome-actions">
-              <button type="button" class="btn-primary" onclick={openOpenModal}>Buka Repositori</button>
-              <button type="button" class="btn-secondary" onclick={() => (activeModal = "clone")}>Clone URL</button>
-              <button type="button" class="btn-secondary" onclick={() => (activeModal = "init")}>Repo Baru</button>
+              <button type="button" class="btn-primary" onclick={openOpenModal}>{t("app.welcome.openRepo")}</button>
+              <button type="button" class="btn-secondary" onclick={() => (activeModal = "clone")}>{t("app.welcome.cloneUrl")}</button>
+              <button type="button" class="btn-secondary" onclick={() => (activeModal = "init")}>{t("app.welcome.newRepo")}</button>
               <button type="button" class="btn-secondary" onclick={() => (activeModal = "auth")}>
                 {activeRepoAccount
-                  ? `GitHub: @${activeRepoAccount.login}`
-                  : "Masuk GitHub"}
+                  ? t("app.welcome.githubAccount", { login: activeRepoAccount.login })
+                  : t("app.welcome.signInGithub")}
               </button>
-              <button type="button" class="btn-secondary" onclick={openSettingsModal}>Pengaturan</button>
+              <button type="button" class="btn-secondary" onclick={openSettingsModal}>{t("app.welcome.settings")}</button>
             </div>
 
             {#if recentRepos.length > 0}
               <div class="form-field">
-                <span class="form-label">Repositori Terakhir</span>
+                <span class="form-label">{t("app.welcome.recentRepos")}</span>
                 <div class="list-box">
                   {#each recentRepos.slice(0, 6) as r (r)}
                     <button
@@ -2087,6 +2266,8 @@
       <aside class="sidebar-panel">
         {#if activeView === "changes"}
           <Changes
+            repoPath={activeRepo}
+            {externalEditorLabel}
             status={currentStatus}
             {selectedFile}
             onSelectFile={selectFile}
@@ -2099,52 +2280,57 @@
             onAbortRebase={handleAbortRebase}
             onDiscardFile={handleDiscardFile}
             onDiscardAll={handleDiscardAll}
+            onAddToGitignore={handleAddToGitignore}
+            onRevealFile={openInFileManagerTarget}
             onOpenInEditor={openInEditorFile}
+            onOpenStash={() => (activeModal = "stash")}
+            onStatus={setStatus}
             issues={issues.map((i) => ({ number: i.number, title: i.title }))}
           />
         {:else}
           <div class="sidebar-header">
-            <h3 class="tabular-nums">Riwayat ({commits.length})</h3>
+            <h3 class="tabular-nums">{t("app.historySidebar.title", { count: commits.length })}</h3>
             {#if commits.length > 1}
               <button type="button" class="btn-secondary btn-xs" onclick={openInteractiveRebase}>
-                Interactive Rebase
+                {t("app.historySidebar.interactiveRebase")}
               </button>
             {/if}
           </div>
           <div class="history-sidebar-body">
             <div class="form-field">
-              <label class="form-label" for="history-search-input">Filter Riwayat</label>
+              <label class="form-label" for="history-search-input">{t("app.historySidebar.filterLabel")}</label>
               <input
                 id="history-search-input"
                 type="search"
                 class="form-input"
-                placeholder="Cari SHA, pesan, atau author..."
+                placeholder={t("app.historySidebar.filterPlaceholder")}
                 bind:value={historySearch}
               />
             </div>
 
             <div>
               <div class="sidebar-section-title">
-                <span class="tabular-nums">TAG ({tags.length})</span>
+                <span class="tabular-nums">{t("app.historySidebar.tagsHeader", { count: tags.length })}</span>
                 <button type="button" class="link-btn" onclick={() => openCreateTagModal(null)}>
-                  + Buat Tag
+                  {t("app.historySidebar.createTagBtn")}
                 </button>
               </div>
               {#if tags.length === 0}
                 <div style="font-size: 11px; color: var(--text-muted); padding: 6px 0;">
-                  Belum ada tag pada repositori ini.
+                  {t("app.historySidebar.noTags")}
                 </div>
               {:else}
                 <div class="tag-badge-list">
-                  {#each tags as t (t)}
+                  {#each tags as tagName (tagName)}
                     <button
                       type="button"
                       class="tag-badge"
-                      title="Tag {t} (klik untuk hapus)"
-                      aria-label="Tag {t}, klik untuk hapus"
-                      onclick={() => handleDeleteTag(t)}
+                      title={t("app.historySidebar.tagTooltip", { tag: tagName })}
+                      aria-label={t("app.historySidebar.tagAria", { tag: tagName })}
+                      onclick={() => handleDeleteTag(tagName)}
+                      oncontextmenu={(e) => openSidebarTagContextMenu(e, tagName)}
                     >
-                      <span class="tag-badge-label">{t}</span>
+                      <span class="tag-badge-label">{tagName}</span>
                     </button>
                   {/each}
                 </div>
@@ -2159,12 +2345,12 @@
         class="sidebar-resizer {isResizingSidebar ? 'is-resizing' : ''}"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Ubah lebar panel samping"
+        aria-label={t("app.sidebarResizer.aria")}
         aria-valuemin={SIDEBAR_MIN}
         aria-valuemax={SIDEBAR_MAX}
         aria-valuenow={sidebarWidth}
         tabindex="0"
-        title="Seret untuk mengubah lebar panel (klik dua kali untuk reset)"
+        title={t("app.sidebarResizer.title")}
         onpointerdown={startSidebarResize}
         onkeydown={handleResizerKeydown}
         ondblclick={() => updateSidebarWidth(SIDEBAR_DEFAULT)}
@@ -2174,6 +2360,8 @@
         {#if activeView === "changes"}
           {#if selectedFile}
             <Diff
+              repoPath={activeRepo}
+              {externalEditorLabel}
               filePath={selectedFile.path}
               diffText={currentDiff}
               imageDiffData={currentImageDiff}
@@ -2183,6 +2371,9 @@
               onToggleWhitespace={toggleWhitespace}
               onAddToGitignore={handleAddToGitignore}
               onStageHunk={handleStageHunk}
+              onRevealFile={openInFileManagerTarget}
+              onOpenInEditor={openInEditorFile}
+              onStatus={setStatus}
             />
           {:else}
             <div class="empty-state">
@@ -2197,40 +2388,40 @@
               </div>
               {#if currentStatus.files.length === 0}
                 {#if !currentStatus.has_commits}
-                  <div style="font-weight: 600; color: var(--text-primary);">Repositori kosong (belum ada komit)</div>
+                  <div style="font-weight: 600; color: var(--text-primary);">{t("app.emptyChanges.emptyRepoTitle")}</div>
                   <span style="font-size: 12px; max-width: 360px;">
-                    Tambahkan file ke folder proyek untuk membuat komit pertama di branch {currentStatus.branch}, lalu hubungkan remote atau push.
+                    {t("app.emptyChanges.emptyRepoDesc", { branch: formatBranchDisplay(currentStatus.branch) })}
                   </span>
                   <div class="empty-state-actions">
                     {#if !hasRemote}
                       <button type="button" class="btn-secondary btn-xs" onclick={() => (activeModal = "remote")}>
-                        Hubungkan Remote
+                        {t("app.connectRemote")}
                       </button>
                     {/if}
                     <button type="button" class="btn-secondary btn-xs" onclick={openInEditor}>
-                      Buka di Editor
+                      {t("app.emptyChanges.openInEditor")}
                     </button>
                   </div>
                 {:else}
-                  <div style="font-weight: 600; color: var(--text-primary);">Working tree bersih</div>
+                  <div style="font-weight: 600; color: var(--text-primary);">{t("app.emptyChanges.cleanTreeTitle")}</div>
                   <span style="font-size: 12px; max-width: 340px;">
-                    Tidak ada perubahan lokal yang belum dikomit di branch {currentStatus.branch}.
+                    {t("app.emptyChanges.cleanTreeDesc", { branch: formatBranchDisplay(currentStatus.branch) })}
                   </span>
                   <div class="empty-state-actions">
                     <button type="button" class="btn-secondary btn-xs" onclick={() => switchView("history")}>
-                      Lihat Riwayat Komit
+                      {t("app.emptyChanges.viewHistory")}
                     </button>
                     {#if hasRemote}
                       <button type="button" class="btn-secondary btn-xs" onclick={handleFetch} disabled={isLoading}>
-                        Fetch Remote
+                        {t("app.emptyChanges.fetchRemote")}
                       </button>
                     {/if}
                   </div>
                 {/if}
               {:else}
-                <div style="font-weight: 600; color: var(--text-primary);">Pilih file untuk melihat diff</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{t("app.emptyChanges.selectFileTitle")}</div>
                 <span style="font-size: 12px; max-width: 340px;">
-                  Pilih salah satu dari {currentStatus.files.length} file di panel samping untuk meninjau perubahan baris demi baris.
+                  {t("app.emptyChanges.selectFileDesc", { count: currentStatus.files.length })}
                 </span>
               {/if}
             </div>
@@ -2238,6 +2429,8 @@
         {:else}
           <History
             repoPath={activeRepo}
+            {externalEditorLabel}
+            githubRepoUrl={githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null}
             {commits}
             searchQuery={historySearch}
             {checkRunsMap}
@@ -2245,8 +2438,11 @@
             onCherryPick={handleCherryPick}
             onRevert={handleRevert}
             onTag={(sha) => openCreateTagModal(sha)}
+            onDeleteTag={handleDeleteTag}
             onReset={handleReset}
             onSquash={(idx) => handleOpenSquash(idx)}
+            onRevealFile={openInFileManagerTarget}
+            onOpenInEditor={openInEditorFile}
           />
         {/if}
       </section>
@@ -2260,7 +2456,7 @@
       ></span>
       <span class="footer-status-text">{statusMessage}</span>
     </div>
-    <span class="footer-path" title={activeRepo}>{activeRepo || "Tidak ada repositori aktif"}</span>
+    <span class="footer-path" title={activeRepo}>{activeRepo || t("app.noActiveRepo")}</span>
   </footer>
 </div>
 
@@ -2296,6 +2492,7 @@
     {globalConfig}
     {isLoadingSettings}
     {activeTheme}
+    {activeLocale}
     {autofetchMinutes}
     {confirmDiscard}
     {confirmForcePush}
@@ -2360,7 +2557,14 @@
       commits = await gitService.getCommitHistory(activeRepo, 80);
     }}
     onReloadTags={async () => {
-      tags = await gitService.listTags(activeRepo);
+      const [nextTags, nextCommits] = await Promise.all([
+        gitService.listTags(activeRepo),
+        activeView === "history"
+          ? gitService.getCommitHistory(activeRepo, 80)
+          : Promise.resolve(null),
+      ]);
+      tags = nextTags;
+      if (nextCommits !== null) commits = nextCommits;
     }}
     onStatus={setStatus}
     onClose={() => {
@@ -2373,3 +2577,5 @@
     }}
   />
 {/if}
+
+<ContextMenu />

@@ -1,7 +1,16 @@
 <script lang="ts">
   import type { FileEntry, RepoStatus } from "../types/git";
+  import { t } from "../i18n/index.svelte";
+  import { joinRepoPath } from "../utils/path";
+  import {
+    copyTextToClipboard,
+    openContextMenu,
+    type ContextMenuItem,
+  } from "../lib/contextMenu.svelte";
 
   interface Props {
+    repoPath?: string;
+    externalEditorLabel?: string;
     status: RepoStatus;
     selectedFile: FileEntry | null;
     onSelectFile: (file: FileEntry) => void;
@@ -14,11 +23,17 @@
     onAbortRebase?: () => void;
     onDiscardFile?: (file: FileEntry) => void;
     onDiscardAll?: () => void;
+    onAddToGitignore?: (pattern: string) => void;
+    onRevealFile?: (filePath: string) => void;
     onOpenInEditor?: (filePath: string) => void;
+    onOpenStash?: () => void;
+    onStatus?: (msg: string, isError?: boolean) => void;
     issues?: { number: number; title: string }[];
   }
 
   let {
+    repoPath = "",
+    externalEditorLabel = "Editor",
     status,
     selectedFile,
     onSelectFile,
@@ -31,25 +46,28 @@
     onAbortRebase,
     onDiscardFile,
     onDiscardAll,
+    onAddToGitignore,
+    onRevealFile,
     onOpenInEditor,
+    onOpenStash,
+    onStatus,
     issues = [],
   }: Props = $props();
-
-  const EMOJI_LIST = [
-    { code: ":sparkles:", emoji: "✨", desc: "Fitur baru" },
-    { code: ":bug:", emoji: "🐛", desc: "Perbaikan bug" },
-    { code: ":memo:", emoji: "📝", desc: "Dokumentasi" },
-    { code: ":art:", emoji: "🎨", desc: "Format / struktur kode" },
-    { code: ":recycle:", emoji: "♻️", desc: "Refaktor kode" },
-    { code: ":zap:", emoji: "⚡", desc: "Performa" },
-    { code: ":tada:", emoji: "🎉", desc: "Rilis / inisialisasi" },
-    { code: ":rocket:", emoji: "🚀", desc: "Deploy" },
-    { code: ":wrench:", emoji: "🔧", desc: "Tooling / konfigurasi" },
-    { code: ":fire:", emoji: "🔥", desc: "Hapus file / kode" },
-    { code: ":white_check_mark:", emoji: "✅", desc: "Pengujian / tes" },
-    { code: ":lock:", emoji: "🔒", desc: "Keamanan" },
-    { code: ":lipstick:", emoji: "💄", desc: "Styling / UI" },
-  ];
+  const EMOJI_LIST = $derived([
+    { code: ":sparkles:", emoji: "✨", desc: t("changes.emoji.sparkles") },
+    { code: ":bug:", emoji: "🐛", desc: t("changes.emoji.bug") },
+    { code: ":memo:", emoji: "📝", desc: t("changes.emoji.memo") },
+    { code: ":art:", emoji: "🎨", desc: t("changes.emoji.art") },
+    { code: ":recycle:", emoji: "♻️", desc: t("changes.emoji.recycle") },
+    { code: ":zap:", emoji: "⚡", desc: t("changes.emoji.zap") },
+    { code: ":tada:", emoji: "🎉", desc: t("changes.emoji.tada") },
+    { code: ":rocket:", emoji: "🚀", desc: t("changes.emoji.rocket") },
+    { code: ":wrench:", emoji: "🔧", desc: t("changes.emoji.wrench") },
+    { code: ":fire:", emoji: "🔥", desc: t("changes.emoji.fire") },
+    { code: ":white_check_mark:", emoji: "✅", desc: t("changes.emoji.whiteCheckMark") },
+    { code: ":lock:", emoji: "🔒", desc: t("changes.emoji.lock") },
+    { code: ":lipstick:", emoji: "💄", desc: t("changes.emoji.lipstick") },
+  ]);
 
   let autocompleteTarget = $state<"summary" | "description" | null>(null);
   let autocompleteQuery = $state("");
@@ -158,36 +176,142 @@
 
   function getBadge(file: FileEntry) {
     if (file.is_conflict) {
-      return { class: "status-D", text: "CONFLICT" };
+      return { class: "status-D", text: "CONFLICT", isAdded: false };
     }
     const code = file.status_code.trim();
     const c = code.charAt(0) || "M";
-    if (c === "A") return { class: "status-A", text: code };
-    if (c === "D") return { class: "status-D", text: code };
-    if (c === "?") return { class: "status-Q", text: code };
-    return { class: "status-M", text: code };
+    if (c === "A" || c === "?") return { class: "status-A", text: "+", isAdded: true };
+    if (c === "D") return { class: "status-D", text: code, isAdded: false };
+    return { class: "status-M", text: code, isAdded: false };
+  }
+
+  function openFileContextMenu(e: MouseEvent, file: FileEntry) {
+    if (selectedFile?.path !== file.path) {
+      onSelectFile(file);
+    }
+    const slashIdx = Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\"));
+    const dirPath = slashIdx >= 0 ? file.path.slice(0, slashIdx) : "";
+    const isDeleted = file.status_code.trim().startsWith("D");
+    const fullPath = repoPath ? joinRepoPath(repoPath, file.path) : file.path;
+
+    const items: ContextMenuItem[] = [
+      {
+        label: file.staged ? t("ctx.changes.unstage") : t("ctx.changes.stage"),
+        disabled: file.is_conflict,
+        onSelect: () => onToggleStage(file),
+      },
+    ];
+
+    if (onDiscardFile) {
+      items.push({
+        label: t("ctx.changes.discardChanges"),
+        danger: true,
+        onSelect: () => onDiscardFile(file),
+      });
+    }
+
+    if (onAddToGitignore && file.path !== ".gitignore") {
+      items.push({ type: "divider" });
+      items.push({
+        label: t("ctx.changes.ignoreFile"),
+        onSelect: () => onAddToGitignore(file.path),
+      });
+      if (dirPath) {
+        items.push({
+          label: t("ctx.changes.ignoreFolder", { folder: `${dirPath}/` }),
+          onSelect: () => onAddToGitignore(`${dirPath}/`),
+        });
+      }
+    }
+
+    items.push({ type: "divider" });
+    items.push({
+      label: t("ctx.common.copyFilePath"),
+      onSelect: () => {
+        void copyTextToClipboard(fullPath, onStatus, t("ctx.status.copiedPath"));
+      },
+    });
+    items.push({
+      label: t("ctx.common.copyRelativePath"),
+      onSelect: () => {
+        void copyTextToClipboard(file.path, onStatus, t("ctx.status.copiedPath"));
+      },
+    });
+
+    if (onRevealFile || onOpenInEditor) {
+      items.push({ type: "divider" });
+      if (onRevealFile) {
+        items.push({
+          label: t("ctx.common.revealInFileManager"),
+          onSelect: () => onRevealFile(file.path),
+        });
+      }
+      if (onOpenInEditor) {
+        items.push({
+          label: t("ctx.common.openInEditor", { editor: externalEditorLabel }),
+          disabled: isDeleted,
+          onSelect: () => onOpenInEditor(file.path),
+        });
+      }
+    }
+
+    openContextMenu(e, items);
+  }
+
+  function openListContextMenu(e: MouseEvent) {
+    const items: ContextMenuItem[] = [
+      {
+        label: t("ctx.changes.stageAll"),
+        disabled: totalCount === 0,
+        onSelect: onStageAll,
+      },
+      {
+        label: t("ctx.changes.unstageAll"),
+        disabled: stagedCount === 0,
+        onSelect: onUnstageAll,
+      },
+    ];
+    if (onDiscardAll) {
+      items.push({
+        label: t("ctx.changes.discardAll"),
+        danger: true,
+        disabled: totalCount === 0,
+        onSelect: onDiscardAll,
+      });
+    }
+    if (onOpenStash && totalCount > 0) {
+      items.push({ type: "divider" });
+      items.push({
+        label: t("ctx.changes.stashAll"),
+        onSelect: onOpenStash,
+      });
+    }
+    openContextMenu(e, items);
   }
 </script>
 
 {#if status.in_merge}
   <div class="alert-banner">
-    <span>Proses Merge Aktif</span>
+    <span>{t("changes.inMerge")}</span>
     <button type="button" onclick={onAbortMerge} class="btn-secondary btn-xs btn-danger">
-      Batalkan Merge
+      {t("changes.abortMerge")}
     </button>
   </div>
 {:else if status.in_rebase}
   <div class="alert-banner">
-    <span>Proses Rebase Aktif</span>
+    <span>{t("changes.inRebase")}</span>
     <button type="button" onclick={onAbortRebase} class="btn-secondary btn-xs btn-danger">
-      Batalkan Rebase
+      {t("changes.abortRebase")}
     </button>
   </div>
 {/if}
 
-<div class="sidebar-header">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="sidebar-header" oncontextmenu={openListContextMenu}>
   <h3 class="tabular-nums">
-    Perubahan ({totalCount}{#if stagedCount > 0} · {stagedCount} staged{/if})
+    {stagedCount > 0
+      ? t("changes.headerTitleStaged", { total: totalCount, staged: stagedCount })
+      : t("changes.headerTitle", { total: totalCount })}
   </h3>
   <div class="sidebar-actions">
     {#if totalCount > 0 && onDiscardAll}
@@ -195,9 +319,9 @@
         type="button"
         class="btn-secondary btn-xs btn-danger"
         onclick={onDiscardAll}
-        title="Batalkan semua perubahan file"
+        title={t("changes.discardAllTitle")}
       >
-        Discard
+        {t("changes.discardAllBtn")}
       </button>
     {/if}
     <button
@@ -205,40 +329,43 @@
       class="btn-secondary btn-xs"
       onclick={onStageAll}
       disabled={totalCount === 0}
-      title="Stage semua perubahan"
+      title={t("changes.stageAllTitle")}
     >
-      Stage
+      {t("changes.stageAllBtn")}
     </button>
     <button
       type="button"
       class="btn-secondary btn-xs"
       onclick={onUnstageAll}
       disabled={stagedCount === 0}
-      title="Unstage semua perubahan"
+      title={t("changes.unstageAllTitle")}
     >
-      Unstage
+      {t("changes.unstageAllBtn")}
     </button>
   </div>
 </div>
 
-<ul class="file-list" id="file-list-container">
+<ul class="file-list" id="file-list-container" oncontextmenu={openListContextMenu}>
   {#if status.files.length === 0}
     <li class="empty-state" style="padding: 32px 16px;">
-      <span>{status.has_commits ? "Working tree bersih" : "Repositori baru (belum ada komit)"}</span>
+      <span>{status.has_commits ? t("changes.emptyClean") : t("changes.emptyNoCommits")}</span>
     </li>
   {:else}
     {#each status.files as file (file.path)}
       {@const badge = getBadge(file)}
       {@const isSelected = selectedFile?.path === file.path}
       {@const slashIdx = Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\"))}
-      <li class="file-item {isSelected ? 'selected' : ''}">
+      <li
+        class="file-item {isSelected ? 'selected' : ''}"
+        oncontextmenu={(e) => openFileContextMenu(e, file)}
+      >
         <input
           type="checkbox"
           class="file-stage-cb"
           checked={file.staged}
           disabled={file.is_conflict}
           onchange={() => onToggleStage(file)}
-          aria-label="Stage {file.path}"
+          aria-label={t("changes.stageFileAria", { path: file.path })}
         />
         <button
           type="button"
@@ -246,7 +373,15 @@
           onclick={() => onSelectFile(file)}
           title={file.path}
         >
-          <span class="file-status-badge {badge.class}">{badge.text}</span>
+          <span class="file-status-badge {badge.class}">
+            {#if badge.isAdded}
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+              </svg>
+            {:else}
+              {badge.text}
+            {/if}
+          </span>
           {#if file.is_lfs}
             <span class="badge-lfs">LFS</span>
           {/if}
@@ -264,17 +399,17 @@
           <button
             type="button"
             class="btn-secondary btn-xs btn-danger"
-            title="Buka file konflik di editor eksternal"
+            title={t("changes.editConflictTitle")}
             onclick={() => onOpenInEditor(file.path)}
           >
-            Edit
+            {t("changes.editConflictBtn")}
           </button>
         {:else if onDiscardFile}
           <button
             type="button"
             class="btn-discard"
-            title="Batalkan perubahan pada {file.path}"
-            aria-label="Batalkan perubahan {file.path}"
+            title={t("changes.discardFileTitle", { path: file.path })}
+            aria-label={t("changes.discardFileAria", { path: file.path })}
             onclick={() => onDiscardFile(file)}
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -305,8 +440,8 @@
   </div>
 
   {#if autocompleteType === "emoji" && filteredEmojis.length > 0}
-    <div class="autocomplete-popover" role="listbox" aria-label="Pilih Emoji">
-      <div class="autocomplete-header">PILIH EMOJI (:)</div>
+    <div class="autocomplete-popover" role="listbox" aria-label={t("changes.chooseEmojiAria")}>
+      <div class="autocomplete-header">{t("changes.chooseEmojiHeader")}</div>
       {#each filteredEmojis as item}
         <button
           type="button"
@@ -320,8 +455,8 @@
       {/each}
     </div>
   {:else if autocompleteType === "issue" && filteredIssues.length > 0}
-    <div class="autocomplete-popover" role="listbox" aria-label="Pilih Issue">
-      <div class="autocomplete-header">PILIH ISSUE / PR (#)</div>
+    <div class="autocomplete-popover" role="listbox" aria-label={t("changes.chooseIssueAria")}>
+      <div class="autocomplete-header">{t("changes.chooseIssueHeader")}</div>
       {#each filteredIssues as issue}
         <button
           type="button"
@@ -343,8 +478,8 @@
     <input
       type="text"
       class="commit-input"
-      aria-label="Ringkasan komit"
-      placeholder="Ringkasan (: emoji, # issue)"
+      aria-label={t("changes.summaryAria")}
+      placeholder={t("changes.summaryPlaceholder")}
       maxlength="150"
       bind:value={commitSummary}
       oninput={(e) => checkAutocomplete(e.currentTarget.value, "summary")}
@@ -352,7 +487,7 @@
     />
     <span
       class="commit-char-count {commitSummary.length > 72 ? 'is-over-limit' : ''}"
-      title="Panjang ringkasan komit (disarankan maksimal 72 karakter)"
+      title={t("changes.summaryCountTitle")}
     >
       {commitSummary.length}/72
     </span>
@@ -361,8 +496,8 @@
   {#if showDescription}
     <textarea
       class="commit-input"
-      aria-label="Deskripsi detail komit"
-      placeholder="Deskripsi detail komit (opsional)"
+      aria-label={t("changes.descAria")}
+      placeholder={t("changes.descPlaceholder")}
       rows="3"
       bind:value={commitDescription}
       oninput={(e) => checkAutocomplete(e.currentTarget.value, "description")}
@@ -376,16 +511,16 @@
       <input
         type="text"
         class="commit-input"
-        aria-label="Nama Co-Author"
-        placeholder="Nama Co-Author"
+        aria-label={t("changes.coAuthorNamePlaceholder")}
+        placeholder={t("changes.coAuthorNamePlaceholder")}
         style="font-size: 11px;"
         bind:value={coAuthorName}
       />
       <input
         type="email"
         class="commit-input"
-        aria-label="Email Co-Author"
-        placeholder="email@domain.com"
+        aria-label={t("changes.coAuthorEmailAria")}
+        placeholder={t("changes.coAuthorEmailPlaceholder")}
         style="font-size: 11px;"
         bind:value={coAuthorEmail}
       />
@@ -393,9 +528,9 @@
   {/if}
 
   <div class="commit-meta-row">
-    <label class="checkbox-label" title={!status.has_commits ? "Belum ada komit untuk diamandemen" : undefined}>
+    <label class="checkbox-label" title={!status.has_commits ? t("changes.amendDisabledTitle") : undefined}>
       <input type="checkbox" bind:checked={isAmend} disabled={!status.has_commits} />
-      <span>Amend</span>
+      <span>{t("changes.amendLabel")}</span>
     </label>
     <div style="display: flex; gap: 8px;">
       <button
@@ -403,14 +538,14 @@
         class="link-btn"
         onclick={() => (showCoAuthors = !showCoAuthors)}
       >
-        {showCoAuthors ? "- Co-Author" : "+ Co-Author"}
+        {showCoAuthors ? t("changes.coAuthorHide") : t("changes.coAuthorShow")}
       </button>
       <button
         type="button"
         class="link-btn"
         onclick={() => (showDescription = !showDescription)}
       >
-        {showDescription ? "- Deskripsi" : "+ Deskripsi"}
+        {showDescription ? t("changes.descHide") : t("changes.descShow")}
       </button>
     </div>
   </div>
@@ -422,11 +557,15 @@
     onclick={handleCommit}
   >
     {#if status.has_conflicts}
-      <span>Selesaikan konflik dahulu</span>
+      <span>{t("changes.resolveConflictsFirst")}</span>
     {:else if isAmend}
-      <span>Amandemen komit terakhir</span>
+      <span>{t("changes.amendLastCommit")}</span>
     {:else}
-      <span class="tabular-nums">Komit ({stagedCount} file)</span>
+      <span class="tabular-nums">
+        {stagedCount === 1
+          ? t("changes.commitBtnOne", { count: stagedCount })
+          : t("changes.commitBtnMany", { count: stagedCount })}
+      </span>
       <span class="kbd-hint">Ctrl+↵</span>
     {/if}
   </button>
@@ -437,9 +576,9 @@
       onclick={onUndoCommit}
       class="btn-secondary btn-xs"
       style="width: 100%;"
-      title="Batalkan komit terakhir dan kembalikan perubahannya ke staging"
+      title={t("changes.undoLastCommitTitle")}
     >
-      Undo Komit Terakhir
+      {t("changes.undoLastCommit")}
     </button>
   {/if}
 </div>

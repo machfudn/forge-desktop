@@ -2,33 +2,49 @@
   import type { CommitChangedFile, CommitDetail, CommitInfo } from "../types/git";
   import * as gitService from "../services/git";
   import Diff from "./Diff.svelte";
+  import { t } from "../i18n/index.svelte";
+  import { joinRepoPath, openExternalUrl } from "../utils/path";
+  import {
+    copyTextToClipboard,
+    openContextMenu,
+    type ContextMenuItem,
+  } from "../lib/contextMenu.svelte";
 
   interface Props {
     repoPath?: string;
+    externalEditorLabel?: string;
+    githubRepoUrl?: string | null;
     commits: CommitInfo[];
     searchQuery?: string;
     checkRunsMap?: Record<string, { status: string; conclusion?: string }>;
     onCherryPick?: (sha: string) => void;
     onRevert?: (sha: string) => void;
     onTag?: (sha: string) => void;
+    onDeleteTag?: (tagName: string) => void;
     onReset?: (sha: string) => void;
     onSquash?: (commitIndex: number, sha: string) => void;
+    onRevealFile?: (filePath: string) => void;
+    onOpenInEditor?: (filePath: string) => void;
     onStatus?: (msg: string, isError?: boolean) => void;
   }
 
   let {
     repoPath = "",
+    externalEditorLabel = "Editor",
+    githubRepoUrl = null,
     commits,
     searchQuery = "",
     checkRunsMap = {},
     onCherryPick,
     onRevert,
     onTag,
+    onDeleteTag,
     onReset,
     onSquash,
+    onRevealFile,
+    onOpenInEditor,
     onStatus,
   }: Props = $props();
-
   let selectedSha = $state<string | null>(null);
   let selectedDetail = $state<CommitDetail | null>(null);
   let detailLoading = $state(false);
@@ -241,7 +257,8 @@
           commit.summary.toLowerCase().includes(q) ||
           commit.author.toLowerCase().includes(q) ||
           commit.short_sha.toLowerCase().includes(q) ||
-          commit.sha.toLowerCase().includes(q)
+          commit.sha.toLowerCase().includes(q) ||
+          (commit.tags?.some((tag) => tag.toLowerCase().includes(q)) ?? false)
         );
       })
   );
@@ -330,7 +347,7 @@
     } catch (err) {
       if (reqId !== detailRequestSeq) return;
       detailError = String(err);
-      onStatus?.(`Gagal memuat detail commit: ${err}`, true);
+      onStatus?.(t("history.loadDetailFailed", { err: String(err) }), true);
     } finally {
       if (reqId === detailRequestSeq) {
         detailLoading = false;
@@ -344,11 +361,140 @@
       await loadFileDiff(selectedSha, selectedCommitFile, commitIgnoreWhitespace);
     }
   }
+
+  function openCommitContextMenu(e: MouseEvent, commit: CommitInfo, index: number) {
+    const clickedTag =
+      e.target instanceof HTMLElement
+        ? e.target.closest<HTMLElement>(".commit-tag-badge")?.dataset.tag ?? null
+        : null;
+    const items: ContextMenuItem[] = [];
+
+    if (clickedTag) {
+      items.push({
+        label: t("ctx.tag.copyName"),
+        onSelect: () => {
+          void copyTextToClipboard(
+            clickedTag,
+            onStatus,
+            t("ctx.status.copiedTag", { tag: clickedTag })
+          );
+        },
+      });
+      if (onDeleteTag) {
+        items.push({
+          label: t("ctx.tag.deleteTag", { tag: clickedTag }),
+          danger: true,
+          onSelect: () => onDeleteTag(clickedTag),
+        });
+      }
+      items.push({ type: "divider" });
+    }
+
+    if (onCherryPick) {
+      items.push({
+        label: t("ctx.history.cherryPick"),
+        onSelect: () => onCherryPick(commit.sha),
+      });
+    }
+    if (onRevert) {
+      items.push({
+        label: t("ctx.history.revertCommit"),
+        onSelect: () => onRevert(commit.sha),
+      });
+    }
+    if (onSquash && index > 0 && !searchQuery.trim()) {
+      items.push({
+        label: t("ctx.history.squashCommits", { count: index + 1 }),
+        onSelect: () => onSquash(index, commit.sha),
+      });
+    }
+    if (onTag) {
+      items.push({
+        label: t("ctx.history.createTag"),
+        onSelect: () => onTag(commit.sha),
+      });
+    }
+    if (onReset) {
+      items.push({
+        label: t("ctx.history.resetHere"),
+        danger: true,
+        onSelect: () => onReset(commit.sha),
+      });
+    }
+
+    items.push({ type: "divider" });
+    items.push({
+      label: t("ctx.history.copySha"),
+      onSelect: () => {
+        void copyTextToClipboard(
+          commit.sha,
+          onStatus,
+          t("ctx.status.copiedSha", { sha: commit.short_sha })
+        );
+      },
+    });
+    items.push({
+      label: t("ctx.history.copyMessage"),
+      onSelect: () => {
+        void copyTextToClipboard(commit.summary, onStatus, t("ctx.status.copiedCommitMsg"));
+      },
+    });
+    if (githubRepoUrl) {
+      items.push({
+        label: t("ctx.history.viewOnGithub"),
+        onSelect: () => {
+          void openExternalUrl(`${githubRepoUrl}/commit/${commit.sha}`);
+        },
+      });
+    }
+
+    openContextMenu(e, items);
+  }
+
+  function openCommitFileContextMenu(e: MouseEvent, file: CommitChangedFile) {
+    const isDeleted = file.status_code.trim().startsWith("D");
+    const fullPath = repoPath ? joinRepoPath(repoPath, file.path) : file.path;
+    const items: ContextMenuItem[] = [];
+
+    if (repoPath) {
+      items.push({
+        label: t("ctx.common.copyFilePath"),
+        onSelect: () => {
+          void copyTextToClipboard(fullPath, onStatus, t("ctx.status.copiedPath"));
+        },
+      });
+    }
+    items.push({
+      label: t("ctx.common.copyRelativePath"),
+      onSelect: () => {
+        void copyTextToClipboard(file.path, onStatus, t("ctx.status.copiedPath"));
+      },
+    });
+
+    if (onRevealFile || onOpenInEditor) {
+      items.push({ type: "divider" });
+      if (onRevealFile) {
+        items.push({
+          label: t("ctx.common.revealInFileManager"),
+          onSelect: () => onRevealFile(file.path),
+        });
+      }
+      if (onOpenInEditor) {
+        items.push({
+          label: t("ctx.common.openInEditor", { editor: externalEditorLabel }),
+          disabled: isDeleted,
+          onSelect: () => onOpenInEditor(file.path),
+        });
+      }
+    }
+
+    openContextMenu(e, items);
+  }
 </script>
 
 {#if commits.length === 0}
   <div class="empty-state">
-    <span>Belum ada riwayat commit di branch ini.</span>
+    <span>{t("history.empty")}</span>
   </div>
 {:else}
   <div
@@ -358,16 +504,16 @@
   >
     <div class="history-container {selectedSha ? 'has-detail' : ''}">
     <div class="history-header-bar">
-      <span>SHA</span>
-      <span>KOMIT</span>
-      <span>STATUS</span>
-      <span class="commit-author-col">PENULIS</span>
-      <span style="text-align: right;">TANGGAL</span>
+      <span>{t("history.colSha")}</span>
+      <span>{t("history.colCommit")}</span>
+      <span>{t("history.colStatus")}</span>
+      <span class="commit-author-col">{t("history.colAuthor")}</span>
+      <span style="text-align: right;">{t("history.colDate")}</span>
     </div>
 
     {#if indexedCommits.length === 0}
       <div class="empty-state">
-        <span>Tidak ada komit yang cocok dengan "{searchQuery}".</span>
+        <span>{t("history.noSearchMatch", { query: searchQuery })}</span>
       </div>
     {:else}
       {#each indexedCommits as { commit, index } (commit.sha)}
@@ -377,6 +523,7 @@
           class="commit-row {isSelected ? 'selected' : ''}"
           aria-expanded={isSelected}
           onclick={() => handleSelectCommit(commit.sha)}
+          oncontextmenu={(e) => openCommitContextMenu(e, commit, index)}
         >
           <span class="commit-sha">
             {#if checkRunsMap[commit.sha]}
@@ -393,26 +540,37 @@
             {/if}
             {commit.short_sha}
           </span>
-          <span class="commit-summary" title={commit.summary}>{commit.summary}</span>
+          <span class="commit-summary-cell">
+            <span class="commit-summary" title={commit.summary}>{commit.summary}</span>
+            {#if commit.tags?.length}
+              <span class="commit-tag-list">
+                {#each commit.tags as tagName (tagName)}
+                  <span class="tag-badge commit-tag-badge" data-tag={tagName} title={tagName}>
+                    <span class="tag-badge-label">{tagName}</span>
+                  </span>
+                {/each}
+              </span>
+            {/if}
+          </span>
           <span
             class="commit-push-badge {commit.is_pushed ? 'is-pushed' : 'is-local'}"
             title={commit.is_pushed
-              ? "Sudah di-push ke repository remote"
-              : "Masih lokal (belum di-push ke remote)"}
+              ? t("history.pushedTitle")
+              : t("history.localTitle")}
           >
             {#if commit.is_pushed}
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M4.5 12.75h7.1a2.65 2.65 0 0 0 .45-5.26A3.85 3.85 0 0 0 4.55 6.4 3.1 3.1 0 0 0 4.5 12.75Z" />
                 <path d="M6.4 9.55 7.7 10.85l2.6-2.7" />
               </svg>
-              <span>Remote</span>
+              <span>{t("history.badgeRemote")}</span>
             {:else}
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M8 10V2.5" />
                 <path d="M4.75 5.5 8 2.25l3.25 3.25" />
                 <path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2" />
               </svg>
-              <span>Lokal</span>
+              <span>{t("history.badgeLocal")}</span>
             {/if}
           </span>
           <span class="commit-author">{commit.author}</span>
@@ -427,9 +585,9 @@
                 type="button"
                 onclick={() => onSquash(index, commit.sha)}
                 class="btn-secondary btn-xs"
-                title="Squash {index + 1} komit dari HEAD ke komit ini"
+                title={t("history.squashTitle", { count: index + 1 })}
               >
-                Squash {index + 1} komit
+                {t("history.squashBtn", { count: index + 1 })}
               </button>
             {/if}
             {#if onCherryPick}
@@ -437,9 +595,9 @@
                 type="button"
                 onclick={() => onCherryPick(commit.sha)}
                 class="btn-secondary btn-xs"
-                title="Salin komit ini ke branch saat ini"
+                title={t("history.cherryPickTitle")}
               >
-                Cherry-pick
+                {t("history.cherryPickBtn")}
               </button>
             {/if}
             {#if onRevert}
@@ -447,9 +605,9 @@
                 type="button"
                 onclick={() => onRevert(commit.sha)}
                 class="btn-secondary btn-xs"
-                title="Balikkan perubahan komit ini"
+                title={t("history.revertTitle")}
               >
-                Revert
+                {t("history.revertBtn")}
               </button>
             {/if}
             {#if onTag}
@@ -457,9 +615,9 @@
                 type="button"
                 onclick={() => onTag(commit.sha)}
                 class="btn-secondary btn-xs"
-                title="Buat tag di komit ini"
+                title={t("history.createTagTitle")}
               >
-                Buat Tag
+                {t("history.createTagBtn")}
               </button>
             {/if}
             {#if onReset}
@@ -468,9 +626,9 @@
                 onclick={() => onReset(commit.sha)}
                 class="btn-secondary btn-xs btn-danger"
                 style="margin-left: auto;"
-                title="Reset branch ke titik komit ini (soft reset)"
+                title={t("history.resetHereTitle")}
               >
-                Reset ke sini
+                {t("history.resetHereBtn")}
               </button>
             {/if}
           </div>
@@ -486,8 +644,8 @@
         class="pane-resizer-h {activeResizer === 'detail' ? 'is-resizing' : ''}"
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Ubah tinggi panel detail komit"
-        title="Seret ke atas/bawah untuk ubah tinggi detail (klik ganda untuk reset)"
+        aria-label={t("history.detailResizerAria")}
+        title={t("history.detailResizerTitle")}
         tabindex="0"
         onpointerdown={startDetailResize}
         ondblclick={() => updateDetailPct(DETAIL_PCT_DEFAULT)}
@@ -496,7 +654,7 @@
       <section
         bind:this={detailPaneEl}
         class="commit-detail-pane"
-        aria-label="Detail komit terpilih"
+        aria-label={t("history.detailPaneAria")}
       >
         <div
           bind:this={detailHeaderEl}
@@ -515,22 +673,22 @@
                 <span
                   class="commit-push-badge {selectedCommitSummary.is_pushed ? 'is-pushed' : 'is-local'}"
                   title={selectedCommitSummary.is_pushed
-                    ? "Sudah di-push ke repository remote"
-                    : "Masih lokal (belum di-push ke remote)"}
+                    ? t("history.pushedTitle")
+                    : t("history.localTitle")}
                 >
                   {#if selectedCommitSummary.is_pushed}
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M4.5 12.75h7.1a2.65 2.65 0 0 0 .45-5.26A3.85 3.85 0 0 0 4.55 6.4 3.1 3.1 0 0 0 4.5 12.75Z" />
                       <path d="M6.4 9.55 7.7 10.85l2.6-2.7" />
                     </svg>
-                    <span>Sudah Push</span>
+                    <span>{t("history.badgePushed")}</span>
                   {:else}
                     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M8 10V2.5" />
                       <path d="M4.75 5.5 8 2.25l3.25 3.25" />
                       <path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2" />
                     </svg>
-                    <span>Belum Push</span>
+                    <span>{t("history.badgeUnpushed")}</span>
                   {/if}
                 </span>
               {/if}
@@ -539,9 +697,9 @@
               type="button"
               class="btn-secondary btn-xs"
               onclick={clearSelection}
-              title="Tutup detail komit"
+              title={t("history.closeDetailTitle")}
             >
-              Tutup
+              {t("common.close")}
             </button>
           </div>
 
@@ -553,12 +711,16 @@
             <span>{selectedDetail?.date || selectedCommitSummary?.date}</span>
             {#if selectedDetail}
               <span>·</span>
-              <span class="tabular-nums">{selectedDetail.files.length} file diubah</span>
+              <span class="tabular-nums">
+                {selectedDetail.files.length === 1
+                  ? t("history.filesChangedCountOne", { count: selectedDetail.files.length })
+                  : t("history.filesChangedCountMany", { count: selectedDetail.files.length })}
+              </span>
             {/if}
           </div>
 
           {#if detailLoading}
-            <div class="commit-detail-empty-desc">Memuat deskripsi dan daftar perubahan...</div>
+            <div class="commit-detail-empty-desc">{t("history.loadingDetail")}</div>
           {:else if detailError}
             <div class="alert-banner" style="border-radius: var(--radius-sm); border: 1px solid var(--danger-border);">
               <span>{detailError}</span>
@@ -566,7 +728,7 @@
           {:else if selectedDetail?.description}
             <pre class="commit-detail-desc">{selectedDetail.description}</pre>
           {:else if selectedDetail}
-            <div class="commit-detail-empty-desc">Tidak ada deskripsi tambahan pada komit ini.</div>
+            <div class="commit-detail-empty-desc">{t("history.noDescription")}</div>
           {/if}
         </div>
         {#if !detailLoading && !detailError && selectedDetail}
@@ -576,8 +738,8 @@
             class="pane-resizer-h subtle {activeResizer === 'desc' ? 'is-resizing' : ''}"
             role="separator"
             aria-orientation="horizontal"
-            aria-label="Ubah tinggi deskripsi komit"
-            title="Seret ke atas/bawah untuk lebarkan atau kecilkan deskripsi (klik ganda untuk otomatis)"
+            aria-label={t("history.descResizerAria")}
+            title={t("history.descResizerTitle")}
             tabindex="0"
             onpointerdown={startDescResize}
             ondblclick={resetDescHeaderHeight}
@@ -585,23 +747,23 @@
           ></div>
           {#if selectedDetail.files.length === 0}
             <div class="empty-state" style="padding: 18px;">
-              <span>Tidak ada perubahan file pada komit ini.</span>
+              <span>{t("history.noChangedFiles")}</span>
             </div>
           {:else}
             <div class="commit-detail-body {isFilesStacked ? 'is-stacked' : ''}">
               <div class="commit-files-pane">
                 <div class="commit-files-header tabular-nums">
-                  <span>FILE BERUBAH ({selectedDetail.files.length})</span>
+                  <span>{t("history.changedFilesHeader", { count: selectedDetail.files.length })}</span>
                   {#if !isCompactWidth}
                     <button
                       type="button"
                       class="commit-files-layout-btn"
                       onclick={toggleFilesLayout}
                       title={filesLayout === "vertical"
-                        ? "Ubah susunan daftar file ke kiri-kanan"
-                        : "Ubah susunan daftar file ke atas-bawah"}
+                        ? t("history.layoutToHorizontalTitle")
+                        : t("history.layoutToVerticalTitle")}
                     >
-                      {filesLayout === "vertical" ? "Samping" : "Atas-Bawah"}
+                      {filesLayout === "vertical" ? t("history.layoutHorizontalLabel") : t("history.layoutVerticalLabel")}
                     </button>
                   {/if}
                 </div>
@@ -614,10 +776,17 @@
                         type="button"
                         class="commit-file-btn {isFileSelected ? 'selected' : ''}"
                         onclick={() => loadFileDiff(selectedDetail!.sha, file)}
+                        oncontextmenu={(e) => openCommitFileContextMenu(e, file)}
                         title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}
                       >
                         <span class="file-status-badge status-{file.status_code}">
-                          {file.status_code}
+                          {#if file.status_code === "A"}
+                            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                              <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+                            </svg>
+                          {:else}
+                            {file.status_code}
+                          {/if}
                         </span>
                         <span class="file-name">
                           {#if slashIdx >= 0}
@@ -639,11 +808,11 @@
                 role="separator"
                 aria-orientation={isFilesStacked ? "horizontal" : "vertical"}
                 aria-label={isFilesStacked
-                  ? "Ubah tinggi daftar file perubahan"
-                  : "Ubah lebar daftar file perubahan"}
+                  ? t("history.filesResizerVerticalAria")
+                  : t("history.filesResizerHorizontalAria")}
                 title={isFilesStacked
-                  ? "Seret ke atas/bawah untuk ubah tinggi daftar file (klik ganda untuk reset)"
-                  : "Seret ke kiri/kanan untuk ubah lebar daftar file (klik ganda untuk reset)"}
+                  ? t("history.filesResizerVerticalTitle")
+                  : t("history.filesResizerHorizontalTitle")}
                 tabindex="0"
                 onpointerdown={startFilesResize}
                 ondblclick={() =>
@@ -656,14 +825,19 @@
               <div class="commit-diff-pane">
                 {#if diffLoading}
                   <div class="empty-state">
-                    <span>Memuat diff perubahan...</span>
+                    <span>{t("history.loadingDiff")}</span>
                   </div>
                 {:else if selectedCommitFile}
                   <Diff
+                    {repoPath}
+                    {externalEditorLabel}
                     filePath={selectedCommitFile.path}
                     diffText={commitFileDiff}
                     ignoreWhitespace={commitIgnoreWhitespace}
                     onToggleWhitespace={handleToggleWhitespace}
+                    {onRevealFile}
+                    {onOpenInEditor}
+                    {onStatus}
                   />
                 {/if}
               </div>

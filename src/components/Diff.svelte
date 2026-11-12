@@ -1,7 +1,16 @@
 <script lang="ts">
   import type { ImageDiffData } from "../types/git";
+  import { t } from "../i18n/index.svelte";
+  import { joinRepoPath } from "../utils/path";
+  import {
+    copyTextToClipboard,
+    openContextMenu,
+    type ContextMenuItem,
+  } from "../lib/contextMenu.svelte";
 
   interface Props {
+    repoPath?: string;
+    externalEditorLabel?: string;
     filePath: string;
     diffText: string;
     imageDiffData?: ImageDiffData | null;
@@ -11,9 +20,14 @@
     onToggleWhitespace?: () => void;
     onAddToGitignore?: (path: string) => void;
     onStageHunk?: (patchText: string, reverse: boolean) => void;
+    onRevealFile?: (filePath: string) => void;
+    onOpenInEditor?: (filePath: string) => void;
+    onStatus?: (msg: string, isError?: boolean) => void;
   }
 
   let {
+    repoPath = "",
+    externalEditorLabel = "Editor",
     filePath,
     diffText,
     imageDiffData = null,
@@ -23,8 +37,10 @@
     onToggleWhitespace,
     onAddToGitignore,
     onStageHunk,
+    onRevealFile,
+    onOpenInEditor,
+    onStatus,
   }: Props = $props();
-
   let isImage = $derived(
     /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(filePath) &&
       !!imageDiffData &&
@@ -408,9 +424,87 @@
     adds: lines.filter((l) => l.kind === "add").length,
     dels: lines.filter((l) => l.kind === "del").length,
   });
+
+  function openDiffContextMenu(e: MouseEvent) {
+    if (e.target instanceof HTMLInputElement) return;
+    const selectedText = window.getSelection()?.toString() || "";
+    const fullPath = repoPath ? joinRepoPath(repoPath, filePath) : filePath;
+    const items: ContextMenuItem[] = [];
+
+    if (selectedText.trim().length > 0) {
+      items.push({
+        label: t("ctx.edit.copy"),
+        hint: "Ctrl+C",
+        onSelect: () => {
+          void copyTextToClipboard(selectedText, onStatus, t("ctx.status.copiedSelection"));
+        },
+      });
+      items.push({ type: "divider" });
+    }
+
+    if (filePath) {
+      if (repoPath) {
+        items.push({
+          label: t("ctx.common.copyFilePath"),
+          onSelect: () => {
+            void copyTextToClipboard(fullPath, onStatus, t("ctx.status.copiedPath"));
+          },
+        });
+      }
+      items.push({
+        label: t("ctx.common.copyRelativePath"),
+        onSelect: () => {
+          void copyTextToClipboard(filePath, onStatus, t("ctx.status.copiedPath"));
+        },
+      });
+    }
+
+    if ((onRevealFile || onOpenInEditor) && filePath) {
+      items.push({ type: "divider" });
+      if (onRevealFile) {
+        items.push({
+          label: t("ctx.common.revealInFileManager"),
+          onSelect: () => onRevealFile(filePath),
+        });
+      }
+      if (onOpenInEditor) {
+        items.push({
+          label: t("ctx.common.openInEditor", { editor: externalEditorLabel }),
+          onSelect: () => onOpenInEditor(filePath),
+        });
+      }
+    }
+
+    if ((!isImage && viewMode !== "markdown") || onToggleWhitespace || onAddToGitignore) {
+      items.push({ type: "divider" });
+      if (!isImage && viewMode !== "markdown") {
+        items.push({
+          label: wrapLines ? t("ctx.diff.unwrapLines") : t("ctx.diff.wrapLines"),
+          onSelect: () => {
+            wrapLines = !wrapLines;
+          },
+        });
+      }
+      if (onToggleWhitespace && !isImage) {
+        items.push({
+          label: ignoreWhitespace ? t("ctx.diff.showWhitespace") : t("ctx.diff.ignoreWhitespace"),
+          onSelect: onToggleWhitespace,
+        });
+      }
+      if (onAddToGitignore && filePath && filePath !== ".gitignore") {
+        items.push({
+          label: t("ctx.diff.addToGitignore"),
+          onSelect: () => onAddToGitignore(filePath),
+        });
+      }
+    }
+
+    openContextMenu(e, items);
+  }
 </script>
 
-<div class="diff-container">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="diff-container" oncontextmenu={openDiffContextMenu}>
   <div class="diff-header">
     <div class="diff-file-meta">
       <span class="diff-file-path" title={filePath}>{filePath}</span>
@@ -427,14 +521,14 @@
 
     <div class="diff-toolbar">
       {#if !isImage}
-        <div class="seg-group" role="group" aria-label="Mode tampilan diff">
+        <div class="seg-group" role="group" aria-label={t("diff.viewModeAria")}>
           <button
             type="button"
             class="seg-btn {viewMode === 'unified' ? 'active' : ''}"
             aria-pressed={viewMode === "unified"}
             onclick={() => (viewMode = "unified")}
           >
-            Unified
+            {t("diff.unified")}
           </button>
           <button
             type="button"
@@ -442,7 +536,7 @@
             aria-pressed={viewMode === "split"}
             onclick={() => (viewMode = "split")}
           >
-            Split
+            {t("diff.split")}
           </button>
           {#if isMarkdown}
             <button
@@ -451,7 +545,7 @@
               aria-pressed={viewMode === "markdown"}
               onclick={() => (viewMode = "markdown")}
             >
-              Rendered MD
+              {t("diff.renderedMd")}
             </button>
           {/if}
         </div>
@@ -463,9 +557,9 @@
           onclick={() => (wrapLines = !wrapLines)}
           class="btn-secondary btn-xs {wrapLines ? 'btn-accent' : ''}"
           aria-pressed={wrapLines}
-          title="Bungkus baris panjang agar tidak perlu scroll horizontal"
+          title={t("diff.wrapTitle")}
         >
-          Wrap
+          {t("diff.wrap")}
         </button>
       {/if}
       {#if onToggleWhitespace && !isImage}
@@ -474,9 +568,9 @@
           onclick={onToggleWhitespace}
           class="btn-secondary btn-xs {ignoreWhitespace ? 'btn-accent' : ''}"
           aria-pressed={ignoreWhitespace}
-          title="Abaikan perbedaan spasi dan indentasi (git diff -w)"
+          title={t("diff.ignoreWsTitle")}
         >
-          {ignoreWhitespace ? "Spasi: Diabaikan" : "Abaikan Spasi"}
+          {ignoreWhitespace ? t("diff.wsIgnored") : t("diff.ignoreWs")}
         </button>
       {/if}
       {#if onAddToGitignore}
@@ -484,7 +578,7 @@
           type="button"
           onclick={() => onAddToGitignore?.(filePath)}
           class="btn-secondary btn-xs"
-          title="Tambahkan file ini ke .gitignore"
+          title={t("diff.addGitignoreTitle")}
         >
           + .gitignore
         </button>
@@ -494,14 +588,14 @@
 
   {#if isImage && imageDiffData}
     <div class="image-diff-stage">
-      <div class="seg-group" role="group" aria-label="Mode perbandingan gambar">
+      <div class="seg-group" role="group" aria-label={t("diff.imageModeAria")}>
         <button
           type="button"
           class="seg-btn {imageViewMode === '2-up' ? 'active' : ''}"
           aria-pressed={imageViewMode === "2-up"}
           onclick={() => (imageViewMode = "2-up")}
         >
-          2-Up
+          {t("diff.image2Up")}
         </button>
         <button
           type="button"
@@ -509,7 +603,7 @@
           aria-pressed={imageViewMode === "swipe"}
           onclick={() => (imageViewMode = "swipe")}
         >
-          Swipe
+          {t("diff.imageSwipe")}
         </button>
         <button
           type="button"
@@ -517,7 +611,7 @@
           aria-pressed={imageViewMode === "onion"}
           onclick={() => (imageViewMode = "onion")}
         >
-          Onion Skin
+          {t("diff.imageOnion")}
         </button>
       </div>
 
@@ -525,17 +619,17 @@
         <div class="image-diff-grid">
           {#if imageDiffData.old_image_url}
             <div class="form-field" style="align-items: center;">
-              <span class="form-label" style="color: var(--diff-del-text);">Sebelum (Old / Deleted)</span>
+              <span class="form-label" style="color: var(--diff-del-text);">{t("diff.imageBefore")}</span>
               <div class="image-diff-frame">
-                <img src={imageDiffData.old_image_url} alt="Versi sebelum diubah" />
+                <img src={imageDiffData.old_image_url} alt={t("diff.imageBeforeAlt")} />
               </div>
             </div>
           {/if}
           {#if imageDiffData.new_image_url}
             <div class="form-field" style="align-items: center;">
-              <span class="form-label" style="color: var(--diff-add-text);">Sesudah (New / Modified)</span>
+              <span class="form-label" style="color: var(--diff-add-text);">{t("diff.imageAfter")}</span>
               <div class="image-diff-frame">
-                <img src={imageDiffData.new_image_url} alt="Versi sesudah diubah" />
+                <img src={imageDiffData.new_image_url} alt={t("diff.imageAfterAlt")} />
               </div>
             </div>
           {/if}
@@ -543,16 +637,16 @@
       {:else if imageViewMode === "swipe"}
         <div class="form-field" style="align-items: center; width: 100%; max-width: 520px; gap: 10px;">
           <label class="form-label tabular-nums" for="image-swipe-range">
-            Swipe: {swipePercent}% (Kiri: Sebelum | Kanan: Sesudah)
+            {t("diff.swipeLabel", { percent: swipePercent })}
           </label>
           <input id="image-swipe-range" type="range" min="0" max="100" bind:value={swipePercent} style="width: 100%;" />
           <div class="image-diff-overlay-box">
             {#if imageDiffData.old_image_url}
-              <img src={imageDiffData.old_image_url} alt="Versi sebelum diubah" />
+              <img src={imageDiffData.old_image_url} alt={t("diff.imageBeforeAlt")} />
             {/if}
             {#if imageDiffData.new_image_url}
               <div style="position: absolute; inset: 0; display: grid; place-items: center; clip-path: inset(0 {100 - swipePercent}% 0 0); border-right: 2px solid var(--accent-blue);">
-                <img src={imageDiffData.new_image_url} alt="Versi sesudah diubah" />
+                <img src={imageDiffData.new_image_url} alt={t("diff.imageAfterAlt")} />
               </div>
             {/if}
           </div>
@@ -560,16 +654,16 @@
       {:else}
         <div class="form-field" style="align-items: center; width: 100%; max-width: 520px; gap: 10px;">
           <label class="form-label tabular-nums" for="image-onion-range">
-            Opacity Gambar Baru: {onionOpacity}%
+            {t("diff.onionLabel", { percent: onionOpacity })}
           </label>
           <input id="image-onion-range" type="range" min="0" max="100" bind:value={onionOpacity} style="width: 100%;" />
           <div class="image-diff-overlay-box">
             {#if imageDiffData.old_image_url}
-              <img src={imageDiffData.old_image_url} alt="Versi sebelum diubah" />
+              <img src={imageDiffData.old_image_url} alt={t("diff.imageBeforeAlt")} />
             {/if}
             {#if imageDiffData.new_image_url}
               <div style="position: absolute; inset: 0; display: grid; place-items: center; opacity: {onionOpacity / 100};">
-                <img src={imageDiffData.new_image_url} alt="Versi sesudah diubah" />
+                <img src={imageDiffData.new_image_url} alt={t("diff.imageAfterAlt")} />
               </div>
             {/if}
           </div>
@@ -589,7 +683,7 @@
     </div>
   {:else if lines.length === 0}
     <div class="empty-state">
-      <span>Tidak ada perbedaan teks untuk ditampilkan.</span>
+      <span>{t("diff.emptyDiff")}</span>
     </div>
   {:else if viewMode === "unified"}
     <div class="diff-content {wrapLines ? 'is-wrapped' : ''}">
@@ -603,9 +697,9 @@
                 class="btn-secondary btn-xs {isStaged ? 'btn-danger' : ''}"
                 style={!isStaged ? "border-color: var(--diff-add-text); color: var(--diff-add-text);" : ""}
                 onclick={() => onStageHunk(item.hunkPatch!, isStaged)}
-                title={isStaged ? "Batalkan stage hunk ini (Unstage hunk)" : "Stage hunk ini ke index"}
+                title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
               >
-                {isStaged ? "- Unstage Hunk" : "+ Stage Hunk"}
+                {isStaged ? t("diff.unstageHunkBtn") : t("diff.stageHunkBtn")}
               </button>
             {/if}
           </div>
@@ -630,9 +724,9 @@
                 class="btn-secondary btn-xs {isStaged ? 'btn-danger' : ''}"
                 style={!isStaged ? "border-color: var(--diff-add-text); color: var(--diff-add-text);" : ""}
                 onclick={() => onStageHunk(row.hunkPatch!, isStaged)}
-                title={isStaged ? "Batalkan stage hunk ini (Unstage hunk)" : "Stage hunk ini ke index"}
+                title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
               >
-                {isStaged ? "- Unstage Hunk" : "+ Stage Hunk"}
+                {isStaged ? t("diff.unstageHunkBtn") : t("diff.stageHunkBtn")}
               </button>
             {/if}
           </div>
