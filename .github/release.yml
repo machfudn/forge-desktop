@@ -1,0 +1,33 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+      - ignore-for-release
+    authors:
+      - dependabot
+      - github-actions
+  categories:
+    - title: Fitur Baru
+      labels:
+        - feat
+        - feature
+        - enhancement
+    - title: Perbaikan Bug
+      labels:
+        - fix
+        - bug
+        - bugfix
+    - title: CI/CD & Build
+      labels:
+        - ci
+        - build
+        - chore
+        - refactor
+        - perf
+    - title: Dokumentasi
+      labels:
+        - docs
+        - documentation
+    - title: Perubahan Lainnya
+      labels:
+        - "*"
