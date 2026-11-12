@@ -2135,21 +2135,17 @@
                   Belum ada tag pada repositori ini.
                 </div>
               {:else}
-                <div class="list-box" style="max-height: 200px;">
+                <div class="tag-badge-list">
                   {#each tags as t (t)}
-                    <div class="list-row" style="padding: 5px 8px;">
-                      <span style="font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {t}
-                      </span>
-                      <button
-                        type="button"
-                        class="btn-secondary btn-xs btn-danger"
-                        aria-label="Hapus tag {t}"
-                        onclick={() => handleDeleteTag(t)}
-                      >
-                        Hapus
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      class="tag-badge"
+                      title="Tag {t} (klik untuk hapus)"
+                      aria-label="Tag {t}, klik untuk hapus"
+                      onclick={() => handleDeleteTag(t)}
+                    >
+                      <span class="tag-badge-label">{t}</span>
+                    </button>
                   {/each}
                 </div>
               {/if}
