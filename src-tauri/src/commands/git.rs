@@ -1,15 +1,19 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use crate::ai::{AiConfigPublic, AiManager, AiTaskResult, AiTestResult, SaveAiConfigInput};
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, AccountHealth, AccountManager, AccountOverview, AccountProfile, AheadBehind,
-    BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, DetectedSession, DeviceFlowInit,
-    DeviceFlowPollOutcome, ImageDiffData, IssueInfo, LocalSessionSource, ParsedGitHubRepo,
-    PublishRepoParams, PullRequestInfo, RebaseStep, RemoteInfo, RepoConfig, RepoStatus,
-    GITHUB_PUBLIC_HOST,
+    BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
+    DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, HostingProvider, ImageDiffData,
+    IssueInfo, LocalSessionSource, ParsedGitHubRepo, ParsedHostingRepo, PublishRepoParams,
+    PullRequestInfo, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoStatus,
+    SubmoduleInfo, WorktreeInfo, GITHUB_PUBLIC_HOST,
 };
 use crate::system;
+use crate::terminal::{TerminalExecResult, TerminalManager};
 use crate::updater::{self, AppRuntimeInfo, AppUpdateInfo, UpdateApplyResult, UpdateChannel};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 async fn run_blocking<T, F>(f: F) -> Result<T, String>
 where
@@ -102,9 +106,11 @@ pub async fn add_to_gitignore(repo: String, pattern: String) -> Result<(), Strin
 pub async fn get_commit_history(
     repo: String,
     limit: Option<usize>,
+    all_branches: Option<bool>,
 ) -> Result<Vec<CommitInfo>, String> {
-    let lim = limit.unwrap_or(50);
-    run_blocking(move || git::get_history(&repo, lim)).await
+    let lim = limit.unwrap_or(100);
+    let all = all_branches.unwrap_or(true);
+    run_blocking(move || git::get_history_with_options(&repo, lim, all)).await
 }
 
 #[tauri::command]
@@ -832,4 +838,255 @@ pub async fn interactive_rebase(
     steps: Vec<RebaseStep>,
 ) -> Result<String, String> {
     run_blocking(move || git::interactive_rebase(&repo, &base_sha, steps)).await
+}
+
+#[tauri::command]
+pub async fn stage_lines(
+    repo: String,
+    hunk_patch: String,
+    selected_indices: Vec<usize>,
+    reverse: bool,
+) -> Result<(), String> {
+    run_blocking(move || git::stage_lines(&repo, &hunk_patch, selected_indices, reverse)).await
+}
+
+#[tauri::command]
+pub async fn get_file_blame(
+    repo: String,
+    file_path: String,
+    rev: Option<String>,
+) -> Result<Vec<BlameLine>, String> {
+    run_blocking(move || git::get_file_blame(&repo, &file_path, rev.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn get_file_history(
+    repo: String,
+    file_path: String,
+    limit: Option<usize>,
+) -> Result<Vec<CommitInfo>, String> {
+    let lim = limit.unwrap_or(80);
+    run_blocking(move || git::get_file_history(&repo, &file_path, lim)).await
+}
+
+#[tauri::command]
+pub async fn get_conflict_file(
+    repo: String,
+    file_path: String,
+) -> Result<ConflictFileData, String> {
+    run_blocking(move || git::get_conflict_file(&repo, &file_path)).await
+}
+
+#[tauri::command]
+pub async fn resolve_conflict_file(
+    repo: String,
+    file_path: String,
+    resolved_content: String,
+    stage_after: Option<bool>,
+) -> Result<(), String> {
+    let stage = stage_after.unwrap_or(true);
+    run_blocking(move || git::resolve_conflict_file(&repo, &file_path, &resolved_content, stage)).await
+}
+
+#[tauri::command]
+pub async fn list_reflog(repo: String, limit: Option<usize>) -> Result<Vec<ReflogEntry>, String> {
+    let lim = limit.unwrap_or(80);
+    run_blocking(move || git::list_reflog(&repo, lim)).await
+}
+
+#[tauri::command]
+pub async fn list_submodules(repo: String) -> Result<Vec<SubmoduleInfo>, String> {
+    run_blocking(move || git::list_submodules(&repo)).await
+}
+
+#[tauri::command]
+pub async fn add_submodule(repo: String, url: String, path: String) -> Result<String, String> {
+    run_blocking(move || git::add_submodule(&repo, &url, &path)).await
+}
+
+#[tauri::command]
+pub async fn update_submodules(
+    repo: String,
+    init: Option<bool>,
+    recursive: Option<bool>,
+) -> Result<String, String> {
+    run_blocking(move || git::update_submodules(&repo, init.unwrap_or(true), recursive.unwrap_or(true))).await
+}
+
+#[tauri::command]
+pub async fn sync_submodules(repo: String) -> Result<String, String> {
+    run_blocking(move || git::sync_submodules(&repo)).await
+}
+
+#[tauri::command]
+pub async fn list_worktrees(repo: String) -> Result<Vec<WorktreeInfo>, String> {
+    run_blocking(move || git::list_worktrees(&repo)).await
+}
+
+#[tauri::command]
+pub async fn add_worktree(
+    repo: String,
+    path: String,
+    branch: String,
+    create_new_branch: Option<bool>,
+) -> Result<String, String> {
+    run_blocking(move || git::add_worktree(&repo, &path, &branch, create_new_branch.unwrap_or(false))).await
+}
+
+#[tauri::command]
+pub async fn remove_worktree(
+    repo: String,
+    path: String,
+    force: Option<bool>,
+) -> Result<String, String> {
+    run_blocking(move || git::remove_worktree(&repo, &path, force.unwrap_or(false))).await
+}
+
+#[tauri::command]
+pub async fn prune_worktrees(repo: String) -> Result<String, String> {
+    run_blocking(move || git::prune_worktrees(&repo)).await
+}
+
+#[tauri::command]
+pub async fn parse_hosting_repository(remote_url: String) -> Result<Option<ParsedHostingRepo>, String> {
+    run_blocking(move || Ok(git::parse_hosting_repo(&remote_url))).await
+}
+
+#[tauri::command]
+pub async fn connect_provider_pat(
+    provider: HostingProvider,
+    host: String,
+    token: String,
+    label: Option<String>,
+    allow_memory_fallback: Option<bool>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountProfile, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::connect_provider_pat(
+            &mgr,
+            provider,
+            &host,
+            &token,
+            label.as_deref(),
+            allow_memory_fallback.unwrap_or(false),
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn list_provider_pull_requests(
+    remote_url: String,
+    repo: Option<String>,
+    accounts: State<'_, AccountManager>,
+) -> Result<Vec<PullRequestInfo>, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || git::list_provider_pull_requests(&mgr, &remote_url, repo.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn list_provider_issues(
+    remote_url: String,
+    repo: Option<String>,
+    accounts: State<'_, AccountManager>,
+) -> Result<Vec<IssueInfo>, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || git::list_provider_issues(&mgr, &remote_url, repo.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn checkout_provider_pull_request(
+    repo: String,
+    provider: HostingProvider,
+    pr_number: u64,
+    head_branch: String,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let creds = resolve_remote_creds(&mgr, &repo, Some("origin"));
+        git::checkout_provider_pull_request(&repo, provider, pr_number, &head_branch, creds)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_ai_config(ai: State<'_, Arc<AiManager>>) -> Result<AiConfigPublic, String> {
+    let mgr = Arc::clone(ai.inner());
+    run_blocking(move || mgr.get_config()).await
+}
+
+#[tauri::command]
+pub async fn save_ai_config(
+    input: SaveAiConfigInput,
+    ai: State<'_, Arc<AiManager>>,
+) -> Result<AiConfigPublic, String> {
+    let mgr = Arc::clone(ai.inner());
+    run_blocking(move || mgr.save_config(input)).await
+}
+
+#[tauri::command]
+pub async fn test_ai_connection(ai: State<'_, Arc<AiManager>>) -> Result<AiTestResult, String> {
+    let mgr = Arc::clone(ai.inner());
+    run_blocking(move || mgr.test_connection()).await
+}
+
+#[tauri::command]
+pub async fn ai_run_task(
+    task_kind: String,
+    prompt_input: String,
+    repo: Option<String>,
+    extra_context: Option<String>,
+    ai: State<'_, Arc<AiManager>>,
+) -> Result<AiTaskResult, String> {
+    let mgr = Arc::clone(ai.inner());
+    run_blocking(move || {
+        mgr.run_task(
+            &task_kind,
+            &prompt_input,
+            repo.as_deref(),
+            extra_context.as_deref(),
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn run_terminal_command(
+    session_id: String,
+    repo: String,
+    command: String,
+    shell_kind: Option<String>,
+    app: AppHandle,
+    term: State<'_, Arc<TerminalManager>>,
+) -> Result<TerminalExecResult, String> {
+    let mgr = Arc::clone(term.inner());
+    run_blocking(move || {
+        mgr.run_command(&app, &session_id, &repo, &command, shell_kind.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn kill_terminal_command(
+    session_id: String,
+    term: State<'_, Arc<TerminalManager>>,
+) -> Result<bool, String> {
+    let mgr = Arc::clone(term.inner());
+    run_blocking(move || mgr.kill_session(&session_id)).await
+}
+
+#[tauri::command]
+pub async fn get_terminal_cwd(
+    session_id: String,
+    repo: String,
+    term: State<'_, Arc<TerminalManager>>,
+) -> Result<String, String> {
+    let mgr = Arc::clone(term.inner());
+    run_blocking(move || {
+        let p = mgr.resolve_cwd(&session_id, &repo);
+        Ok(p.to_string_lossy().to_string())
+    })
+    .await
 }

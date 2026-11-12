@@ -173,6 +173,172 @@ pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), Str
     Ok(())
 }
 
+fn parse_hunk_starts(header: &str) -> Option<(usize, usize)> {
+    // @@ -oldStart[,oldCount] +newStart[,newCount] @@...
+    let rest = header.strip_prefix("@@ -")?;
+    let (old_part, after_old) = rest.split_once(" +")?;
+    let (new_part, _) = after_old.split_once(" @@")?;
+    let old_start = old_part
+        .split_once(',')
+        .map(|(s, _)| s)
+        .unwrap_or(old_part)
+        .trim()
+        .parse::<usize>()
+        .ok()?;
+    let new_start = new_part
+        .split_once(',')
+        .map(|(s, _)| s)
+        .unwrap_or(new_part)
+        .trim()
+        .parse::<usize>()
+        .ok()?;
+    Some((old_start, new_start))
+}
+
+pub fn build_selective_hunk_patch(
+    hunk_patch: &str,
+    selected_indices: &[usize],
+    reverse: bool,
+) -> Result<String, String> {
+    use std::collections::HashSet;
+    let selected: HashSet<usize> = selected_indices.iter().copied().collect();
+    if selected.is_empty() {
+        return Err("Pilih minimal satu baris perubahan".into());
+    }
+
+    let normalized = hunk_patch.replace("\r\n", "\n");
+    let raw_lines: Vec<&str> = normalized.split('\n').collect();
+    let mut header_lines: Vec<&str> = Vec::new();
+    let mut hunk_header_idx: Option<usize> = None;
+
+    for (i, line) in raw_lines.iter().enumerate() {
+        if line.starts_with("@@ ") {
+            hunk_header_idx = Some(i);
+            break;
+        }
+        header_lines.push(line);
+    }
+
+    let h_idx = hunk_header_idx.ok_or_else(|| "Header hunk @@ tidak ditemukan".to_string())?;
+    let hunk_header = raw_lines[h_idx];
+    let (old_start, new_start) =
+        parse_hunk_starts(hunk_header).ok_or_else(|| "Format header hunk tidak valid".to_string())?;
+    let suffix = hunk_header
+        .find(" @@")
+        .map(|pos| &hunk_header[pos + 3..])
+        .unwrap_or("");
+
+    let mut body_slice = &raw_lines[h_idx + 1..];
+    if body_slice.last() == Some(&"") {
+        body_slice = &body_slice[..body_slice.len() - 1];
+    }
+
+    let mut out_body: Vec<String> = Vec::new();
+    let mut old_count: usize = 0;
+    let mut new_count: usize = 0;
+    let mut has_changes = false;
+    let mut last_kept = false;
+
+    for (idx, line) in body_slice.iter().enumerate() {
+        if line.starts_with('\\') {
+            if last_kept {
+                out_body.push((*line).to_string());
+            }
+            continue;
+        }
+
+        if let Some(rest) = line.strip_prefix('+') {
+            let is_sel = selected.contains(&idx);
+            if !reverse {
+                if is_sel {
+                    out_body.push(format!("+{rest}"));
+                    new_count += 1;
+                    has_changes = true;
+                    last_kept = true;
+                } else {
+                    last_kept = false;
+                }
+            } else if is_sel {
+                out_body.push(format!("+{rest}"));
+                new_count += 1;
+                has_changes = true;
+                last_kept = true;
+            } else {
+                out_body.push(format!(" {rest}"));
+                old_count += 1;
+                new_count += 1;
+                last_kept = true;
+            }
+        } else if let Some(rest) = line.strip_prefix('-') {
+            let is_sel = selected.contains(&idx);
+            if !reverse {
+                if is_sel {
+                    out_body.push(format!("-{rest}"));
+                    old_count += 1;
+                    has_changes = true;
+                    last_kept = true;
+                } else {
+                    out_body.push(format!(" {rest}"));
+                    old_count += 1;
+                    new_count += 1;
+                    last_kept = true;
+                }
+            } else if is_sel {
+                out_body.push(format!("-{rest}"));
+                old_count += 1;
+                has_changes = true;
+                last_kept = true;
+            } else {
+                last_kept = false;
+            }
+        } else {
+            out_body.push((*line).to_string());
+            old_count += 1;
+            new_count += 1;
+            last_kept = true;
+        }
+    }
+
+    if !has_changes {
+        return Err("Tidak ada baris perubahan yang dipilih".into());
+    }
+
+    let adj_old_start = if old_count == 0 && old_start > 0 {
+        old_start
+    } else {
+        old_start
+    };
+    let adj_new_start = if new_count == 0 && new_start > 0 {
+        new_start
+    } else {
+        new_start
+    };
+
+    let mut out = String::new();
+    for h in header_lines {
+        out.push_str(h);
+        out.push('\n');
+    }
+    out.push_str(&format!(
+        "@@ -{adj_old_start},{old_count} +{adj_new_start},{new_count} @@{suffix}\n"
+    ));
+    for l in out_body {
+        out.push_str(&l);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+pub fn stage_lines(
+    repo: &str,
+    hunk_patch: &str,
+    selected_indices: Vec<usize>,
+    reverse: bool,
+) -> Result<(), String> {
+    let selective_patch = build_selective_hunk_patch(hunk_patch, &selected_indices, reverse)?;
+    stage_hunk(repo, &selective_patch, reverse)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +356,56 @@ mod tests {
     #[test]
     fn reject_empty_stage_hunk() {
         assert!(stage_hunk("/tmp", "   ", false).is_err());
+    }
+
+    #[test]
+    fn selective_stage_and_unstage_lines_on_real_repo() {
+        use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-line-stage-{nanos}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let run_git = |args: &[&str]| {
+            let out = Command::new("git").args(args).current_dir(&root).output().unwrap();
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        run_git(&["init"]);
+        run_git(&["config", "user.name", "Tester"]);
+        run_git(&["config", "user.email", "tester@example.com"]);
+        std::fs::write(root.join("code.txt"), "line1\nline2\nline3\n").unwrap();
+        run_git(&["add", "code.txt"]);
+        run_git(&["commit", "-m", "init"]);
+
+        std::fs::write(root.join("code.txt"), "line1\nline2_mod\nline3\nline4_add\n").unwrap();
+        let diff = get_file_diff(root.to_str().unwrap(), "code.txt", false, false).unwrap();
+        let hunk_start = diff.find("@@ ").unwrap();
+        let patch = format!("--- a/code.txt\n+++ b/code.txt\n{}", &diff[hunk_start..]);
+        // Body lines: 0=' line1', 1='-line2', 2='+line2_mod', 3=' line3', 4='+line4_add'
+        // Stage only line4_add (index 4)
+        stage_lines(root.to_str().unwrap(), &patch, vec![4], false).unwrap();
+        let staged_diff = get_file_diff(root.to_str().unwrap(), "code.txt", true, false).unwrap();
+        assert!(staged_diff.contains("+line4_add"));
+        assert!(!staged_diff.contains("+line2_mod"));
+
+        // Now unstage line4_add
+        let staged_hunk = staged_diff.find("@@ ").unwrap();
+        let staged_patch = format!("--- a/code.txt\n+++ b/code.txt\n{}", &staged_diff[staged_hunk..]);
+        let body_lines: Vec<&str> = staged_diff[staged_hunk..].lines().skip(1).collect();
+        let add_idx = body_lines.iter().position(|l| *l == "+line4_add").unwrap();
+        stage_lines(root.to_str().unwrap(), &staged_patch, vec![add_idx], true).unwrap();
+        let after_unstage = get_file_diff(root.to_str().unwrap(), "code.txt", true, false).unwrap();
+        assert!(after_unstage.trim().is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

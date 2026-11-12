@@ -1,9 +1,14 @@
+pub mod ai;
 pub mod commands;
 pub mod diagnostics;
 pub mod git;
 pub mod system;
+pub mod terminal;
 pub mod updater;
+use crate::ai::AiManager;
 use crate::git::AccountManager;
+use crate::terminal::TerminalManager;
+use std::sync::Arc;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,7 +21,9 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::env::temp_dir().join("forge-desktop"));
-            app.manage(AccountManager::new(app_data_dir));
+            app.manage(AccountManager::new(app_data_dir.clone()));
+            app.manage(Arc::new(AiManager::new(app_data_dir)));
+            app.manage(Arc::new(TerminalManager::new()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -102,6 +109,33 @@ pub fn run() {
             commands::check_app_update,
             commands::install_app_update,
             commands::stage_hunk,
+            commands::interactive_rebase,
+            commands::stage_lines,
+            commands::get_file_blame,
+            commands::get_file_history,
+            commands::get_conflict_file,
+            commands::resolve_conflict_file,
+            commands::list_reflog,
+            commands::list_submodules,
+            commands::add_submodule,
+            commands::update_submodules,
+            commands::sync_submodules,
+            commands::list_worktrees,
+            commands::add_worktree,
+            commands::remove_worktree,
+            commands::prune_worktrees,
+            commands::parse_hosting_repository,
+            commands::connect_provider_pat,
+            commands::list_provider_pull_requests,
+            commands::list_provider_issues,
+            commands::checkout_provider_pull_request,
+            commands::get_ai_config,
+            commands::save_ai_config,
+            commands::test_ai_connection,
+            commands::ai_run_task,
+            commands::run_terminal_command,
+            commands::kill_terminal_command,
+            commands::get_terminal_cwd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,6 +3,13 @@ use serde::Serialize;
 use super::cli;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CommitRef {
+    pub kind: String,
+    pub name: String,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct CommitInfo {
     pub sha: String,
     pub short_sha: String,
@@ -11,6 +18,20 @@ pub struct CommitInfo {
     pub summary: String,
     pub is_pushed: bool,
     pub tags: Vec<String>,
+    pub parents: Vec<String>,
+    pub refs: Vec<CommitRef>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BlameLine {
+    pub line_no: usize,
+    pub sha: String,
+    pub short_sha: String,
+    pub author: String,
+    pub author_email: String,
+    pub date: String,
+    pub summary: String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -32,13 +53,60 @@ pub struct CommitDetail {
     pub files: Vec<CommitChangedFile>,
 }
 
-fn parse_tags_from_decorate(dec: &str) -> Vec<String> {
-    dec.split(", ")
-        .filter_map(|item| item.trim().strip_prefix("tag: refs/tags/"))
-        .map(str::trim)
-        .filter(|tag| !tag.is_empty())
-        .map(ToString::to_string)
-        .collect()
+fn parse_refs_from_decorate(dec: &str) -> (Vec<String>, Vec<CommitRef>) {
+    let mut tags = Vec::new();
+    let mut refs = Vec::new();
+    for raw_item in dec.split(", ") {
+        let item = raw_item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        if let Some(tag) = item.strip_prefix("tag: refs/tags/") {
+            let t = tag.trim();
+            if !t.is_empty() {
+                tags.push(t.to_string());
+                refs.push(CommitRef {
+                    kind: "tag".into(),
+                    name: t.to_string(),
+                    is_current: false,
+                });
+            }
+        } else if let Some(target) = item.strip_prefix("HEAD -> refs/heads/") {
+            let name = target.trim();
+            if !name.is_empty() {
+                refs.push(CommitRef {
+                    kind: "branch".into(),
+                    name: name.to_string(),
+                    is_current: true,
+                });
+            }
+        } else if item == "HEAD" {
+            refs.push(CommitRef {
+                kind: "head".into(),
+                name: "HEAD".into(),
+                is_current: true,
+            });
+        } else if let Some(branch) = item.strip_prefix("refs/heads/") {
+            let name = branch.trim();
+            if !name.is_empty() {
+                refs.push(CommitRef {
+                    kind: "branch".into(),
+                    name: name.to_string(),
+                    is_current: false,
+                });
+            }
+        } else if let Some(remote) = item.strip_prefix("refs/remotes/") {
+            let name = remote.trim();
+            if !name.is_empty() && !name.ends_with("/HEAD") {
+                refs.push(CommitRef {
+                    kind: "remote".into(),
+                    name: name.to_string(),
+                    is_current: false,
+                });
+            }
+        }
+    }
+    (tags, refs)
 }
 
 pub fn parse_log_line_with_status(
@@ -51,9 +119,19 @@ pub fn parse_log_line_with_status(
     }
     let sha = parts[0].to_string();
     let is_pushed = !unpushed.contains(&sha);
-    let tags = parts
+    let (tags, refs) = parts
         .get(5)
-        .map(|dec| parse_tags_from_decorate(dec))
+        .map(|dec| parse_refs_from_decorate(dec))
+        .unwrap_or_default();
+    let parents = parts
+        .get(6)
+        .map(|p| {
+            p.split_whitespace()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(ToString::to_string)
+                .collect()
+        })
         .unwrap_or_default();
     Some(CommitInfo {
         sha,
@@ -63,6 +141,8 @@ pub fn parse_log_line_with_status(
         summary: parts[4].to_string(),
         is_pushed,
         tags,
+        parents,
+        refs,
     })
 }
 
@@ -85,22 +165,27 @@ fn get_unpushed_shas(repo: &str, limit: usize) -> HashSet<String> {
     }
 }
 
-pub fn get_history(repo: &str, limit: usize) -> Result<Vec<CommitInfo>, String> {
+pub fn get_history_with_options(
+    repo: &str,
+    limit: usize,
+    all_branches: bool,
+) -> Result<Vec<CommitInfo>, String> {
     let limit_str = limit.to_string();
     let (log_res, unpushed) = std::thread::scope(|s| {
         let log_h = s.spawn(|| {
-            cli::run(
-                repo,
-                &[
-                    "log",
-                    "-n",
-                    &limit_str,
-                    "--decorate=full",
-                    "--decorate-refs=refs/tags/*",
-                    "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D",
-                    "--date=short",
-                ],
-            )
+            let mut args = vec![
+                "log",
+                "-n",
+                &limit_str,
+                "--topo-order",
+                "--decorate=full",
+                "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D%x1f%P",
+                "--date=short",
+            ];
+            if all_branches {
+                args.push("--all");
+            }
+            cli::run(repo, &args)
         });
         let unpushed_h = s.spawn(|| get_unpushed_shas(repo, limit));
         (
@@ -127,6 +212,10 @@ pub fn get_history(repo: &str, limit: usize) -> Result<Vec<CommitInfo>, String> 
         .lines()
         .filter_map(|line| parse_log_line_with_status(line, &unpushed))
         .collect())
+}
+
+pub fn get_history(repo: &str, limit: usize) -> Result<Vec<CommitInfo>, String> {
+    get_history_with_options(repo, limit, false)
 }
 
 fn validate_commit_sha(sha: &str) -> Result<&str, String> {
@@ -253,6 +342,149 @@ pub fn get_commit_file_diff(
     args.push(valid_path);
 
     cli::run(repo, &args)
+}
+
+pub fn get_file_history(
+    repo: &str,
+    file_path: &str,
+    limit: usize,
+) -> Result<Vec<CommitInfo>, String> {
+    let valid_path = validate_commit_file_path(file_path)?;
+    let limit_str = limit.max(1).to_string();
+    let out = cli::run(
+        repo,
+        &[
+            "-c",
+            "core.quotepath=false",
+            "log",
+            "-n",
+            &limit_str,
+            "--follow",
+            "--decorate=full",
+            "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D%x1f%P",
+            "--date=short",
+            "--",
+            valid_path,
+        ],
+    )?;
+    if out.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(out.lines().filter_map(parse_log_line).collect())
+}
+
+fn format_unix_date(secs: i64) -> String {
+    // Civil-from-days (Howard Hinnant algorithm) so zero external date crate needed
+    let z = secs.div_euclid(86_400) + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = mp + if mp < 10 { 3 } else { -9 };
+    let year = y + if m <= 2 { 1 } else { 0 };
+    format!("{year:04}-{m:02}-{d:02}")
+}
+
+pub fn parse_blame_porcelain(raw: &str) -> Vec<BlameLine> {
+    use std::collections::HashMap;
+    struct CommitMeta {
+        author: String,
+        author_email: String,
+        date: String,
+        summary: String,
+    }
+    let mut cache: HashMap<String, CommitMeta> = HashMap::new();
+    let mut result = Vec::new();
+    let mut current_sha = String::new();
+    let mut current_line_no: usize = 0;
+    let mut author = String::new();
+    let mut author_email = String::new();
+    let mut date = String::new();
+    let mut summary = String::new();
+
+    for line in raw.lines() {
+        if let Some(content) = line.strip_prefix('\t') {
+            if !current_sha.is_empty() {
+                let entry = cache.entry(current_sha.clone()).or_insert_with(|| CommitMeta {
+                    author: author.clone(),
+                    author_email: author_email.clone(),
+                    date: date.clone(),
+                    summary: summary.clone(),
+                });
+                let short_sha: String = current_sha.chars().take(7).collect();
+                result.push(BlameLine {
+                    line_no: current_line_no,
+                    sha: current_sha.clone(),
+                    short_sha,
+                    author: entry.author.clone(),
+                    author_email: entry.author_email.clone(),
+                    date: entry.date.clone(),
+                    summary: entry.summary.clone(),
+                    content: content.to_string(),
+                });
+            }
+            current_sha.clear();
+            author.clear();
+            author_email.clear();
+            date.clear();
+            summary.clear();
+            continue;
+        }
+        if current_sha.is_empty() {
+            let mut parts = line.split_whitespace();
+            if let (Some(sha), Some(_orig_ln), Some(final_ln)) =
+                (parts.next(), parts.next(), parts.next())
+            {
+                if sha.len() >= 7 && sha.chars().all(|c| c.is_ascii_hexdigit()) {
+                    current_sha = sha.to_string();
+                    current_line_no = final_ln.parse::<usize>().unwrap_or(result.len() + 1);
+                    if let Some(cached) = cache.get(&current_sha) {
+                        author = cached.author.clone();
+                        author_email = cached.author_email.clone();
+                        date = cached.date.clone();
+                        summary = cached.summary.clone();
+                    }
+                }
+            }
+        } else if let Some(val) = line.strip_prefix("author ") {
+            author = val.trim().to_string();
+        } else if let Some(val) = line.strip_prefix("author-mail ") {
+            author_email = val.trim().trim_matches(|c| c == '<' || c == '>').to_string();
+        } else if let Some(val) = line.strip_prefix("author-time ") {
+            if let Ok(ts) = val.trim().parse::<i64>() {
+                date = format_unix_date(ts);
+            }
+        } else if let Some(val) = line.strip_prefix("summary ") {
+            summary = val.trim().to_string();
+        }
+    }
+    result
+}
+
+pub fn get_file_blame(
+    repo: &str,
+    file_path: &str,
+    rev: Option<&str>,
+) -> Result<Vec<BlameLine>, String> {
+    let valid_path = validate_commit_file_path(file_path)?;
+    let mut args = vec![
+        "-c",
+        "core.quotepath=false",
+        "blame",
+        "--line-porcelain",
+    ];
+    let valid_rev;
+    if let Some(r) = rev.map(str::trim).filter(|s| !s.is_empty()) {
+        valid_rev = validate_commit_sha(r)?;
+        args.push(valid_rev);
+    }
+    args.push("--");
+    args.push(valid_path);
+    let out = cli::run(repo, &args)?;
+    Ok(parse_blame_porcelain(&out))
 }
 
 #[cfg(test)]
@@ -454,5 +686,27 @@ mod tests {
         assert!(get_commit_detail("/tmp", "xyz123").is_err());
         assert!(get_commit_file_diff("/tmp", "abcdef1", "../secret", None, false).is_err());
         assert!(get_commit_file_diff("/tmp", "abcdef1", "-p", None, false).is_err());
+    }
+
+    #[test]
+    fn parse_refs_and_parents_from_log_line() {
+        let line = "aaaa1111bbbb2222\x1faaaa111\x1fDev\x1f2026-11-12\x1fMerge PR\x1fHEAD -> refs/heads/main, refs/remotes/origin/main, refs/heads/feat, tag: refs/tags/v2.0\x1fpppp1111 pppp2222";
+        let commit = parse_log_line(line).unwrap();
+        assert_eq!(commit.parents, vec!["pppp1111", "pppp2222"]);
+        assert_eq!(commit.tags, vec!["v2.0"]);
+        assert!(commit.refs.iter().any(|r| r.kind == "branch" && r.name == "main" && r.is_current));
+        assert!(commit.refs.iter().any(|r| r.kind == "remote" && r.name == "origin/main"));
+    }
+
+    #[test]
+    fn parse_blame_porcelain_extracts_lines_and_caches_commit_meta() {
+        let raw = "0123456789abcdef0123456789abcdef01234567 1 1 2\nauthor Alice\nauthor-mail <alice@example.com>\nauthor-time 1700000000\nsummary init file\nfilename src/main.rs\n\tfn main() {}\n0123456789abcdef0123456789abcdef01234567 2 2\n\tprintln!(\"hi\");\n";
+        let lines = parse_blame_porcelain(raw);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].author, "Alice");
+        assert_eq!(lines[0].content, "fn main() {}");
+        assert_eq!(lines[1].author, "Alice");
+        assert_eq!(lines[1].line_no, 2);
+        assert_eq!(lines[1].content, "println!(\"hi\");");
     }
 }
