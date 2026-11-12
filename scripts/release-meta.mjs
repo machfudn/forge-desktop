@@ -128,7 +128,7 @@ export function buildReleaseNotes({
         "### Paket & Mode Portable (Beta)",
         `- **Windows**: \`Forge.Desktop_${meta.version}_x64-setup.exe\` (NSIS), \`Forge.Desktop_${meta.version}_x64_en-US.msi\` (MSI), \`Forge-Desktop_${meta.version}_windows_x64-portable.exe\` / \`.zip\``,
         `- **Linux**: \`Forge.Desktop_${meta.version}_amd64.AppImage\`, \`.deb\`, \`.rpm\`, \`Forge-Desktop_${meta.version}_linux_x64-portable.tar.gz\``,
-        `- **macOS**: \`Forge.Desktop_${meta.version}_universal.dmg\`, \`Forge.Desktop_${meta.version}_universal.app.tar.gz\``,
+        `- **macOS**: \`Forge.Desktop_${meta.version}_universal.dmg\`, \`Forge-Desktop_${meta.version}_macos_universal.app.tar.gz\``,
         "- **Integritas**: Periksa `SHA256SUMS` (dan `SHA256SUMS.asc` jika tersedia).",
       ].join("\n")
     );
@@ -148,7 +148,7 @@ export function buildReleaseNotes({
         "### Instalasi & Mode Portable",
         `- **Windows**: Installer \`*-setup.exe\` / \`*.msi\`, atau portable \`Forge-Desktop_${meta.version}_windows_x64-portable.exe\` / \`.zip\``,
         `- **Linux**: Paket \`*.deb\` / \`*.rpm\`, portable \`*.AppImage\` atau \`Forge-Desktop_${meta.version}_linux_x64-portable.tar.gz\``,
-        `- **macOS**: \`Forge.Desktop_${meta.version}_universal.dmg\` atau arsip \`*.app.tar.gz\``,
+        `- **macOS**: \`Forge.Desktop_${meta.version}_universal.dmg\` atau arsip \`Forge-Desktop_${meta.version}_macos_universal.app.tar.gz\``,
         "",
         "### Verifikasi Integritas",
         "Cocokkan checksum unduhan menggunakan `SHA256SUMS` (dan tanda tangan GPG `SHA256SUMS.asc` bila tersedia).",

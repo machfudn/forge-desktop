@@ -226,6 +226,23 @@ jobs:
           tar -czf "$OUT" -C dist-portable/stage forge-desktop
           gh release upload "$TAG_NAME" "$OUT" --clobber
 
+      - name: Package & Upload macOS App Archive (.app.tar.gz)
+        if: matrix.platform == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          APP_DIR="src-tauri/target/universal-apple-darwin/release/bundle/macos/Forge Desktop.app"
+          if [ ! -d "$APP_DIR" ]; then
+            echo "Bundle $APP_DIR tidak ditemukan"
+            exit 1
+          fi
+          mkdir -p dist-portable
+          OUT="dist-portable/Forge-Desktop_${VERSION}_macos_universal.app.tar.gz"
+          tar -czf "$OUT" -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
+          gh release upload "$TAG_NAME" "$OUT" --clobber
+
   finalize-release:
     name: Generate Checksums & Sign Release
     needs: [prepare, build-tauri]
