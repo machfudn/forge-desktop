@@ -34,6 +34,7 @@ import type {
   RepoConfig,
   RepoPathState,
   RepoStatus,
+  RepoQuickSummary,
   SaveAiConfigInput,
   SubmoduleInfo,
   TerminalExecResult,
@@ -263,6 +264,10 @@ export async function gitFetch(repo: string, remote?: string): Promise<string> {
   return invoke<string>("git_fetch", { repo, remote });
 }
 
+export async function fetchAllRemotes(repo: string): Promise<string> {
+  return invoke<string>("fetch_all_remotes", { repo });
+}
+
 export async function gitPull(
   repo: string,
   remote?: string,
@@ -459,6 +464,12 @@ export async function checkReposExists(
   paths: string[]
 ): Promise<Record<string, boolean>> {
   return invoke<Record<string, boolean>>("check_repos_exists", { paths });
+}
+
+export async function batchInspectRepoSummaries(
+  paths: string[]
+): Promise<Record<string, RepoQuickSummary>> {
+  return invoke<Record<string, RepoQuickSummary>>("batch_inspect_repo_summaries", { paths });
 }
 
 

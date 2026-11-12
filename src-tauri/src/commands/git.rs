@@ -7,7 +7,7 @@ use crate::git::{
     BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
     DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, HostingProvider, ImageDiffData,
     IssueInfo, LocalSessionSource, ParsedGitHubRepo, ParsedHostingRepo, PublishRepoParams,
-    PullRequestInfo, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoStatus,
+    PullRequestInfo, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
     SubmoduleInfo, WorktreeInfo, GITHUB_PUBLIC_HOST,
 };
 use crate::system;
@@ -25,15 +25,45 @@ where
         .map_err(|e| format!("Tugas latar belakang gagal dijalankan: {e}"))?
 }
 
+fn normalize_git_http_username(host: &str, login: &str) -> String {
+    let trimmed = login.trim();
+    if (host == "bitbucket.org" || host.contains("bitbucket"))
+        && (trimmed.is_empty() || trimmed == "bitbucket-user")
+    {
+        return "x-token-auth".to_string();
+    }
+    if trimmed.is_empty() {
+        return "oauth2".to_string();
+    }
+    trimmed.to_string()
+}
+
+fn resolve_creds_for_url(
+    accounts: &AccountManager,
+    repo: Option<&str>,
+    account_id: Option<&str>,
+    url: &str,
+) -> Option<(String, String)> {
+    if !git::is_http_remote_url(url) {
+        return None;
+    }
+    let host = git::extract_host_from_url(url)?;
+    accounts
+        .resolve_account(account_id, repo, &host)
+        .map(|(p, t)| (normalize_git_http_username(&host, &p.login), t))
+}
+
 fn resolve_remote_creds(
     accounts: &AccountManager,
     repo: &str,
     remote: Option<&str>,
 ) -> Option<(String, String)> {
-    let host = git::infer_remote_host(repo, remote)?;
-    accounts
-        .resolve_account_for_repo(Some(repo), &host)
-        .map(|(p, t)| (p.login, t))
+    let rem = remote.unwrap_or("origin").trim();
+    if rem.is_empty() || rem.starts_with('-') {
+        return None;
+    }
+    let url = git::cli::run(repo, &["remote", "get-url", rem]).ok()?;
+    resolve_creds_for_url(accounts, Some(repo), None, &url)
 }
 
 #[tauri::command]
@@ -265,12 +295,23 @@ pub async fn git_fetch(
 ) -> Result<String, String> {
     let mgr = accounts.inner().clone();
     run_blocking(move || {
-        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
-        git::fetch(
-            &repo,
-            remote.as_deref(),
-            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-        )
+        git::fetch_with(&repo, remote.as_deref(), |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn fetch_all_remotes(
+    repo: String,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::fetch_all_with(&repo, |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
     })
     .await
 }
@@ -284,13 +325,9 @@ pub async fn git_pull(
 ) -> Result<String, String> {
     let mgr = accounts.inner().clone();
     run_blocking(move || {
-        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
-        git::pull(
-            &repo,
-            remote.as_deref(),
-            branch.as_deref(),
-            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-        )
+        git::pull_with(&repo, remote.as_deref(), branch.as_deref(), |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
     })
     .await
 }
@@ -304,13 +341,9 @@ pub async fn git_push(
 ) -> Result<String, String> {
     let mgr = accounts.inner().clone();
     run_blocking(move || {
-        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
-        git::push(
-            &repo,
-            remote.as_deref(),
-            branch.as_deref(),
-            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-        )
+        git::push_with(&repo, remote.as_deref(), branch.as_deref(), |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
     })
     .await
 }
@@ -324,13 +357,9 @@ pub async fn git_force_push(
 ) -> Result<String, String> {
     let mgr = accounts.inner().clone();
     run_blocking(move || {
-        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
-        git::force_push(
-            &repo,
-            remote.as_deref(),
-            branch.as_deref(),
-            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-        )
+        git::force_push_with(&repo, remote.as_deref(), branch.as_deref(), |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
     })
     .await
 }
@@ -344,9 +373,7 @@ pub async fn clone_repository(
 ) -> Result<String, String> {
     let mgr = accounts.inner().clone();
     run_blocking(move || {
-        let creds = git::extract_host_from_url(&url)
-            .and_then(|host| mgr.resolve_account(account_id.as_deref(), None, &host))
-            .map(|(p, t)| (p.login, t));
+        let creds = resolve_creds_for_url(&mgr, None, account_id.as_deref(), &url);
         git::clone_repository(
             &url,
             &target_dir,
@@ -573,6 +600,13 @@ pub async fn check_repo_exists(path: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn check_repos_exists(paths: Vec<String>) -> Result<HashMap<String, bool>, String> {
     run_blocking(move || Ok(git::check_repos_exists(&paths))).await
+}
+
+#[tauri::command]
+pub async fn batch_inspect_repo_summaries(
+    paths: Vec<String>,
+) -> Result<HashMap<String, RepoQuickSummary>, String> {
+    run_blocking(move || Ok(git::batch_inspect_repo_summaries(&paths))).await
 }
 
 #[tauri::command]
@@ -1089,4 +1123,19 @@ pub async fn get_terminal_cwd(
         Ok(p.to_string_lossy().to_string())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_git_http_username;
+
+    #[test]
+    fn normalize_git_http_username_handles_multi_provider_logins() {
+        assert_eq!(normalize_git_http_username("bitbucket.org", "bitbucket-user"), "x-token-auth");
+        assert_eq!(normalize_git_http_username("bitbucket.org", ""), "x-token-auth");
+        assert_eq!(normalize_git_http_username("bitbucket.org", "alice"), "alice");
+        assert_eq!(normalize_git_http_username("gitlab.com", ""), "oauth2");
+        assert_eq!(normalize_git_http_username("gitlab.com", "bob"), "bob");
+        assert_eq!(normalize_git_http_username("github.com", "octocat"), "octocat");
+    }
 }

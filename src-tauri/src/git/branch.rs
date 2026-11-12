@@ -11,6 +11,8 @@ pub struct BranchInfo {
     pub behind: usize,
     pub is_pushed: bool,
     pub upstream_gone: bool,
+    pub is_remote: bool,
+    pub remote_name: Option<String>,
 }
 
 fn parse_track_counts(track: &str) -> (usize, usize, bool) {
@@ -111,6 +113,8 @@ pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
                 behind: item.behind,
                 is_pushed,
                 upstream_gone: item.upstream_gone,
+                is_remote: false,
+                remote_name: None,
             });
             continue;
         }
@@ -127,6 +131,8 @@ pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
                     behind: 0,
                     is_pushed: true,
                     upstream_gone: false,
+                    is_remote: false,
+                    remote_name: None,
                 });
             } else {
                 let spec = format!("{}...{}", item.name, rem_ref);
@@ -138,6 +144,8 @@ pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
                     behind: 0,
                     is_pushed: false,
                     upstream_gone: false,
+                    is_remote: false,
+                    remote_name: None,
                 });
                 pending_rev_list.push((idx, spec, rem_ref.clone()));
             }
@@ -150,6 +158,8 @@ pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
                 behind: item.behind,
                 is_pushed: false,
                 upstream_gone: item.upstream_gone,
+                is_remote: false,
+                remote_name: None,
             });
         }
     }
@@ -184,6 +194,21 @@ pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
         }
     }
 
+    for (rem_short, _) in remote_refs {
+        let remote_name = rem_short.split('/').next().map(ToString::to_string);
+        branches.push(BranchInfo {
+            name: rem_short.clone(),
+            is_current: false,
+            upstream: Some(rem_short),
+            ahead: 0,
+            behind: 0,
+            is_pushed: true,
+            upstream_gone: false,
+            is_remote: true,
+            remote_name,
+        });
+    }
+
     Ok(branches)
 }
 
@@ -191,6 +216,23 @@ pub fn switch_branch(repo: &str, branch_name: &str) -> Result<(), String> {
     let branch = branch_name.trim();
     if branch.is_empty() || branch.starts_with('-') {
         return Err("Nama branch tidak valid".into());
+    }
+    let local_ref = format!("refs/heads/{branch}");
+    if cli::run(repo, &["show-ref", "--verify", "--quiet", &local_ref]).is_ok() {
+        return cli::run(repo, &["checkout", branch]).map(|_| ());
+    }
+    let remote_ref = format!("refs/remotes/{branch}");
+    if cli::run(repo, &["show-ref", "--verify", "--quiet", &remote_ref]).is_ok() {
+        if let Some((_, local_name)) = branch.split_once('/') {
+            if !local_name.is_empty() && !local_name.starts_with('-') {
+                let target_local_ref = format!("refs/heads/{local_name}");
+                if cli::run(repo, &["show-ref", "--verify", "--quiet", &target_local_ref]).is_ok() {
+                    return cli::run(repo, &["checkout", local_name]).map(|_| ());
+                }
+                return cli::run(repo, &["checkout", "-b", local_name, "--track", branch])
+                    .map(|_| ());
+            }
+        }
     }
     cli::run(repo, &["checkout", branch]).map(|_| ())
 }
@@ -308,6 +350,29 @@ mod tests {
         assert!(feat_b.upstream.is_none());
         assert!(feat_b.is_current);
 
+        run_git(&local, &["checkout", "-b", "remote-only"]);
+        std::fs::write(local.join("c.txt"), "three\n").unwrap();
+        run_git(&local, &["add", "c.txt"]);
+        run_git(&local, &["commit", "-m", "remote branch commit"]);
+        run_git(&local, &["push", "origin", "remote-only"]);
+        run_git(&local, &["checkout", "main"]);
+        run_git(&local, &["branch", "-D", "remote-only"]);
+
+        let all_branches = list_branches(local.to_str().unwrap()).unwrap();
+        let remote_only = all_branches
+            .iter()
+            .find(|b| b.is_remote && b.name == "origin/remote-only")
+            .expect("remote-only branch must be returned by list_branches");
+        assert_eq!(remote_only.remote_name.as_deref(), Some("origin"));
+
+        switch_branch(local.to_str().unwrap(), "origin/remote-only").unwrap();
+        let after_switch = list_branches(local.to_str().unwrap()).unwrap();
+        let checked_out = after_switch
+            .iter()
+            .find(|b| !b.is_remote && b.name == "remote-only")
+            .expect("checking out remote branch should create local tracking branch");
+        assert!(checked_out.is_current);
+        assert_eq!(checked_out.upstream.as_deref(), Some("origin/remote-only"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

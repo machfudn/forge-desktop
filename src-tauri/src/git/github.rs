@@ -677,8 +677,18 @@ pub fn get_commit_check_runs(
     let api_base = github_api_base(host)?;
 
     let url = format!("{api_base}/repos/{o}/{r}/commits/{sha}/check-runs");
-    let stdout = github_api_request("GET", &url, None, token)?;
-    if stdout.trim().is_empty() {
+    let resp = github_api_request_detailed("GET", &url, None, token)?;
+    parse_check_runs_response(&resp)
+}
+
+fn parse_check_runs_response(resp: &GitHubHttpResponse) -> Result<Vec<CheckRunInfo>, String> {
+    if resp.status_code == 404 || resp.status_code == 422 {
+        return Ok(vec![]);
+    }
+    if resp.status_code >= 400 {
+        return Err(format_api_http_error(resp));
+    }
+    if resp.body.trim().is_empty() {
         return Ok(vec![]);
     }
     #[derive(Deserialize)]
@@ -694,8 +704,8 @@ pub fn get_commit_check_runs(
         html_url: Option<String>,
     }
 
-    if let Ok(resp) = serde_json::from_str::<RawCheckResponse>(&stdout) {
-        if let Some(runs) = resp.check_runs {
+    if let Ok(parsed) = serde_json::from_str::<RawCheckResponse>(&resp.body) {
+        if let Some(runs) = parsed.check_runs {
             return Ok(runs
                 .into_iter()
                 .filter_map(|c| {
@@ -870,5 +880,39 @@ mod tests {
         let resp_401 = parse_curl_http_response(raw_401);
         assert_eq!(resp_401.status_code, 401);
         assert!(format_api_http_error(&resp_401).starts_with("[AUTH_EXPIRED]"));
+    }
+
+    #[test]
+    fn test_parse_check_runs_response_handles_missing_commit_422_and_404() {
+        let resp_422 = GitHubHttpResponse {
+            status_code: 422,
+            sso_url: None,
+            body: "{\"message\":\"No commit found for SHA: abc\"}".into(),
+        };
+        assert!(parse_check_runs_response(&resp_422).unwrap().is_empty());
+
+        let resp_404 = GitHubHttpResponse {
+            status_code: 404,
+            sso_url: None,
+            body: "{\"message\":\"Not Found\"}".into(),
+        };
+        assert!(parse_check_runs_response(&resp_404).unwrap().is_empty());
+
+        let resp_401 = GitHubHttpResponse {
+            status_code: 401,
+            sso_url: None,
+            body: "{\"message\":\"Bad credentials\"}".into(),
+        };
+        assert!(parse_check_runs_response(&resp_401).is_err());
+
+        let resp_200 = GitHubHttpResponse {
+            status_code: 200,
+            sso_url: None,
+            body: "{\"check_runs\":[{\"id\":1,\"name\":\"build\",\"status\":\"completed\",\"conclusion\":\"success\"}]}".into(),
+        };
+        let runs = parse_check_runs_response(&resp_200).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].name, "build");
+        assert_eq!(runs[0].conclusion.as_deref(), Some("success"));
     }
 }

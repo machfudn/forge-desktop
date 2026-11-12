@@ -60,6 +60,8 @@ export interface BranchInfo {
   behind: number;
   is_pushed: boolean;
   upstream_gone: boolean;
+  is_remote?: boolean;
+  remote_name?: string | null;
 }
 
 export interface RemoteInfo {
@@ -352,4 +354,20 @@ export interface TerminalExecResult {
   session_id: string;
   exit_code: number;
   cwd: string;
+}
+
+export interface RepoQuickSummary {
+  path: string;
+  exists: boolean;
+  is_git: boolean;
+  branch: string;
+  remote_url?: string | null;
+  provider?: HostingProvider | null;
+  dirty_count: number;
+  ahead: number;
+  behind: number;
+  unpushed_commits: number;
+  has_remote: boolean;
+  has_upstream: boolean;
+  is_unborn: boolean;
 }

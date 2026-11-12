@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::collections::HashMap;
 use serde::Serialize;
 use super::cli;
 
@@ -100,30 +101,96 @@ pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
     Ok(format!("Remote '{rem}' berhasil dihapus"))
 }
 
-fn resolve_default_remote(
-    repo: &str,
-    requested: Option<&str>,
-    branch: Option<&str>,
-) -> Result<String, String> {
-    if let Some(r) = requested.filter(|s| !s.trim().is_empty()) {
-        return Ok(validate_remote_name(r)?.to_string());
-    }
-    if let Some(b) = branch.filter(|s| !s.trim().is_empty()) {
-        if let Ok(cfg_rem) = cli::run(repo, &["config", "--get", &format!("branch.{b}.remote")]) {
-            let trimmed = cfg_rem.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with('-') {
-                return Ok(trimmed.to_string());
+#[derive(Debug, Default)]
+struct RemoteConfigSnapshot {
+    remote_order: Vec<String>,
+    remote_urls: HashMap<String, String>,
+    remote_push_urls: HashMap<String, String>,
+    branch_remotes: HashMap<String, String>,
+    branch_merges: HashMap<String, String>,
+}
+
+impl RemoteConfigSnapshot {
+    fn parse(raw: &str) -> Self {
+        let mut snap = Self::default();
+        for line in raw.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let (key, val) = match trimmed.split_once(char::is_whitespace) {
+                Some((k, v)) => (k, v.trim()),
+                None => (trimmed, ""),
+            };
+            if let Some(rest) = key.strip_prefix("remote.") {
+                if let Some(name) = rest.strip_suffix(".url") {
+                    if !name.is_empty() && !val.is_empty() {
+                        if !snap.remote_urls.contains_key(name) {
+                            snap.remote_order.push(name.to_string());
+                        }
+                        snap.remote_urls.insert(name.to_string(), val.to_string());
+                    }
+                } else if let Some(name) = rest.strip_suffix(".pushurl") {
+                    if !name.is_empty() && !val.is_empty() {
+                        snap.remote_push_urls.insert(name.to_string(), val.to_string());
+                    }
+                }
+            } else if let Some(rest) = key.strip_prefix("branch.") {
+                if let Some(branch) = rest.strip_suffix(".remote") {
+                    if !branch.is_empty() && !val.is_empty() && !val.starts_with('-') {
+                        snap.branch_remotes.insert(branch.to_string(), val.to_string());
+                    }
+                } else if let Some(branch) = rest.strip_suffix(".merge") {
+                    if !branch.is_empty() && !val.is_empty() {
+                        snap.branch_merges.insert(branch.to_string(), val.to_string());
+                    }
+                }
             }
         }
+        snap
     }
-    let remotes = list_remotes(repo).unwrap_or_default();
-    if remotes.iter().any(|r| r.name == "origin") {
-        return Ok("origin".into());
+
+    fn read(repo: &str) -> Self {
+        let out = cli::run(repo, &["config", "--get-regexp", "^(branch\\.|remote\\.)"])
+            .unwrap_or_default();
+        Self::parse(&out)
     }
-    if let Some(first) = remotes.first() {
-        return Ok(first.name.clone());
+
+    fn resolve_remote(&self, requested: Option<&str>, branch: Option<&str>) -> Result<String, String> {
+        if let Some(r) = requested.filter(|s| !s.trim().is_empty()) {
+            return Ok(validate_remote_name(r)?.to_string());
+        }
+        if let Some(b) = branch.filter(|s| !s.trim().is_empty()) {
+            if let Some(rem) = self.branch_remotes.get(b) {
+                return Ok(rem.clone());
+            }
+        }
+        if self.remote_urls.contains_key("origin") {
+            return Ok("origin".into());
+        }
+        if let Some(first) = self.remote_order.first() {
+            return Ok(first.clone());
+        }
+        Ok("origin".into())
     }
-    Ok("origin".into())
+
+    fn url_for(&self, remote: &str, for_push: bool) -> Option<&str> {
+        if for_push {
+            if let Some(u) = self.remote_push_urls.get(remote) {
+                return Some(u.as_str());
+            }
+        }
+        self.remote_urls.get(remote).map(String::as_str)
+    }
+
+    fn has_upstream(&self, branch: &str) -> bool {
+        self.branch_remotes.contains_key(branch) && self.branch_merges.contains_key(branch)
+    }
+}
+
+pub fn is_http_remote_url(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    lower.starts_with("https://") || lower.starts_with("http://")
 }
 
 fn current_branch_name(repo: &str) -> Option<String> {
@@ -178,13 +245,91 @@ pub fn infer_remote_host(repo: &str, remote: Option<&str>) -> Option<String> {
     extract_host_from_url(&url)
 }
 
+pub fn fetch_with<F>(
+    repo: &str,
+    remote: Option<&str>,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, None)?;
+    let creds = snap
+        .url_for(&rem, false)
+        .filter(|u| is_http_remote_url(u))
+        .and_then(resolve_creds);
+    cli::run_with_credentials(
+        repo,
+        &["fetch", &rem],
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
+}
+
 pub fn fetch(
     repo: &str,
     remote: Option<&str>,
     creds: Option<(&str, &str)>,
 ) -> Result<String, String> {
-    let rem = resolve_default_remote(repo, remote, None)?;
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, None)?;
     cli::run_with_credentials(repo, &["fetch", &rem], creds)
+}
+
+pub fn fetch_all_with<F>(repo: &str, resolve_creds: F) -> Result<String, String>
+where
+    F: Fn(&str) -> Option<(String, String)>,
+{
+    let snap = RemoteConfigSnapshot::read(repo);
+    if snap.remote_order.is_empty() {
+        return fetch_with(repo, None, resolve_creds);
+    }
+    let mut outputs = Vec::with_capacity(snap.remote_order.len());
+    for rem in &snap.remote_order {
+        let creds = snap
+            .url_for(rem, false)
+            .filter(|u| is_http_remote_url(u))
+            .and_then(&resolve_creds);
+        let out = cli::run_with_credentials(
+            repo,
+            &["fetch", "--prune", rem],
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )?;
+        let trimmed = out.trim();
+        if !trimmed.is_empty() {
+            outputs.push(format!("{rem}: {trimmed}"));
+        }
+    }
+    Ok(outputs.join("\n"))
+}
+
+pub fn pull_with<F>(
+    repo: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    let cur_branch = current_branch_name(repo);
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, branch.or(cur_branch.as_deref()))?;
+    let creds = snap
+        .url_for(&rem, false)
+        .filter(|u| is_http_remote_url(u))
+        .and_then(resolve_creds);
+    let mut args = vec!["pull", rem.as_str()];
+    let valid_branch;
+    if let Some(b) = branch.filter(|s| !s.trim().is_empty()) {
+        valid_branch = validate_arg(b, "Nama branch")?;
+        args.push(valid_branch);
+    }
+    cli::run_with_credentials(
+        repo,
+        &args,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 pub fn pull(
@@ -194,7 +339,8 @@ pub fn pull(
     creds: Option<(&str, &str)>,
 ) -> Result<String, String> {
     let cur_branch = current_branch_name(repo);
-    let rem = resolve_default_remote(repo, remote, branch.or(cur_branch.as_deref()))?;
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, branch.or(cur_branch.as_deref()))?;
     let mut args = vec!["pull", rem.as_str()];
     let valid_branch;
     if let Some(b) = branch.filter(|s| !s.trim().is_empty()) {
@@ -204,12 +350,16 @@ pub fn pull(
     cli::run_with_credentials(repo, &args, creds)
 }
 
-pub fn push(
+fn push_internal<F>(
     repo: &str,
     remote: Option<&str>,
     branch: Option<&str>,
-    creds: Option<(&str, &str)>,
-) -> Result<String, String> {
+    force_lease: bool,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
     if cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_err() {
         return Err("Belum ada komit untuk di-push. Buat komit pertama terlebih dahulu.".into());
     }
@@ -220,22 +370,62 @@ pub fn push(
                 .to_string()
         })?,
     };
-    let rem = resolve_default_remote(repo, remote, Some(&target_branch))?;
-    let has_upstream = cli::run(
-        repo,
-        &[
-            "rev-parse",
-            "--abbrev-ref",
-            "--symbolic-full-name",
-            &format!("{target_branch}@{{upstream}}"),
-        ],
-    )
-    .is_ok();
-    if has_upstream {
-        cli::run_with_credentials(repo, &["push", &rem, &target_branch], creds)
-    } else {
-        cli::run_with_credentials(repo, &["push", "-u", &rem, &target_branch], creds)
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, Some(&target_branch))?;
+    let has_upstream = snap.has_upstream(&target_branch);
+    let creds = snap
+        .url_for(&rem, true)
+        .filter(|u| is_http_remote_url(u))
+        .and_then(resolve_creds);
+    let creds_ref = creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str()));
+    match (force_lease, has_upstream) {
+        (false, true) => cli::run_with_credentials(repo, &["push", &rem, &target_branch], creds_ref),
+        (false, false) => cli::run_with_credentials(repo, &["push", "-u", &rem, &target_branch], creds_ref),
+        (true, true) => cli::run_with_credentials(
+            repo,
+            &["push", "--force-with-lease", &rem, &target_branch],
+            creds_ref,
+        ),
+        (true, false) => cli::run_with_credentials(
+            repo,
+            &["push", "--force-with-lease", "-u", &rem, &target_branch],
+            creds_ref,
+        ),
     }
+}
+
+pub fn push_with<F>(
+    repo: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    push_internal(repo, remote, branch, false, resolve_creds)
+}
+
+pub fn force_push_with<F>(
+    repo: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    push_internal(repo, remote, branch, true, resolve_creds)
+}
+
+pub fn push(
+    repo: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+    creds: Option<(&str, &str)>,
+) -> Result<String, String> {
+    let owned = creds.map(|(u, t)| (u.to_string(), t.to_string()));
+    push_internal(repo, remote, branch, false, move |_| owned)
 }
 
 pub fn force_push(
@@ -244,40 +434,8 @@ pub fn force_push(
     branch: Option<&str>,
     creds: Option<(&str, &str)>,
 ) -> Result<String, String> {
-    if cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_err() {
-        return Err("Belum ada komit untuk di-push. Buat komit pertama terlebih dahulu.".into());
-    }
-    let target_branch = match branch.filter(|s| !s.trim().is_empty()) {
-        Some(b) => validate_arg(b, "Nama branch")?.to_string(),
-        None => current_branch_name(repo).ok_or_else(|| {
-            "Tidak dapat push dari posisi detached HEAD. Pilih atau buat branch terlebih dahulu."
-                .to_string()
-        })?,
-    };
-    let rem = resolve_default_remote(repo, remote, Some(&target_branch))?;
-    let has_upstream = cli::run(
-        repo,
-        &[
-            "rev-parse",
-            "--abbrev-ref",
-            "--symbolic-full-name",
-            &format!("{target_branch}@{{upstream}}"),
-        ],
-    )
-    .is_ok();
-    if has_upstream {
-        cli::run_with_credentials(
-            repo,
-            &["push", "--force-with-lease", &rem, &target_branch],
-            creds,
-        )
-    } else {
-        cli::run_with_credentials(
-            repo,
-            &["push", "--force-with-lease", "-u", &rem, &target_branch],
-            creds,
-        )
-    }
+    let owned = creds.map(|(u, t)| (u.to_string(), t.to_string()));
+    push_internal(repo, remote, branch, true, move |_| owned)
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
@@ -516,6 +674,32 @@ mod tests {
     }
 
     #[test]
+    fn test_is_http_remote_url_and_snapshot_parsing() {
+        assert!(is_http_remote_url("https://github.com/org/repo.git"));
+        assert!(is_http_remote_url("HTTP://gitlab.internal/team/app.git"));
+        assert!(!is_http_remote_url("git@bitbucket.org:team/repo.git"));
+        assert!(!is_http_remote_url("ssh://git@gitlab.com/team/repo.git"));
+        assert!(!is_http_remote_url("C:/repos/bare.git"));
+
+        let sample = "\
+remote.upstream.url https://gitlab.com/acme/core.git
+remote.origin.url git@bitbucket.org:acme/fork.git
+remote.origin.pushurl https://bitbucket.org/acme/fork.git
+branch.main.remote upstream
+branch.main.merge refs/heads/main
+branch.feat.v1.remote origin
+";
+        let snap = RemoteConfigSnapshot::parse(sample);
+        assert_eq!(snap.resolve_remote(None, Some("main")).unwrap(), "upstream");
+        assert_eq!(snap.resolve_remote(None, Some("feat.v1")).unwrap(), "origin");
+        assert_eq!(snap.url_for("upstream", false), Some("https://gitlab.com/acme/core.git"));
+        assert_eq!(snap.url_for("origin", false), Some("git@bitbucket.org:acme/fork.git"));
+        assert_eq!(snap.url_for("origin", true), Some("https://bitbucket.org/acme/fork.git"));
+        assert!(snap.has_upstream("main"));
+        assert!(!snap.has_upstream("feat.v1"));
+    }
+
+    #[test]
     fn ahead_behind_tracks_unborn_no_remote_unpushed_and_synced_branches() {
         use std::time::{SystemTime, UNIX_EPOCH};
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
@@ -581,6 +765,59 @@ mod tests {
         set_remote_url(local_str, "origin", bare.to_str().unwrap()).unwrap();
         assert!(remove_remote(local_str, "origin").is_ok());
         assert!(list_remotes(local_str).unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn push_with_skips_credentials_on_non_http_and_uses_branch_remote() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-push-with-{nanos}"));
+        let upstream_bare = root.join("upstream.git");
+        let local = root.join("local");
+        std::fs::create_dir_all(&upstream_bare).unwrap();
+        std::fs::create_dir_all(&local).unwrap();
+
+        let run_git = |cwd: &std::path::Path, args: &[&str]| {
+            let out = crate::system::command_no_window("git")
+                .args(args)
+                .current_dir(cwd)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        run_git(&upstream_bare, &["init", "--bare"]);
+        run_git(&local, &["init", "-b", "main"]);
+        run_git(&local, &["config", "user.name", "Tester"]);
+        run_git(&local, &["config", "user.email", "tester@example.com"]);
+        std::fs::write(local.join("file.txt"), "hello\n").unwrap();
+        run_git(&local, &["add", "file.txt"]);
+        run_git(&local, &["commit", "-m", "init"]);
+
+        let local_str = local.to_str().unwrap();
+        add_remote(local_str, "upstream", upstream_bare.to_str().unwrap()).unwrap();
+        run_git(&local, &["config", "branch.main.remote", "upstream"]);
+
+        let mut creds_invoked = false;
+        push_with(local_str, None, None, |_| {
+            creds_invoked = true;
+            None
+        })
+        .unwrap();
+        assert!(!creds_invoked);
+
+        let ab = get_ahead_behind(local_str, "main").unwrap();
+        assert!(ab.has_remote);
+        assert!(ab.has_upstream);
+        assert_eq!(ab.upstream.as_deref(), Some("upstream/main"));
+        assert_eq!(ab.unpushed_commits, 0);
 
         let _ = std::fs::remove_dir_all(&root);
     }
