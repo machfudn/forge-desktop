@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Forge Desktop Cat and Gavel Icon">
+  <defs>
+    <linearGradient id="tileGrad" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="55%" stop-color="#111927" />
+      <stop offset="100%" stop-color="#0b101b" />
+    </linearGradient>
+    <radialGradient id="ambientGlow" cx="50%" cy="56%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.26" />
+      <stop offset="65%" stop-color="#238636" stop-opacity="0.09" />
+      <stop offset="100%" stop-color="#0d1117" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="furGrad" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="68%" stop-color="#fff4e3" />
+      <stop offset="100%" stop-color="#ebd5b3" />
+    </linearGradient>
+    <linearGradient id="earTipGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#fcd34d" />
+    </linearGradient>
+    <linearGradient id="woodHead" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="28%" stop-color="#f59e0b" />
+      <stop offset="80%" stop-color="#b45309" />
+      <stop offset="100%" stop-color="#78350f" />
+    </linearGradient>
+    <linearGradient id="woodHandle" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fde68a" />
+      <stop offset="50%" stop-color="#d97706" />
+      <stop offset="100%" stop-color="#92400e" />
+    </linearGradient>
+    <linearGradient id="goldCap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fef9c3" />
+      <stop offset="45%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+    <filter id="elemShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#020617" flood-opacity="0.45" />
+    </filter>
+    <style>
+      #gavel-swing {
+        transform-origin: 354px 92px;
+        animation: gavelStrike 1.7s cubic-bezier(0.35, 0, 0.25, 1) infinite;
+      }
+      #strike-sparks {
+        transform-origin: 256px 186px;
+        animation: sparkPulse 1.7s ease-out infinite;
+      }
+      #cat-group {
+        transform-origin: 256px 348px;
+        animation: catBob 1.7s cubic-bezier(0.35, 0, 0.25, 1) infinite;
+      }
+      .cat-eye {
+        transform-origin: center;
+        transform-box: fill-box;
+        animation: catBlink 4.2s ease-in-out infinite;
+      }
+      @keyframes gavelStrike {
+        0%, 100% { transform: rotate(6deg); }
+        32% { transform: rotate(-14deg); }
+        52% { transform: rotate(9deg); }
+        68% { transform: rotate(2deg); }
+        78% { transform: rotate(6deg); }
+      }
+      @keyframes sparkPulse {
+        0%, 42% { opacity: 0.45; transform: scale(0.9); }
+        52% { opacity: 1; transform: scale(1.08); }
+        75%, 100% { opacity: 0.6; transform: scale(0.96); }
+      }
+      @keyframes catBob {
+        0%, 44%, 82%, 100% { transform: translateY(0px) scaleY(1); }
+        53% { transform: translateY(5px) scaleY(0.975); }
+        68% { transform: translateY(-2px) scaleY(1.01); }
+      }
+      @keyframes catBlink {
+        0%, 88%, 100% { transform: scaleY(1); }
+        93% { transform: scaleY(0.08); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #gavel-swing, #strike-sparks, #cat-group, .cat-eye {
+          animation: none;
+        }
+      }
+    </style>
+  </defs>
+
+  <!-- Crisp rounded launcher tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#tileGrad)" />
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#ambientGlow)" />
+  <rect x="18" y="18" width="476" height="476" rx="110" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="4" />
+
+  <!-- Cute Chibi Cat Head centered in lower-middle (safe inside circular mask) -->
+  <g id="cat-group" filter="url(#elemShadow)">
+    <!-- Left & Right Ears (peaks at y=206) -->
+    <path d="M 136 324 L 118 220 C 115 201, 136 194, 152 208 L 214 260 Z" fill="url(#furGrad)" stroke="#d6be9c" stroke-width="4" stroke-linejoin="round" />
+    <path d="M 120 233 L 118 220 C 115 201, 136 194, 152 208 L 172 225 C 153 230, 135 233, 120 233 Z" fill="url(#earTipGrad)" />
+    <path d="M 144 304 L 136 230 L 194 272 Z" fill="#ff9ebb" />
+
+    <path d="M 376 324 L 394 220 C 397 201, 376 194, 360 208 L 298 260 Z" fill="url(#furGrad)" stroke="#d6be9c" stroke-width="4" stroke-linejoin="round" />
+    <path d="M 392 233 L 394 220 C 397 201, 376 194, 360 208 L 340 225 C 359 230, 377 233, 392 233 Z" fill="url(#earTipGrad)" />
+    <path d="M 368 304 L 376 230 L 318 272 Z" fill="#ff9ebb" />
+
+    <!-- Bold Chibi Face (y=240..448) -->
+    <path d="M 114 344 C 114 272, 174 240, 256 240 C 338 240, 398 272, 398 344 C 398 412, 340 448, 256 448 C 172 448, 114 412, 114 344 Z" fill="url(#furGrad)" stroke="#d6be9c" stroke-width="4" />
+
+    <!-- Tabby forehead stripes -->
+    <rect x="250" y="250" width="12" height="26" rx="6" fill="#f59e0b" />
+    <rect x="230" y="254" width="10" height="20" rx="5" transform="rotate(-11 235 264)" fill="#f59e0b" opacity="0.86" />
+    <rect x="272" y="254" width="10" height="20" rx="5" transform="rotate(11 277 264)" fill="#f59e0b" opacity="0.86" />
+
+    <!-- Rosy cheeks -->
+    <ellipse cx="166" cy="372" rx="23" ry="13" fill="#ff8fab" opacity="0.52" />
+    <ellipse cx="346" cy="372" rx="23" ry="13" fill="#ff8fab" opacity="0.52" />
+
+    <!-- Large Shiny Cartoon Eyes -->
+    <g class="cat-eye">
+      <circle cx="198" cy="340" r="27" fill="#1e293b" />
+      <circle cx="189" cy="330" r="9.5" fill="#ffffff" />
+      <circle cx="208" cy="349" r="4.2" fill="#ffffff" />
+    </g>
+    <g class="cat-eye">
+      <circle cx="314" cy="340" r="27" fill="#1e293b" />
+      <circle cx="305" cy="330" r="9.5" fill="#ffffff" />
+      <circle cx="324" cy="349" r="4.2" fill="#ffffff" />
+    </g>
+
+    <!-- Bold Nose & Smile -->
+    <path d="M 241 368 Q 256 362 271 368 Q 264 383 256 385 Q 248 383 241 368 Z" fill="#fb7185" />
+    <path d="M 256 385 L 256 393 M 228 395 Q 242 408 256 393 Q 270 408 284 395" fill="none" stroke="#334155" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+
+    <!-- Bold Whiskers -->
+    <g stroke="#94a3b8" stroke-width="6.5" stroke-linecap="round">
+      <line x1="146" y1="358" x2="80" y2="348" />
+      <line x1="148" y1="382" x2="84" y2="394" />
+      <line x1="366" y1="358" x2="432" y2="348" />
+      <line x1="364" y1="382" x2="428" y2="394" />
+    </g>
+
+    <!-- Small green Forge collar tag tucked cleanly within circular crop -->
+    <circle cx="256" cy="444" r="15" fill="#238636" stroke="#ffffff" stroke-width="3.5" />
+    <circle cx="256" cy="444" r="6" fill="#fbbf24" />
+  </g>
+
+  <!-- Clean centered golden impact arc cleanly above forehead & ears -->
+  <g id="strike-sparks">
+    <path d="M 188 184 Q 256 198 324 184" fill="none" stroke="#fde047" stroke-width="8" stroke-linecap="round" />
+    <path d="M 212 200 Q 256 208 300 200" fill="none" stroke="#38bdf8" stroke-width="5.5" stroke-linecap="round" opacity="0.9" />
+  </g>
+
+  <!-- Bold Swing Motion Swoosh above gavel -->
+  <path d="M 164 78 A 124 124 0 0 1 286 50" fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" stroke-dasharray="22 14" opacity="0.9" />
+
+  <!-- Bold High-Contrast Judge's Gavel ("Palu Sidang") for crisp 32x32 legibility -->
+  <g id="gavel-swing" filter="url(#elemShadow)">
+    <g transform="translate(18, 12) scale(0.91) rotate(-14 236 106)">
+      <!-- Thick high-contrast wooden handle -->
+      <rect x="242" y="92" width="136" height="30" rx="15" fill="url(#woodHandle)" stroke="#451a03" stroke-width="3.5" />
+      <rect x="252" y="88" width="18" height="38" rx="5" fill="url(#goldCap)" stroke="#78350f" stroke-width="3" />
+      <circle cx="376" cy="107" r="17" fill="url(#goldCap)" stroke="#78350f" stroke-width="3.5" />
+
+      <!-- Large bold mallet head -->
+      <rect x="166" y="42" width="84" height="128" rx="16" fill="url(#woodHead)" stroke="#451a03" stroke-width="4" />
+      <!-- Thick bright gold striking caps -->
+      <rect x="158" y="36" width="100" height="24" rx="8" fill="url(#goldCap)" stroke="#78350f" stroke-width="3.5" />
+      <rect x="158" y="152" width="100" height="24" rx="8" fill="url(#goldCap)" stroke="#78350f" stroke-width="3.5" />
+      <!-- Bold crisp wood sheen -->
+      <rect x="184" y="72" width="14" height="68" rx="7" fill="#fef9c3" opacity="0.65" />
+    </g>
+  </g>
+</svg>

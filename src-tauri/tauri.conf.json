@@ -14,8 +14,11 @@
     "windows": [
       {
         "title": "Forge Desktop",
-        "width": 1000,
-        "height": 700
+        "width": 1160,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 540,
+        "center": true
       }
     ],
     "security": {
