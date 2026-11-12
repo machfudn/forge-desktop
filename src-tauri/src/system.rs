@@ -16,32 +16,70 @@ pub fn command_no_window<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
     }
 }
 
-pub fn open_in_file_manager(path: &str) -> Result<(), String> {
+fn resolve_file_manager_target(path: &str) -> Result<(std::path::PathBuf, bool), String> {
     let p = Path::new(path.trim());
-    if !p.exists() {
+    if p.as_os_str().is_empty() {
         return Err("Path tidak ditemukan".into());
     }
+    if p.exists() {
+        return Ok((p.to_path_buf(), p.is_file()));
+    }
+    if let Some(existing_parent) = p.ancestors().skip(1).find(|a| !a.as_os_str().is_empty() && a.exists()) {
+        return Ok((existing_parent.to_path_buf(), false));
+    }
+    Err("Path tidak ditemukan".into())
+}
+
+#[cfg(target_os = "windows")]
+fn format_windows_explorer_select_arg(p: &Path) -> Option<String> {
+    let normalized = p.to_string_lossy().replace('/', "\\");
+    if normalized.is_empty() || normalized.contains('"') {
+        return None;
+    }
+    Some(format!("/select,\"{normalized}\""))
+}
+
+pub fn open_in_file_manager(path: &str) -> Result<(), String> {
+    let (target, is_file) = resolve_file_manager_target(path)?;
 
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        if is_file {
+            if let Some(raw) = format_windows_explorer_select_arg(&target) {
+                Command::new("explorer")
+                    .raw_arg(raw)
+                    .spawn()
+                    .map_err(|e| format!("Gagal membuka file manager: {e}"))?;
+                return Ok(());
+            }
+        }
         Command::new("explorer")
-            .arg(p)
+            .arg(&target)
             .spawn()
             .map_err(|e| format!("Gagal membuka file manager: {e}"))?;
     }
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
-            .arg(p)
+        let mut cmd = Command::new("open");
+        if is_file {
+            cmd.arg("-R");
+        }
+        cmd.arg(&target)
             .spawn()
             .map_err(|e| format!("Gagal membuka file manager: {e}"))?;
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
+        let dir = if is_file {
+            target.parent().unwrap_or(&target)
+        } else {
+            &target
+        };
         Command::new("xdg-open")
-            .arg(p)
+            .arg(dir)
             .spawn()
             .map_err(|e| format!("Gagal membuka file manager: {e}"))?;
     }
@@ -507,5 +545,39 @@ mod tests {
             Some(r"C:\Windows\system32\NOTEPAD.EXE")
         );
         assert!(parse_registry_command_exe("").is_none());
+    }
+
+    #[test]
+    fn resolves_existing_file_dir_and_deleted_file_ancestor() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-reveal-test-{nanos}"));
+        let sub = root.join("nested");
+        let file = sub.join("example.txt");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(&file, "hello").unwrap();
+
+        let (t_file, is_file) = resolve_file_manager_target(file.to_str().unwrap()).unwrap();
+        assert_eq!(t_file, file);
+        assert!(is_file);
+
+        let (t_dir, is_dir_file) = resolve_file_manager_target(sub.to_str().unwrap()).unwrap();
+        assert_eq!(t_dir, sub);
+        assert!(!is_dir_file);
+
+        let missing = sub.join("deleted.txt");
+        let (t_missing, is_missing_file) = resolve_file_manager_target(missing.to_str().unwrap()).unwrap();
+        assert_eq!(t_missing, sub);
+        assert!(!is_missing_file);
+
+        assert!(resolve_file_manager_target("").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn formats_windows_explorer_select_arg() {
+        let arg = format_windows_explorer_select_arg(Path::new("C:/Development/my repo/file.ts")).unwrap();
+        assert_eq!(arg, r#"/select,"C:\Development\my repo\file.ts""#);
     }
 }

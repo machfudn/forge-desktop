@@ -10,6 +10,7 @@ pub struct CommitInfo {
     pub date: String,
     pub summary: String,
     pub is_pushed: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -31,6 +32,15 @@ pub struct CommitDetail {
     pub files: Vec<CommitChangedFile>,
 }
 
+fn parse_tags_from_decorate(dec: &str) -> Vec<String> {
+    dec.split(", ")
+        .filter_map(|item| item.trim().strip_prefix("tag: refs/tags/"))
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
 pub fn parse_log_line_with_status(
     line: &str,
     unpushed: &HashSet<String>,
@@ -41,6 +51,10 @@ pub fn parse_log_line_with_status(
     }
     let sha = parts[0].to_string();
     let is_pushed = !unpushed.contains(&sha);
+    let tags = parts
+        .get(5)
+        .map(|dec| parse_tags_from_decorate(dec))
+        .unwrap_or_default();
     Some(CommitInfo {
         sha,
         short_sha: parts[1].to_string(),
@@ -48,6 +62,7 @@ pub fn parse_log_line_with_status(
         date: parts[3].to_string(),
         summary: parts[4].to_string(),
         is_pushed,
+        tags,
     })
 }
 
@@ -80,7 +95,9 @@ pub fn get_history(repo: &str, limit: usize) -> Result<Vec<CommitInfo>, String> 
                     "log",
                     "-n",
                     &limit_str,
-                    "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s",
+                    "--decorate=full",
+                    "--decorate-refs=refs/tags/*",
+                    "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D",
                     "--date=short",
                 ],
             )
@@ -272,6 +289,59 @@ mod tests {
     #[test]
     fn parse_invalid_log_line() {
         assert!(parse_log_line("invalid line").is_none());
+    }
+
+    #[test]
+    fn parse_log_line_extracts_multiple_tags_and_ignores_other_refs() {
+        let line = "abc123456789\x1fabc123\x1fUser Name\x1f2026-11-12\x1fRelease commit\x1fHEAD -> refs/heads/main, tag: refs/tags/v1.1.1, tag: refs/tags/release/v1,2, refs/remotes/origin/main";
+        let commit = parse_log_line(line).unwrap();
+        assert_eq!(commit.tags, vec!["v1.1.1", "release/v1,2"]);
+    }
+
+    #[test]
+    fn get_history_includes_lightweight_and_annotated_tags() {
+        use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-history-tags-test-{nanos}"));
+        std::fs::create_dir_all(&root).unwrap();
+
+        let run_git = |args: &[&str]| {
+            let out = Command::new("git").args(args).current_dir(&root).output().unwrap();
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        run_git(&["init"]);
+        run_git(&["config", "user.name", "Tester"]);
+        run_git(&["config", "user.email", "tester@example.com"]);
+
+        std::fs::write(root.join("a.txt"), "one\n").unwrap();
+        run_git(&["add", "a.txt"]);
+        run_git(&["commit", "-m", "tagged commit"]);
+        run_git(&["tag", "v1.0.0"]);
+        run_git(&["tag", "-a", "v1.0.1", "-m", "annotated release"]);
+
+        std::fs::write(root.join("b.txt"), "two\n").unwrap();
+        run_git(&["add", "b.txt"]);
+        run_git(&["commit", "-m", "untagged commit"]);
+
+        let history = get_history(root.to_str().unwrap(), 10).unwrap();
+        assert_eq!(history.len(), 2);
+        assert!(history[0].tags.is_empty());
+        assert_eq!(history[1].tags.len(), 2);
+        assert!(history[1].tags.contains(&"v1.0.0".to_string()));
+        assert!(history[1].tags.contains(&"v1.0.1".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

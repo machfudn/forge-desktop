@@ -24,6 +24,7 @@ export interface CommitInfo {
   date: string;
   summary: string;
   is_pushed: boolean;
+  tags?: string[];
 }
 
 export interface CommitChangedFile {
