@@ -7,6 +7,8 @@
     currentBranch: string;
     branches: BranchInfo[];
     branchDivergenceMap: Record<string, AheadBehind>;
+    isLoadingBranches?: boolean;
+    onInspectBranch?: (branchName: string) => void;
     hasDirtyFiles: boolean;
     dirtyFileCount: number;
     hasRemote: boolean;
@@ -27,6 +29,8 @@
     currentBranch,
     branches = $bindable(),
     branchDivergenceMap,
+    isLoadingBranches = false,
+    onInspectBranch,
     hasDirtyFiles,
     dirtyFileCount,
     hasRemote,
@@ -276,7 +280,9 @@
       <div class="list-box">
         {#if filteredBranches.length === 0}
           <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;">
-            {#if !hasCommits && branches.length === 0}
+            {#if isLoadingBranches}
+              Memuat daftar branch...
+            {:else if !hasCommits && branches.length === 0}
               Branch '{currentBranch}' belum punya komit. Buat komit pertama agar branch tercatat di daftar.
             {:else}
               Tidak ada branch ditemukan
@@ -288,6 +294,12 @@
               <button
                 type="button"
                 onclick={() => handleSwitchBranch(b.name)}
+                onmouseenter={() => {
+                  if (!b.is_current) onInspectBranch?.(b.name);
+                }}
+                onfocus={() => {
+                  if (!b.is_current) onInspectBranch?.(b.name);
+                }}
                 style="flex: 1; min-width: 0; text-align: left; display: flex; align-items: center; gap: 6px;"
               >
                 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; {b.is_current ? 'font-weight: 600;' : ''}">

@@ -42,8 +42,10 @@
     repoAliases: Record<string, string>;
     repoMissingStatus: Record<string, boolean>;
     diagReport: DiagnosticReport | null;
+    isLoadingDiag?: boolean;
     repoConfig: RepoConfig;
     globalConfig: RepoConfig;
+    isLoadingSettings?: boolean;
     activeTheme: string;
     autofetchMinutes: number;
     confirmDiscard: boolean;
@@ -101,8 +103,10 @@
     repoAliases,
     repoMissingStatus,
     diagReport,
+    isLoadingDiag = false,
     repoConfig: initialRepoConfig,
     globalConfig: initialGlobalConfig,
+    isLoadingSettings = false,
     activeTheme: initialTheme,
     autofetchMinutes: initialAutofetch,
     confirmDiscard: initialConfirmDiscard,
@@ -180,6 +184,7 @@
   // Settings local drafts
   let draftRepoConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
   let draftGlobalConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
+  let settingsAuthorsDirty = $state(false);
   let draftTheme = $state("dark");
   let draftAutofetch = $state(5);
   let draftConfirmDiscard = $state(true);
@@ -315,6 +320,7 @@
             .catch((err) => (inlineError = String(err)));
         }
       } else if (m === "settings") {
+        settingsAuthorsDirty = false;
         draftRepoConfig = { ...initialRepoConfig };
         draftGlobalConfig = { ...initialGlobalConfig };
         draftTheme = initialTheme;
@@ -358,6 +364,15 @@
         }
       }
     });
+  });
+
+  $effect(() => {
+    const rc = initialRepoConfig;
+    const gc = initialGlobalConfig;
+    if (modal === "settings" && !settingsAuthorsDirty) {
+      draftRepoConfig = { ...rc };
+      draftGlobalConfig = { ...gc };
+    }
   });
 
   let isBrowsingDir = $state(false);
@@ -1427,13 +1442,17 @@
         </div>
 
       {:else if modal === "diag"}
-        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
-          <div><strong>Aplikasi:</strong> Forge Desktop v{diagReport?.app_version || "-"}</div>
-          <div><strong>OS / Arch:</strong> {diagReport?.os_info || "-"}</div>
-          <div><strong>Versi Git:</strong> {diagReport?.git_version || "-"}</div>
-          <div class="form-label" style="margin-top: 4px;">Konfigurasi Git (Disanitasi)</div>
-          <pre style="background: var(--bg-app); border: 1px solid var(--border-default); padding: 10px; border-radius: var(--radius-sm); max-height: 200px; overflow: auto; font-family: var(--font-mono); font-size: 11px; user-select: text;">{diagReport?.sanitized_config.join("\n") || "Tidak ada config"}</pre>
-        </div>
+        {#if isLoadingDiag && !diagReport}
+          <div class="info-callout">Mengumpulkan informasi diagnostik sistem...</div>
+        {:else}
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
+            <div><strong>Aplikasi:</strong> Forge Desktop v{diagReport?.app_version || "-"}</div>
+            <div><strong>OS / Arch:</strong> {diagReport?.os_info || "-"}</div>
+            <div><strong>Versi Git:</strong> {diagReport?.git_version || "-"}</div>
+            <div class="form-label" style="margin-top: 4px;">Konfigurasi Git (Disanitasi)</div>
+            <pre style="background: var(--bg-app); border: 1px solid var(--border-default); padding: 10px; border-radius: var(--radius-sm); max-height: 200px; overflow: auto; font-family: var(--font-mono); font-size: 11px; user-select: text;">{diagReport?.sanitized_config.join("\n") || "Tidak ada config"}</pre>
+          </div>
+        {/if}
 
       {:else if modal === "auth"}
         {#if authView === "manager" && accountOverview.accounts.length > 0}
@@ -1966,24 +1985,26 @@
           {/if}
         {/if}
       {:else if modal === "settings"}
-        <div class="modal-section-heading">Konfigurasi Lokal Repositori</div>
+        <div class="modal-section-heading">
+          Konfigurasi Lokal Repositori{isLoadingSettings ? " (memuat...)" : ""}
+        </div>
         <div class="form-field">
           <label class="form-label" for="repo-user-name">Nama Author (user.name)</label>
-          <input id="repo-user-name" type="text" class="form-input" bind:value={draftRepoConfig.user_name} placeholder="Nama Anda (lokal)" />
+          <input id="repo-user-name" type="text" class="form-input" bind:value={draftRepoConfig.user_name} oninput={() => (settingsAuthorsDirty = true)} placeholder="Nama Anda (lokal)" />
         </div>
         <div class="form-field">
           <label class="form-label" for="repo-user-email">Email Author (user.email)</label>
-          <input id="repo-user-email" type="text" class="form-input" bind:value={draftRepoConfig.user_email} placeholder="email@example.com (lokal)" />
+          <input id="repo-user-email" type="text" class="form-input" bind:value={draftRepoConfig.user_email} oninput={() => (settingsAuthorsDirty = true)} placeholder="email@example.com (lokal)" />
         </div>
 
         <div class="modal-section-heading">Konfigurasi Global Git (~/.gitconfig)</div>
         <div class="form-field">
           <label class="form-label" for="global-user-name">Global Nama (user.name)</label>
-          <input id="global-user-name" type="text" class="form-input" bind:value={draftGlobalConfig.user_name} placeholder="Nama Anda (global)" />
+          <input id="global-user-name" type="text" class="form-input" bind:value={draftGlobalConfig.user_name} oninput={() => (settingsAuthorsDirty = true)} placeholder="Nama Anda (global)" />
         </div>
         <div class="form-field">
           <label class="form-label" for="global-user-email">Global Email (user.email)</label>
-          <input id="global-user-email" type="text" class="form-input" bind:value={draftGlobalConfig.user_email} placeholder="email@example.com (global)" />
+          <input id="global-user-email" type="text" class="form-input" bind:value={draftGlobalConfig.user_email} oninput={() => (settingsAuthorsDirty = true)} placeholder="email@example.com (global)" />
         </div>
 
         <div class="modal-section-heading">Tampilan & Sinkronisasi</div>
@@ -2181,6 +2202,7 @@
         <button
           type="button"
           class="btn-secondary"
+          disabled={!diagReport}
           onclick={() => {
             if (diagReport) {
               const text = `App: Forge Desktop v${diagReport.app_version}\nOS: ${diagReport.os_info}\nGit: ${diagReport.git_version}\nConfig:\n${diagReport.sanitized_config.join("\n")}`;
@@ -2192,7 +2214,6 @@
           Salin Info
         </button>
         <button type="button" class="btn-primary" onclick={onClose}>Tutup</button>
-      {:else if modal === "settings"}
         <button type="button" class="btn-secondary" onclick={onClose}>Batal</button>
         <button
           type="button"

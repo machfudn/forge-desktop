@@ -85,6 +85,14 @@
   let diagReport = $state<DiagnosticReport | null>(null);
   let repoConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
   let globalConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
+  let isLoadingBranches = $state(false);
+  let isLoadingDiag = $state(false);
+  let isLoadingSettings = $state(false);
+  let branchModalSeq = 0;
+  let settingsModalSeq = 0;
+  let diagModalSeq = 0;
+  let loadRepoSeq = 0;
+  const pendingBranchCompares = new Set<string>();
 
   // Settings & preferences
   let activeTheme = $state(localStorage.getItem("forge_theme") || "dark");
@@ -480,15 +488,24 @@
   }
 
   async function checkMissingRepos() {
-    const statusMap: Record<string, boolean> = {};
-    for (const r of recentRepos) {
-      try {
-        statusMap[r] = !(await gitService.checkRepoExists(r));
-      } catch {
-        statusMap[r] = true;
-      }
+    if (recentRepos.length === 0) {
+      repoMissingStatus = {};
+      return;
     }
-    repoMissingStatus = statusMap;
+    try {
+      const existsMap = await gitService.checkReposExists(recentRepos);
+      const statusMap: Record<string, boolean> = {};
+      for (const r of recentRepos) {
+        statusMap[r] = !existsMap[r];
+      }
+      repoMissingStatus = statusMap;
+    } catch {
+      const statusMap: Record<string, boolean> = {};
+      for (const r of recentRepos) {
+        statusMap[r] = false;
+      }
+      repoMissingStatus = statusMap;
+    }
   }
 
   async function relocateMissingRepo(oldPath: string, newPath: string) {
@@ -616,11 +633,14 @@
 
   async function loadRepo(repoPath: string) {
     if (!repoPath.trim()) return;
+    const reqSeq = ++loadRepoSeq;
+    const isNewRepo = activeRepo !== repoPath;
     try {
       isLoading = true;
       setStatus(`Memeriksa ${pathBaseName(repoPath)}...`);
       try {
         const pathState = await gitService.getRepoPathState(repoPath);
+        if (reqSeq !== loadRepoSeq) return;
         if (pathState === "missing") {
           pendingInitRepo = "";
           setStatus(`Folder tidak ditemukan: ${repoPath}`, true);
@@ -651,17 +671,24 @@
 
       pendingInitRepo = "";
       const status = await gitService.inspectRepository(repoPath);
+      if (reqSeq !== loadRepoSeq) return;
+
       activeRepo = repoPath;
       currentStatus = status;
-      selectedFile = null;
+      selectedFile = status.files.length > 0 ? status.files[0] : null;
       currentDiff = "";
       currentImageDiff = null;
-      pullRequests = [];
-      issues = [];
-      checkRunsMap = {};
-      githubRepoInfo = null;
-      repoRemotes = [];
-      hasRemote = false;
+      if (isNewRepo) {
+        branches = [];
+        pullRequests = [];
+        issues = [];
+        checkRunsMap = {};
+        githubRepoInfo = null;
+        repoRemotes = [];
+        hasRemote = false;
+      }
+      branchDivergenceMap = {};
+      pendingBranchCompares.clear();
       saveRecentRepo(repoPath);
 
       const isValidBranch =
@@ -669,48 +696,42 @@
         status.branch !== "HEAD terlepas" &&
         !status.branch.startsWith("(");
 
-      if (isValidBranch) {
-        try {
-          aheadBehind = await gitService.getBranchAheadBehind(repoPath, status.branch);
-        } catch {
-          aheadBehind = { ...EMPTY_AHEAD_BEHIND, is_unborn: !status.has_commits };
-        }
-      } else {
-        aheadBehind = { ...EMPTY_AHEAD_BEHIND, is_unborn: !status.has_commits };
+      const [abRes, , tagsRes, historyRes, remotesRes] = await Promise.allSettled([
+        isValidBranch
+          ? gitService.getBranchAheadBehind(repoPath, status.branch)
+          : Promise.resolve({ ...EMPTY_AHEAD_BEHIND, is_unborn: !status.has_commits }),
+        status.files.length > 0 ? loadDiffForFile(status.files[0]) : Promise.resolve(),
+        gitService.listTags(repoPath),
+        activeView === "history" ? gitService.getCommitHistory(repoPath, 80) : Promise.resolve(null),
+        gitService.listRemotes(repoPath),
+        refreshAccounts(repoPath),
+      ]);
+      if (reqSeq !== loadRepoSeq) return;
+
+      aheadBehind =
+        abRes.status === "fulfilled"
+          ? abRes.value
+          : { ...EMPTY_AHEAD_BEHIND, is_unborn: !status.has_commits };
+      tags = tagsRes.status === "fulfilled" ? tagsRes.value : [];
+      if (historyRes.status === "fulfilled" && historyRes.value !== null) {
+        commits = historyRes.value;
       }
 
-      if (status.files.length > 0) {
-        selectedFile = status.files[0];
-        await loadDiffForFile(status.files[0]);
-      }
-
-      try {
-        tags = await gitService.listTags(repoPath);
-      } catch {
-        tags = [];
-      }
-
-      if (activeView === "history") {
-        commits = await gitService.getCommitHistory(repoPath, 80);
-      }
-
-      try {
-        const [remotes] = await Promise.all([
-          gitService.listRemotes(repoPath),
-          refreshAccounts(repoPath),
-        ]);
+      if (remotesRes.status === "fulfilled") {
+        const remotes = remotesRes.value;
         repoRemotes = remotes;
         hasRemote = remotes.length > 0;
         const origin = remotes.find((r) => r.name === "origin") || remotes[0];
         if (origin) {
-          const ghParsed = await gitService.parseGithubRepository(origin.url);
-          if (ghParsed) {
+          try {
+            const ghParsed = await gitService.parseGithubRepository(origin.url);
+            if (reqSeq !== loadRepoSeq) return;
             githubRepoInfo = ghParsed;
-            if (activeRepoAccount && !githubRateLimited) {
+            if (ghParsed && activeRepoAccount && !githubRateLimited) {
               gitService
                 .listGithubIssues(ghParsed.owner, ghParsed.repo, ghParsed.host, repoPath)
                 .then((list) => {
-                  issues = list;
+                  if (reqSeq === loadRepoSeq) issues = list;
                 })
                 .catch((err) => {
                   if (isGithubRateLimitError(err)) {
@@ -718,9 +739,13 @@
                   }
                 });
             }
+          } catch {
+            githubRepoInfo = null;
           }
+        } else {
+          githubRepoInfo = null;
         }
-      } catch {
+      } else {
         repoRemotes = [];
         hasRemote = false;
         githubRepoInfo = null;
@@ -731,7 +756,9 @@
     } catch (err) {
       setStatus(`Gagal memuat repositori: ${err}`, true);
     } finally {
-      isLoading = false;
+      if (reqSeq === loadRepoSeq) {
+        isLoading = false;
+      }
     }
   }
 
@@ -950,37 +977,60 @@
     }
   }
 
-  async function openBranchModal() {
-    if (!activeRepo) return;
-    try {
-      branches = await gitService.listBranches(activeRepo);
-      branchDivergenceMap = {};
-      const current = branches.find((b) => b.is_current);
-      if (current) {
-        Promise.allSettled(
-          branches
-            .filter((b) => !b.is_current)
-            .slice(0, 20)
-            .map(async (b) => {
-              try {
-                const div = await gitService.compareBranches(activeRepo, b.name, current.name);
-                branchDivergenceMap = { ...branchDivergenceMap, [b.name]: div };
-              } catch {
-                // ignore unreachable comparison
-              }
-            })
-        );
-      }
-      activeModal = "branch";
-    } catch (err) {
-      setStatus(String(err), true);
-    }
+  function inspectBranchDivergence(branchName: string) {
+    if (!activeRepo || !currentStatus) return;
+    const cur = currentStatus.branch;
+    if (!cur || cur === branchName || cur === "HEAD terlepas" || cur.startsWith("(")) return;
+    const key = `${cur}\0${branchName}`;
+    if (branchDivergenceMap[branchName] || pendingBranchCompares.has(key)) return;
+    pendingBranchCompares.add(key);
+    const targetRepo = activeRepo;
+    gitService
+      .compareBranches(targetRepo, branchName, cur)
+      .then((div) => {
+        if (activeRepo === targetRepo && currentStatus?.branch === cur) {
+          branchDivergenceMap = { ...branchDivergenceMap, [branchName]: div };
+        }
+      })
+      .catch(() => {
+        // ignore unreachable comparison
+      })
+      .finally(() => {
+        pendingBranchCompares.delete(key);
+      });
   }
 
-  async function openOpenModal() {
+  function openBranchModal() {
+    if (!activeRepo) return;
+    const seq = ++branchModalSeq;
+    const targetRepo = activeRepo;
+    branchDivergenceMap = {};
+    pendingBranchCompares.clear();
+    isLoadingBranches = true;
+    activeModal = "branch";
+    gitService
+      .listBranches(targetRepo)
+      .then((list) => {
+        if (seq === branchModalSeq && activeRepo === targetRepo) {
+          branches = list;
+        }
+      })
+      .catch((err) => {
+        if (seq === branchModalSeq) {
+          setStatus(String(err), true);
+        }
+      })
+      .finally(() => {
+        if (seq === branchModalSeq) {
+          isLoadingBranches = false;
+        }
+      });
+  }
+
+  function openOpenModal() {
     toolsMenuOpen = false;
     activeModal = "open";
-    await checkMissingRepos();
+    void checkMissingRepos();
   }
 
   async function openPrModal() {
@@ -1057,17 +1107,33 @@
     }
   }
 
-  async function openSettingsModal() {
+  function openSettingsModal() {
     toolsMenuOpen = false;
-    try {
-      if (activeRepo) {
-        repoConfig = await gitService.getRepoConfig(activeRepo);
-      }
-      globalConfig = await gitService.getGlobalConfig();
-      activeModal = "settings";
-    } catch (err) {
-      setStatus(String(err), true);
-    }
+    const seq = ++settingsModalSeq;
+    const targetRepo = activeRepo;
+    isLoadingSettings = true;
+    activeModal = "settings";
+    Promise.all([
+      targetRepo ? gitService.getRepoConfig(targetRepo) : Promise.resolve(repoConfig),
+      gitService.getGlobalConfig(),
+    ])
+      .then(([rc, gc]) => {
+        if (seq !== settingsModalSeq) return;
+        if (targetRepo && activeRepo === targetRepo) {
+          repoConfig = rc;
+        }
+        globalConfig = gc;
+      })
+      .catch((err) => {
+        if (seq === settingsModalSeq) {
+          setStatus(String(err), true);
+        }
+      })
+      .finally(() => {
+        if (seq === settingsModalSeq) {
+          isLoadingSettings = false;
+        }
+      });
   }
 
   async function handleSaveSettings(cfg: {
@@ -1162,14 +1228,29 @@
     }
   }
 
-  async function openDiagModal() {
+  function openDiagModal() {
     toolsMenuOpen = false;
-    try {
-      diagReport = await gitService.getDiagnostics(activeRepo || undefined);
-      activeModal = "diag";
-    } catch (err) {
-      setStatus(String(err), true);
-    }
+    const seq = ++diagModalSeq;
+    const targetRepo = activeRepo || undefined;
+    isLoadingDiag = true;
+    activeModal = "diag";
+    gitService
+      .getDiagnostics(targetRepo)
+      .then((report) => {
+        if (seq === diagModalSeq) {
+          diagReport = report;
+        }
+      })
+      .catch((err) => {
+        if (seq === diagModalSeq) {
+          setStatus(String(err), true);
+        }
+      })
+      .finally(() => {
+        if (seq === diagModalSeq) {
+          isLoadingDiag = false;
+        }
+      });
   }
 
   async function handleFetch() {
@@ -1462,20 +1543,30 @@
         initialRepo = localStorage.getItem("forge_last_repo") || recentRepos[0] || "";
       }
 
+      const startupTasks: Promise<unknown>[] = [
+        refreshAccounts(),
+        gitService
+          .getAppRuntimeInfo()
+          .then((info) => {
+            appRuntimeInfo = info;
+          })
+          .catch(() => {}),
+      ];
       if (initialRepo) {
-        await loadRepo(initialRepo);
+        startupTasks.push(loadRepo(initialRepo));
       } else {
         setStatus("Pilih atau clone repositori untuk memulai");
       }
+      await Promise.allSettled(startupTasks);
 
-      refreshAccounts();
-
-      try {
-        appRuntimeInfo = await gitService.getAppRuntimeInfo();
-        appUpdateInfo = await gitService.checkAppUpdate(updateChannel);
-      } catch {
-        // Offline or non-Tauri preview
-      }
+      gitService
+        .checkAppUpdate(updateChannel)
+        .then((info) => {
+          appUpdateInfo = info;
+        })
+        .catch(() => {
+          // Offline or non-Tauri preview
+        });
     };
     initApp();
 
@@ -2183,6 +2274,8 @@
     currentBranch={currentStatus.branch}
     bind:branches
     {branchDivergenceMap}
+    {isLoadingBranches}
+    onInspectBranch={inspectBranchDivergence}
     hasDirtyFiles={currentStatus.files.length > 0}
     dirtyFileCount={currentStatus.files.length}
     {hasRemote}
@@ -2202,8 +2295,10 @@
     {repoAliases}
     {repoMissingStatus}
     {diagReport}
+    {isLoadingDiag}
     {repoConfig}
     {globalConfig}
+    {isLoadingSettings}
     {activeTheme}
     {autofetchMinutes}
     {confirmDiscard}

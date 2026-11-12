@@ -433,6 +433,12 @@ export async function gitStashDrop(
 export async function checkRepoExists(path: string): Promise<boolean> {
   return invoke<boolean>("check_repo_exists", { path });
 }
+export async function checkReposExists(
+  paths: string[]
+): Promise<Record<string, boolean>> {
+  return invoke<Record<string, boolean>>("check_repos_exists", { paths });
+}
+
 
 export async function getDiagnostics(repo?: string): Promise<DiagnosticReport> {
   return invoke<DiagnosticReport>("get_diagnostics", { repo });
