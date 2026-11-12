@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 use serde::Serialize;
 use super::cli;
 
@@ -399,7 +398,7 @@ pub fn clone_repository(
         return Err("Target direktori tidak boleh kosong".into());
     }
 
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::system::command_no_window("git");
     cmd.args(["clone", "--", url, target]);
     let _guard = cli::apply_git_askpass(&mut cmd, creds)?;
     let output = cmd
@@ -480,7 +479,7 @@ mod tests {
         std::fs::create_dir_all(&local).unwrap();
 
         let run_git = |cwd: &std::path::Path, args: &[&str]| {
-            let out = Command::new("git").args(args).current_dir(cwd).output().unwrap();
+            let out = crate::system::command_no_window("git").args(args).current_dir(cwd).output().unwrap();
             assert!(
                 out.status.success(),
                 "git {:?} failed: {}",

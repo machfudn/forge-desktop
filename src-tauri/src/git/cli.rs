@@ -75,7 +75,7 @@ pub fn run_raw_with_credentials(
     if !p.exists() {
         return Err("Direktori tidak ditemukan".into());
     }
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::system::command_no_window("git");
     cmd.args(["-C", dir]).args(args);
     let _guard = apply_git_askpass(&mut cmd, creds)?;
     let output = cmd
@@ -117,7 +117,7 @@ pub fn run_bytes(repo: &str, args: &[&str]) -> Result<Vec<u8>, String> {
     if !Path::new(repo).join(".git").exists() {
         return Err("Folder bukan repository Git".into());
     }
-    let output = Command::new("git")
+    let output = crate::system::command_no_window("git")
         .args(["-C", repo])
         .args(args)
         .output()

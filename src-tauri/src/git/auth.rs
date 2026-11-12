@@ -2,7 +2,6 @@ use super::accounts::{github_web_base, normalize_github_host};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceFlowInit {
@@ -38,7 +37,7 @@ pub struct DetectedSession {
 }
 
 fn post_form_json(url: &str, payload: &str, err_ctx: &str) -> Result<String, String> {
-    let output = Command::new("curl")
+    let output = crate::system::command_no_window("curl")
         .args([
             "-s",
             "-X",
@@ -126,7 +125,7 @@ pub fn parse_github_credentials_for_host(content: &str, target_host: &str) -> Ve
 }
 
 fn read_gh_cli_token(host: &str) -> Option<String> {
-    let out = Command::new("gh")
+    let out = crate::system::command_no_window("gh")
         .args(["auth", "token", "--hostname", host])
         .output()
         .ok()?;

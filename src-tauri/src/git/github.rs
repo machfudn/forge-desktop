@@ -6,7 +6,7 @@ use super::auth::{poll_device_token_raw, read_local_session_token, LocalSessionS
 use super::cli;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -220,7 +220,7 @@ fn github_api_request_detailed(
     json_body: Option<&str>,
     token: Option<&str>,
 ) -> Result<GitHubHttpResponse, String> {
-    let mut cmd = Command::new("curl");
+    let mut cmd = crate::system::command_no_window("curl");
     cmd.args(["-s", "-i", "-X", method, "-K", "-", url]);
     if let Some(body) = json_body {
         cmd.args(["-d", body]);

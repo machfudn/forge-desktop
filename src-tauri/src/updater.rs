@@ -519,7 +519,7 @@ fn download_asset_to_file(
             .map_err(|e| format!("Gagal membuat folder unduhan pembaruan: {e}"))?;
     }
 
-    let mut cmd = Command::new("curl");
+    let mut cmd = crate::system::command_no_window("curl");
     cmd.args([
         "-fsSL",
         "--retry",

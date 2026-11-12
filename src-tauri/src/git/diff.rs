@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageDiffData {
@@ -144,7 +144,7 @@ pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), Str
     }
     args.push("-");
 
-    let mut child = Command::new("git")
+    let mut child = crate::system::command_no_window("git")
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

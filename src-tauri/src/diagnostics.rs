@@ -1,4 +1,3 @@
-use std::process::Command;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -10,7 +9,7 @@ pub struct DiagnosticReport {
 }
 
 pub fn generate_report(repo: Option<&str>) -> DiagnosticReport {
-    let git_ver = Command::new("git")
+    let git_ver = crate::system::command_no_window("git")
         .arg("--version")
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -18,7 +17,7 @@ pub fn generate_report(repo: Option<&str>) -> DiagnosticReport {
 
     let mut sanitized_config = Vec::new();
     if let Some(r) = repo {
-        if let Ok(out) = Command::new("git").args(["-C", r, "config", "--list"]).output() {
+        if let Ok(out) = crate::system::command_no_window("git").args(["-C", r, "config", "--list"]).output() {
             let stdout = String::from_utf8_lossy(&out.stdout);
             for line in stdout.lines() {
                 sanitized_config.push(sanitize_config_line(line));
