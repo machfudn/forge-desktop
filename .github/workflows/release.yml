@@ -101,7 +101,8 @@ jobs:
           CHANNEL: ${{ steps.meta.outputs.channel }}
           CUSTOM_NOTES: ${{ inputs.notes || '' }}
         run: |
-          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases?per_page=20" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
+          if [ -z "$RELEASE_ID" ]; then
             FLAGS=(--title "$RELEASE_NAME" --target "${{ github.sha }}" --notes-file release-notes.md)
             if [ "$PRERELEASE" = "true" ]; then
               FLAGS+=(--prerelease --latest=false)
@@ -112,10 +113,10 @@ jobs:
               FLAGS+=(--draft)
             fi
             gh release create "$TAG_NAME" "${FLAGS[@]}"
+            RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases?per_page=20" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
           elif [ -n "$CUSTOM_NOTES" ]; then
-            gh release edit "$TAG_NAME" --notes-file release-notes.md
+            gh api -X PATCH "repos/${{ github.repository }}/releases/${RELEASE_ID}" -F body=@release-notes.md >/dev/null
           fi
-          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases?per_page=20" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1)
           if [ -z "$RELEASE_ID" ]; then
             echo "Gagal mendapatkan release_id untuk $TAG_NAME"
             exit 1
@@ -191,7 +192,8 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           $bin = "src-tauri/target/release/forge-desktop.exe"
@@ -205,13 +207,21 @@ jobs:
           Copy-Item $bin "$stageDir/Forge Desktop.exe" -Force
           New-Item -ItemType File -Force -Path "$stageDir/.portable" | Out-Null
           Compress-Archive -Path (Get-ChildItem -Force $stageDir).FullName -DestinationPath $portableZip -Force
-          gh release upload $env:TAG_NAME $portableExe $portableZip --clobber
+          foreach ($filePath in @($portableExe, $portableZip)) {
+            $fileName = Split-Path $filePath -Leaf
+            $existingId = gh api "repos/${env:REPO}/releases/${env:RELEASE_ID}/assets?per_page=100" --jq ".[] | select(.name==\`"$fileName\`") | .id" | Select-Object -First 1
+            if ($existingId) { gh api -X DELETE "repos/${env:REPO}/releases/assets/${existingId}" | Out-Null }
+            $encodedName = [Uri]::EscapeDataString($fileName)
+            $uploadUrl = "https://uploads.github.com/repos/${env:REPO}/releases/${env:RELEASE_ID}/assets?name=${encodedName}"
+            curl.exe -fsSL -X POST -H "Authorization: Bearer ${env:GH_TOKEN}" -H "Content-Type: application/octet-stream" --data-binary "@${filePath}" $uploadUrl | Out-Null
+          }
 
       - name: Package & Upload Linux Portable (.tar.gz)
         if: matrix.platform == 'ubuntu-22.04'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           BIN="src-tauri/target/release/forge-desktop"
@@ -224,13 +234,23 @@ jobs:
           chmod +x dist-portable/stage/forge-desktop
           OUT="dist-portable/Forge-Desktop_${VERSION}_linux_x64-portable.tar.gz"
           tar -czf "$OUT" -C dist-portable/stage forge-desktop
-          gh release upload "$TAG_NAME" "$OUT" --clobber
+          NAME=$(basename "$OUT")
+          EXISTING_ID=$(gh api "repos/${REPO}/releases/${RELEASE_ID}/assets?per_page=100" --jq ".[] | select(.name==\"${NAME}\") | .id" | head -n1 || true)
+          if [ -n "$EXISTING_ID" ]; then
+            gh api -X DELETE "repos/${REPO}/releases/assets/${EXISTING_ID}" >/dev/null
+          fi
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${OUT}" \
+            "https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=${NAME}" >/dev/null
 
       - name: Package & Upload macOS App Archive (.app.tar.gz)
         if: matrix.platform == 'macos-latest'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           APP_DIR="src-tauri/target/universal-apple-darwin/release/bundle/macos/Forge Desktop.app"
@@ -241,7 +261,16 @@ jobs:
           mkdir -p dist-portable
           OUT="dist-portable/Forge-Desktop_${VERSION}_macos_universal.app.tar.gz"
           tar -czf "$OUT" -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
-          gh release upload "$TAG_NAME" "$OUT" --clobber
+          NAME=$(basename "$OUT")
+          EXISTING_ID=$(gh api "repos/${REPO}/releases/${RELEASE_ID}/assets?per_page=100" --jq ".[] | select(.name==\"${NAME}\") | .id" | head -n1 || true)
+          if [ -n "$EXISTING_ID" ]; then
+            gh api -X DELETE "repos/${REPO}/releases/assets/${EXISTING_ID}" >/dev/null
+          fi
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${OUT}" \
+            "https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=${NAME}" >/dev/null
 
   finalize-release:
     name: Generate Checksums & Sign Release
@@ -255,10 +284,17 @@ jobs:
       - name: Download All Release Artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
         run: |
           mkdir -p dist-release
-          gh release download "$TAG_NAME" --dir dist-release
+          gh api "repos/${REPO}/releases/${RELEASE_ID}/assets?per_page=100" --jq '.[] | [.id, .name] | @tsv' | while IFS=$'\t' read -r ASSET_ID ASSET_NAME; do
+            [ -n "$ASSET_ID" ] || continue
+            echo "Mengunduh ${ASSET_NAME}..."
+            curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/octet-stream" \
+              "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}" \
+              -o "dist-release/${ASSET_NAME}"
+          done
 
       - name: Generate SHA256SUMS and Optional GPG Signature
         env:
@@ -266,7 +302,8 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
         run: |
           if [ -n "${GPG_PRIVATE_KEY:-}" ] && [ -n "${GPG_KEY_ID:-}" ]; then
             echo "$GPG_PRIVATE_KEY" | gpg --batch --import
@@ -277,4 +314,15 @@ jobs:
           if [ -f dist-release/SHA256SUMS.asc ]; then
             FILES+=(dist-release/SHA256SUMS.asc)
           fi
-          gh release upload "$TAG_NAME" "${FILES[@]}" --clobber
+          for FILE in "${FILES[@]}"; do
+            NAME=$(basename "$FILE")
+            EXISTING_ID=$(gh api "repos/${REPO}/releases/${RELEASE_ID}/assets?per_page=100" --jq ".[] | select(.name==\"${NAME}\") | .id" | head -n1 || true)
+            if [ -n "$EXISTING_ID" ]; then
+              gh api -X DELETE "repos/${REPO}/releases/assets/${EXISTING_ID}" >/dev/null
+            fi
+            curl -fsSL -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@${FILE}" \
+              "https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=${NAME}" >/dev/null
+          done
