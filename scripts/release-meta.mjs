@@ -5,10 +5,12 @@ import { pathToFileURL } from "node:url";
 
 export function parseReleaseMeta({
   refName = "",
+  branchName = "",
   inputVersion = "",
   inputChannel = "auto",
   inputDraft = "false",
   fallbackVersion = "1.1.0",
+  existingTags = [],
 } = {}) {
   const raw = (inputVersion || refName || fallbackVersion).trim();
   if (!raw) {
@@ -16,13 +18,31 @@ export function parseReleaseMeta({
   }
 
   let version = raw.replace(/^refs\/tags\//, "").replace(/^v/i, "");
-  const channelNorm = String(inputChannel || "auto").trim().toLowerCase();
+  const cleanBranch = String(branchName || "")
+    .replace(/^refs\/heads\//, "")
+    .trim()
+    .toLowerCase();
+  let channelNorm = String(inputChannel || "auto").trim().toLowerCase();
+  if (channelNorm === "auto" && cleanBranch === "beta") {
+    channelNorm = "beta";
+  }
 
   let prerelease;
   if (channelNorm === "beta") {
     prerelease = true;
     if (!version.includes("-")) {
-      version = `${version}-beta.1`;
+      const base = version.split("-")[0];
+      const usedNums = (Array.isArray(existingTags) ? existingTags : [])
+        .map((t) => String(t).trim().replace(/^refs\/tags\//, "").replace(/^v/i, ""))
+        .map((v) => {
+          const m = v.match(
+            new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-beta\\.(\\d+)$`)
+          );
+          return m ? Number(m[1]) : 0;
+        })
+        .filter((n) => n > 0);
+      const nextNum = usedNums.length > 0 ? Math.max(...usedNums) + 1 : 1;
+      version = `${base}-beta.${nextNum}`;
     }
   } else if (channelNorm === "stable") {
     prerelease = false;
@@ -30,7 +50,6 @@ export function parseReleaseMeta({
   } else {
     prerelease = version.includes("-");
   }
-
   const semverMatch = version.match(
     /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/
   );
@@ -167,6 +186,21 @@ function parseCliFlag(args, flag) {
   return "";
 }
 
+function readExistingTagsFromEnv() {
+  const filePath = process.env.EXISTING_TAGS_FILE || "";
+  if (filePath && fs.existsSync(filePath)) {
+    return fs
+      .readFileSync(filePath, "utf8")
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return (process.env.EXISTING_TAGS || "")
+    .split(/[\r\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function main() {
   const args = process.argv.slice(2);
   const cmd = args[0] || "meta";
@@ -177,10 +211,12 @@ function main() {
 
   const meta = parseReleaseMeta({
     refName: process.env.RELEASE_REF_NAME || "",
+    branchName: process.env.RELEASE_BRANCH_NAME || "",
     inputVersion: process.env.INPUT_VERSION || "",
     inputChannel: process.env.INPUT_CHANNEL || "auto",
     inputDraft: process.env.INPUT_DRAFT || "false",
     fallbackVersion: tauriConf.version || "1.1.0",
+    existingTags: readExistingTagsFromEnv(),
   });
 
   if (cmd === "sync") {

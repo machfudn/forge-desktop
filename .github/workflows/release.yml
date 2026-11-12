@@ -2,6 +2,9 @@ name: Release Build Matrix
 
 on:
   push:
+    branches:
+      - main
+      - beta
     tags:
       - "v*"
   workflow_dispatch:
@@ -42,6 +45,7 @@ jobs:
       wix_version: ${{ steps.meta.outputs.wix_version }}
       release_name: ${{ steps.meta.outputs.release_name }}
       release_id: ${{ steps.release.outputs.release_id }}
+      should_release: ${{ steps.release.outputs.should_release }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,37 +59,78 @@ jobs:
       - name: Compute Release Metadata
         id: meta
         env:
-          RELEASE_REF_NAME: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          INPUT_VERSION: ${{ inputs.version || '' }}
-          INPUT_CHANNEL: ${{ inputs.channel || 'auto' }}
-          INPUT_DRAFT: ${{ inputs.draft && 'true' || 'false' }}
-        run: node scripts/release-meta.mjs
-
-      - name: Generate Channel Release Notes (Stable / Beta)
-        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_REF_NAME: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          RELEASE_BRANCH_NAME: ${{ github.ref_type == 'branch' && github.ref_name || '' }}
           INPUT_VERSION: ${{ inputs.version || '' }}
           INPUT_CHANNEL: ${{ inputs.channel || 'auto' }}
           INPUT_DRAFT: ${{ inputs.draft && 'true' || 'false' }}
+        run: |
+          {
+            git tag -l
+            gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq '.[].tag_name' || true
+          } | sort -u > existing-tags.txt
+          EXISTING_TAGS_FILE=existing-tags.txt node scripts/release-meta.mjs
+
+      - name: Check Existing Release (Auto-Skip Duplicate Branch Push)
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          BRANCH_NAME: ${{ github.ref_type == 'branch' && github.ref_name || '' }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+        run: |
+          EXISTING_ID=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "branch" ] && [ -n "$EXISTING_ID" ]; then
+            echo "Release $TAG_NAME sudah tersedia (id=$EXISTING_ID). Melewati release otomatis untuk push branch $BRANCH_NAME ini."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "existing_id=$EXISTING_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Channel Release Notes (Stable / Beta)
+        if: steps.gate.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_REF_NAME: ${{ steps.meta.outputs.tag_name }}
+          INPUT_VERSION: ${{ steps.meta.outputs.version }}
+          INPUT_CHANNEL: ${{ steps.meta.outputs.channel }}
+          INPUT_DRAFT: ${{ steps.meta.outputs.draft }}
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
           PRERELEASE: ${{ steps.meta.outputs.prerelease }}
           CUSTOM_NOTES: ${{ inputs.notes || '' }}
         run: |
-          gh api "repos/${{ github.repository }}/releases/generate-notes" \
-            -f tag_name="$TAG_NAME" \
-            -f target_commitish="${{ github.sha }}" \
-            --jq '.body' > generated-notes.md 2>/dev/null || true
-          if [ ! -s generated-notes.md ]; then
-            if [ "$PRERELEASE" = "true" ]; then
-              PREV_TAG=$(git -c versionsort.suffix=- tag --sort=-v:refname | grep -Fxv "$TAG_NAME" | head -n1 || true)
-            else
-              PREV_TAG=$(git -c versionsort.suffix=- tag --sort=-v:refname | grep -Fxv "$TAG_NAME" | grep -Ev -- '-' | head -n1 || true)
-            fi
+          if [ "$PRERELEASE" = "true" ]; then
+            PREV_TAG=$(git -c versionsort.suffix=- tag --sort=-v:refname | grep -Fxv "$TAG_NAME" | head -n1 || true)
+          else
+            PREV_TAG=$(git -c versionsort.suffix=- tag --sort=-v:refname | grep -Fxv "$TAG_NAME" | grep -Ev -- '-' | head -n1 || true)
+          fi
+          if [ -n "$PREV_TAG" ]; then
+            gh api "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="$TAG_NAME" \
+              -f target_commitish="${{ github.sha }}" \
+              -f previous_tag_name="$PREV_TAG" \
+              --jq '.body' > generated-notes.md 2>/dev/null || true
+          else
+            gh api "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="$TAG_NAME" \
+              -f target_commitish="${{ github.sha }}" \
+              --jq '.body' > generated-notes.md 2>/dev/null || true
+          fi
+          if ! grep -Eq '^[*-] ' generated-notes.md 2>/dev/null; then
             if [ -n "$PREV_TAG" ]; then
-              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" > generated-notes.md || true
+              COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" || true)
             else
-              git log -n 20 --pretty=format:"- %s (%h)" > generated-notes.md || true
+              COMMITS=$(git log -n 20 --pretty=format:"- %s (%h)" || true)
+            fi
+            if [ -n "$COMMITS" ]; then
+              if [ -s generated-notes.md ]; then
+                printf '%s\n\n%s\n' "$COMMITS" "$(cat generated-notes.md)" > generated-notes.md
+              else
+                printf '%s\n' "$COMMITS" > generated-notes.md
+              fi
             fi
           fi
           GENERATED_NOTES_FILE=generated-notes.md node scripts/release-meta.mjs notes --out release-notes.md
@@ -94,6 +139,8 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHOULD_RELEASE: ${{ steps.gate.outputs.should_release }}
+          EXISTING_ID: ${{ steps.gate.outputs.existing_id }}
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
           RELEASE_NAME: ${{ steps.meta.outputs.release_name }}
           PRERELEASE: ${{ steps.meta.outputs.prerelease }}
@@ -101,7 +148,12 @@ jobs:
           CHANNEL: ${{ steps.meta.outputs.channel }}
           CUSTOM_NOTES: ${{ inputs.notes || '' }}
         run: |
-          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases?per_page=20" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
+          if [ "$SHOULD_RELEASE" != "true" ]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "release_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RELEASE_ID="$EXISTING_ID"
           if [ -z "$RELEASE_ID" ]; then
             FLAGS=(--title "$RELEASE_NAME" --target "${{ github.sha }}" --notes-file release-notes.md)
             if [ "$PRERELEASE" = "true" ]; then
@@ -113,7 +165,7 @@ jobs:
               FLAGS+=(--draft)
             fi
             gh release create "$TAG_NAME" "${FLAGS[@]}"
-            RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases?per_page=20" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
+            RELEASE_ID=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
           elif [ -n "$CUSTOM_NOTES" ]; then
             gh api -X PATCH "repos/${{ github.repository }}/releases/${RELEASE_ID}" -F body=@release-notes.md >/dev/null
           fi
@@ -121,11 +173,13 @@ jobs:
             echo "Gagal mendapatkan release_id untuk $TAG_NAME"
             exit 1
           fi
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
   build-tauri:
     name: Build (${{ matrix.platform }} / ${{ needs.prepare.outputs.channel }})
     needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
     permissions:
       contents: write
     strategy:
@@ -275,6 +329,7 @@ jobs:
   finalize-release:
     name: Generate Checksums & Sign Release
     needs: [prepare, build-tauri]
+    if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

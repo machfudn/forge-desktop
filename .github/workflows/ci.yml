@@ -21,16 +21,7 @@ jobs:
           cache: npm
 
       - name: Verify Release Metadata Script
-        run: |
-          node -e '
-            import("./scripts/release-meta.mjs").then(({ parseReleaseMeta }) => {
-              const s = parseReleaseMeta({ refName: "v1.2.0" });
-              if (s.prerelease !== false || s.wixVersion !== null) throw new Error("stable parse failed");
-              const b = parseReleaseMeta({ refName: "v1.2.0-beta.3" });
-              if (b.prerelease !== true || b.wixVersion !== "1.2.0.3") throw new Error("beta parse failed");
-              console.log("release-meta OK", s.tagName, b.tagName, b.wixVersion);
-            });
-          '
+        run: node --test scripts/release-meta.test.mjs
 
       - name: Install Dependencies
         run: npm ci
