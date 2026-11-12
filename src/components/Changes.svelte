@@ -104,7 +104,7 @@
     autocompleteTarget = null;
   }
 
-  function insertIssue(num: number, _title?: string) {
+  function insertIssue(num: number) {
     const replacement = `#${num} `;
     if (autocompleteTarget === "summary") {
       commitSummary = commitSummary.replace(/#([0-9]*)$/, replacement);
@@ -146,6 +146,11 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && autocompleteType) {
+      autocompleteType = null;
+      autocompleteTarget = null;
+      return;
+    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       handleCommit();
     }
@@ -155,89 +160,126 @@
     if (file.is_conflict) {
       return { class: "status-D", text: "CONFLICT" };
     }
-    const c = file.status_code.trim().charAt(0) || "M";
-    if (c === "A") return { class: "status-A", text: file.status_code.trim() };
-    if (c === "D") return { class: "status-D", text: file.status_code.trim() };
-    if (c === "?") return { class: "status-Q", text: file.status_code.trim() };
-    return { class: "status-M", text: file.status_code.trim() };
+    const code = file.status_code.trim();
+    const c = code.charAt(0) || "M";
+    if (c === "A") return { class: "status-A", text: code };
+    if (c === "D") return { class: "status-D", text: code };
+    if (c === "?") return { class: "status-Q", text: code };
+    return { class: "status-M", text: code };
   }
 </script>
 
 {#if status.in_merge}
-  <div style="background: rgba(248, 81, 73, 0.15); border-bottom: 1px solid var(--diff-del-text); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
-    <span style="color: var(--diff-del-text); font-weight: 600;">Proses Merge Aktif</span>
-    <button onclick={onAbortMerge} class="btn-secondary" style="font-size: 10px; padding: 2px 6px; border-color: var(--diff-del-text); color: var(--diff-del-text);">Batalkan Merge</button>
+  <div class="alert-banner">
+    <span>Proses Merge Aktif</span>
+    <button type="button" onclick={onAbortMerge} class="btn-secondary btn-xs btn-danger">
+      Batalkan Merge
+    </button>
   </div>
 {:else if status.in_rebase}
-  <div style="background: rgba(248, 81, 73, 0.15); border-bottom: 1px solid var(--diff-del-text); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
-    <span style="color: var(--diff-del-text); font-weight: 600;">Proses Rebase Aktif</span>
-    <button onclick={onAbortRebase} class="btn-secondary" style="font-size: 10px; padding: 2px 6px; border-color: var(--diff-del-text); color: var(--diff-del-text);">Batalkan Rebase</button>
+  <div class="alert-banner">
+    <span>Proses Rebase Aktif</span>
+    <button type="button" onclick={onAbortRebase} class="btn-secondary btn-xs btn-danger">
+      Batalkan Rebase
+    </button>
   </div>
 {/if}
 
 <div class="sidebar-header">
-  <h3>Perubahan ({totalCount})</h3>
-  <div style="display: flex; gap: 4px;">
+  <h3 class="tabular-nums">
+    Perubahan ({totalCount}{#if stagedCount > 0} · {stagedCount} staged{/if})
+  </h3>
+  <div class="sidebar-actions">
     {#if totalCount > 0 && onDiscardAll}
-      <button class="btn-secondary" onclick={onDiscardAll} style="font-size: 11px; padding: 2px 6px; color: var(--diff-del-text); border-color: rgba(248,81,73,0.3);" title="Batalkan semua perubahan file">Discard Semua</button>
+      <button
+        type="button"
+        class="btn-secondary btn-xs btn-danger"
+        onclick={onDiscardAll}
+        title="Batalkan semua perubahan file"
+      >
+        Discard
+      </button>
     {/if}
-    <button class="btn-secondary" onclick={onStageAll} style="font-size: 11px; padding: 2px 6px;">Stage Semua</button>
-    <button class="btn-secondary" onclick={onUnstageAll} style="font-size: 11px; padding: 2px 6px;">Unstage</button>
+    <button
+      type="button"
+      class="btn-secondary btn-xs"
+      onclick={onStageAll}
+      disabled={totalCount === 0}
+      title="Stage semua perubahan"
+    >
+      Stage
+    </button>
+    <button
+      type="button"
+      class="btn-secondary btn-xs"
+      onclick={onUnstageAll}
+      disabled={stagedCount === 0}
+      title="Unstage semua perubahan"
+    >
+      Unstage
+    </button>
   </div>
 </div>
 
 <ul class="file-list" id="file-list-container">
   {#if status.files.length === 0}
-    <li style="padding: 24px 12px; text-align: center; color: var(--text-muted);">Working tree bersih</li>
+    <li class="empty-state" style="padding: 32px 16px;">
+      <span>{status.has_commits ? "Working tree bersih" : "Repositori baru (belum ada komit)"}</span>
+    </li>
   {:else}
     {#each status.files as file (file.path)}
       {@const badge = getBadge(file)}
       {@const isSelected = selectedFile?.path === file.path}
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <li
-        class="file-item {isSelected ? 'selected' : ''}"
-        onclick={(e) => {
-          const target = e.target as HTMLElement;
-          if (target.tagName.toLowerCase() !== 'input' && !target.classList.contains('btn-discard')) {
-            onSelectFile(file);
-          }
-        }}
-        tabindex="0"
-        onkeydown={(e) => { if (e.key === 'Enter') onSelectFile(file); }}
-      >
+      {@const slashIdx = Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\"))}
+      <li class="file-item {isSelected ? 'selected' : ''}">
         <input
           type="checkbox"
           class="file-stage-cb"
           checked={file.staged}
           disabled={file.is_conflict}
           onchange={() => onToggleStage(file)}
-          aria-label="Stage file"
+          aria-label="Stage {file.path}"
         />
-        <span class="file-status-badge {badge.class}">{badge.text}</span>
-        {#if file.is_lfs}
-          <span style="background: var(--text-accent); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; font-family: var(--font-mono); margin-right: 4px;">
-            LFS
+        <button
+          type="button"
+          class="file-select-btn"
+          onclick={() => onSelectFile(file)}
+          title={file.path}
+        >
+          <span class="file-status-badge {badge.class}">{badge.text}</span>
+          {#if file.is_lfs}
+            <span class="badge-lfs">LFS</span>
+          {/if}
+          <span class="file-name">
+            {#if slashIdx >= 0}
+              <span class="file-dir">{file.path.slice(0, slashIdx + 1)}</span>
+              <span class="file-base">{file.path.slice(slashIdx + 1)}</span>
+            {:else}
+              <span class="file-base">{file.path}</span>
+            {/if}
           </span>
-        {/if}
-        <span class="file-name" title={file.path}>{file.path}</span>
+        </button>
+
         {#if file.is_conflict && onOpenInEditor}
           <button
-            class="btn-secondary"
+            type="button"
+            class="btn-secondary btn-xs btn-danger"
             title="Buka file konflik di editor eksternal"
-            onclick={(e) => { e.stopPropagation(); onOpenInEditor(file.path); }}
-            style="font-size: 10px; padding: 1px 6px; margin-left: auto; border-color: var(--diff-del-text); color: var(--diff-del-text);"
+            onclick={() => onOpenInEditor(file.path)}
           >
-            Edit Konflik
+            Edit
           </button>
-        {:else}
+        {:else if onDiscardFile}
           <button
+            type="button"
             class="btn-discard"
-            title="Batalkan perubahan"
-            onclick={(e) => { e.stopPropagation(); onDiscardFile?.(file); }}
-            style="margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 2px 6px;"
+            title="Batalkan perubahan pada {file.path}"
+            aria-label="Batalkan perubahan {file.path}"
+            onclick={() => onDiscardFile(file)}
           >
-            x
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+            </svg>
           </button>
         {/if}
       </li>
@@ -245,13 +287,12 @@
   {/if}
 </ul>
 
-<div class="commit-box" style="display: flex; flex-direction: column; gap: 6px;">
-  <div style="display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px;">
+<div class="commit-box">
+  <div class="prefix-row">
     {#each ["feat: ", "fix: ", "docs: ", "refactor: ", "chore: "] as prefix}
       <button
         type="button"
-        class="btn-secondary"
-        style="font-size: 10px; padding: 1px 6px;"
+        class="prefix-chip"
         onclick={() => {
           if (!commitSummary.startsWith(prefix)) {
             commitSummary = prefix + commitSummary.replace(/^[a-z]+:\s*/, "");
@@ -264,127 +305,138 @@
   </div>
 
   {#if autocompleteType === "emoji" && filteredEmojis.length > 0}
-    <div style="background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-sm); max-height: 140px; overflow-y: auto; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10;">
-      <div style="font-size: 10px; color: var(--text-muted); padding: 2px 6px; font-weight: 600;">PILIH EMOJI (:)</div>
+    <div class="autocomplete-popover" role="listbox" aria-label="Pilih Emoji">
+      <div class="autocomplete-header">PILIH EMOJI (:)</div>
       {#each filteredEmojis as item}
-        <div
-          role="button"
-          tabindex="0"
-          style="display: flex; align-items: center; gap: 8px; padding: 4px 6px; cursor: pointer; border-radius: var(--radius-sm); font-size: 11px;"
-          onmouseenter={(e) => (e.currentTarget.style.background = "var(--bg-subtle)")}
-          onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
+        <button
+          type="button"
+          class="autocomplete-item"
           onclick={() => insertEmoji(item.emoji)}
-          onkeydown={(e) => { if (e.key === "Enter") insertEmoji(item.emoji); }}
         >
           <span style="font-size: 14px;">{item.emoji}</span>
           <span style="font-family: var(--font-mono); color: var(--text-accent);">{item.code}</span>
           <span style="color: var(--text-secondary); margin-left: auto;">{item.desc}</span>
-        </div>
+        </button>
       {/each}
     </div>
   {:else if autocompleteType === "issue" && filteredIssues.length > 0}
-    <div style="background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-sm); max-height: 140px; overflow-y: auto; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10;">
-      <div style="font-size: 10px; color: var(--text-muted); padding: 2px 6px; font-weight: 600;">PILIH ISSUE / PR (#)</div>
+    <div class="autocomplete-popover" role="listbox" aria-label="Pilih Issue">
+      <div class="autocomplete-header">PILIH ISSUE / PR (#)</div>
       {#each filteredIssues as issue}
-        <div
-          role="button"
-          tabindex="0"
-          style="display: flex; align-items: center; gap: 6px; padding: 4px 6px; cursor: pointer; border-radius: var(--radius-sm); font-size: 11px;"
-          onmouseenter={(e) => (e.currentTarget.style.background = "var(--bg-subtle)")}
-          onmouseleave={(e) => (e.currentTarget.style.background = "transparent")}
-          onclick={() => insertIssue(issue.number, issue.title)}
-          onkeydown={(e) => { if (e.key === "Enter") insertIssue(issue.number, issue.title); }}
+        <button
+          type="button"
+          class="autocomplete-item"
+          onclick={() => insertIssue(issue.number)}
         >
-          <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-accent);">#{issue.number}</span>
-          <span style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{issue.title}</span>
-        </div>
+          <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-accent);">
+            #{issue.number}
+          </span>
+          <span style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+            {issue.title}
+          </span>
+        </button>
       {/each}
     </div>
   {/if}
 
-  <input
-    type="text"
-    class="commit-input"
-    placeholder="Ringkasan komit (Ketik : untuk emoji, # untuk issue)"
-    maxlength="150"
-    bind:value={commitSummary}
-    oninput={(e) => checkAutocomplete(e.currentTarget.value, "summary")}
-    onkeydown={handleKeydown}
-  />
+  <div class="commit-summary-wrap">
+    <input
+      type="text"
+      class="commit-input"
+      aria-label="Ringkasan komit"
+      placeholder="Ringkasan (: emoji, # issue)"
+      maxlength="150"
+      bind:value={commitSummary}
+      oninput={(e) => checkAutocomplete(e.currentTarget.value, "summary")}
+      onkeydown={handleKeydown}
+    />
+    <span
+      class="commit-char-count {commitSummary.length > 72 ? 'is-over-limit' : ''}"
+      title="Panjang ringkasan komit (disarankan maksimal 72 karakter)"
+    >
+      {commitSummary.length}/72
+    </span>
+  </div>
 
   {#if showDescription}
     <textarea
       class="commit-input"
-      placeholder="Deskripsi detail komit (opsional, ketik : untuk emoji, # untuk issue)"
+      aria-label="Deskripsi detail komit"
+      placeholder="Deskripsi detail komit (opsional)"
       rows="3"
       bind:value={commitDescription}
       oninput={(e) => checkAutocomplete(e.currentTarget.value, "description")}
-      style="resize: vertical; font-size: 12px; font-family: inherit;"
+      onkeydown={handleKeydown}
+      style="resize: vertical;"
     ></textarea>
   {/if}
 
   {#if showCoAuthors}
-    <div style="display: flex; gap: 4px;">
+    <div class="coauthor-row">
       <input
         type="text"
         class="commit-input"
+        aria-label="Nama Co-Author"
         placeholder="Nama Co-Author"
-        style="flex: 1; font-size: 11px;"
+        style="font-size: 11px;"
         bind:value={coAuthorName}
       />
       <input
         type="email"
         class="commit-input"
-        placeholder="co-author@example.com"
-        style="flex: 1; font-size: 11px;"
+        aria-label="Email Co-Author"
+        placeholder="email@domain.com"
+        style="font-size: 11px;"
         bind:value={coAuthorEmail}
       />
     </div>
   {/if}
 
-  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-secondary);">
-    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-      <input type="checkbox" bind:checked={isAmend} />
-      <span>Amend komit</span>
+  <div class="commit-meta-row">
+    <label class="checkbox-label" title={!status.has_commits ? "Belum ada komit untuk diamandemen" : undefined}>
+      <input type="checkbox" bind:checked={isAmend} disabled={!status.has_commits} />
+      <span>Amend</span>
     </label>
     <div style="display: flex; gap: 8px;">
       <button
         type="button"
+        class="link-btn"
         onclick={() => (showCoAuthors = !showCoAuthors)}
-        style="background: none; border: none; color: var(--text-accent); cursor: pointer; font-size: 11px; padding: 0;"
       >
-        {showCoAuthors ? "Sembunyikan Co-Author" : "+ Co-Author"}
+        {showCoAuthors ? "- Co-Author" : "+ Co-Author"}
       </button>
       <button
         type="button"
+        class="link-btn"
         onclick={() => (showDescription = !showDescription)}
-        style="background: none; border: none; color: var(--text-accent); cursor: pointer; font-size: 11px; padding: 0;"
       >
-        {showDescription ? "Sembunyikan Deskripsi" : "+ Deskripsi"}
+        {showDescription ? "- Deskripsi" : "+ Deskripsi"}
       </button>
     </div>
   </div>
 
   <button
+    type="button"
     class="btn-commit"
     disabled={(stagedCount === 0 && !isAmend) || status.has_conflicts || (!commitSummary.trim() && !isAmend)}
     onclick={handleCommit}
   >
     {#if status.has_conflicts}
-      Selesaikan konflik dahulu
+      <span>Selesaikan konflik dahulu</span>
     {:else if isAmend}
-      Amandemen komit terakhir
+      <span>Amandemen komit terakhir</span>
     {:else}
-      Komit ke branch ({stagedCount} file)
+      <span class="tabular-nums">Komit ({stagedCount} file)</span>
+      <span class="kbd-hint">Ctrl+↵</span>
     {/if}
   </button>
 
-  {#if onUndoCommit}
+  {#if onUndoCommit && status.has_commits}
     <button
       type="button"
       onclick={onUndoCommit}
-      class="btn-secondary"
-      style="font-size: 11px; width: 100%; margin-top: 2px;"
+      class="btn-secondary btn-xs"
+      style="width: 100%;"
       title="Batalkan komit terakhir dan kembalikan perubahannya ke staging"
     >
       Undo Komit Terakhir

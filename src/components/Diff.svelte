@@ -26,16 +26,22 @@
   }: Props = $props();
 
   let isImage = $derived(
-    !!filePath.match(/\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i) &&
+    /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(filePath) &&
       !!imageDiffData &&
       (!!imageDiffData.old_image_url || !!imageDiffData.new_image_url)
   );
-  let isMarkdown = $derived(!!filePath.match(/\.(md|markdown)$/i));
+  let isMarkdown = $derived(/\.(md|markdown)$/i.test(filePath));
 
   let viewMode = $state<"unified" | "split" | "markdown">("unified");
+  let wrapLines = $state(true);
   let imageViewMode = $state<"2-up" | "swipe" | "onion">("2-up");
   let swipePercent = $state(50);
   let onionOpacity = $state(50);
+  $effect(() => {
+    if (!isMarkdown && viewMode === "markdown") {
+      viewMode = "unified";
+    }
+  });
 
   function escapeHtml(str: string): string {
     return str
@@ -45,6 +51,9 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   }
+
+  const TOKEN_REGEX =
+    /(\/\/.*$|\/\*.*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\b(fn|let|const|var|function|return|if|else|for|while|match|pub|struct|enum|import|from|export|type|interface|class|def|async|await|package|impl|trait|use|mod|mut|self|true|false|null|undefined)\b|\b(\d+(?:\.\d+)?)\b/g;
 
   function highlightLine(line: string): string {
     if (
@@ -56,126 +65,216 @@
     ) {
       return escapeHtml(line);
     }
+
     const prefix =
       line.startsWith("+") || line.startsWith("-") || line.startsWith(" ")
         ? line.charAt(0)
         : "";
     const content = prefix ? line.slice(1) : line;
-
     const trimmed = content.trim();
+
     if (
       trimmed.startsWith("//") ||
       trimmed.startsWith("#") ||
       trimmed.startsWith("/*") ||
       trimmed.startsWith("*")
     ) {
-      return `${prefix}<span class="tok-com">${escapeHtml(content)}</span>`;
+      return `${escapeHtml(prefix)}<span class="tok-com">${escapeHtml(content)}</span>`;
     }
 
-    const escaped = escapeHtml(content);
-    const highlighted = escaped
-      .replace(
-        /(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`)/g,
-        '<span class="tok-str">$1</span>'
-      )
-      .replace(
-        /\b(fn|let|const|var|function|return|if|else|for|while|match|pub|struct|enum|import|from|export|type|interface|class|def|async|await|package|impl|trait|use|mod|mut|self|true|false)\b/g,
-        '<span class="tok-kw">$1</span>'
-      )
-      .replace(/\b(\d+(\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+    let out = escapeHtml(prefix);
+    let lastIndex = 0;
+    TOKEN_REGEX.lastIndex = 0;
 
-    return `${prefix}${highlighted}`;
+    let match: RegExpExecArray | null;
+    while ((match = TOKEN_REGEX.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        out += escapeHtml(content.slice(lastIndex, match.index));
+      }
+      const tokenText = escapeHtml(match[0]);
+      if (match[1]) {
+        out += `<span class="tok-com">${tokenText}</span>`;
+      } else if (match[2]) {
+        out += `<span class="tok-str">${tokenText}</span>`;
+      } else if (match[3]) {
+        out += `<span class="tok-kw">${tokenText}</span>`;
+      } else if (match[4]) {
+        out += `<span class="tok-num">${tokenText}</span>`;
+      } else {
+        out += tokenText;
+      }
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < content.length) {
+      out += escapeHtml(content.slice(lastIndex));
+    }
+    return out;
   }
 
   interface ParsedLine {
     line: string;
-    className: string;
+    kind: "add" | "del" | "meta" | "ctx";
+    oldLn: number | null;
+    newLn: number | null;
     html: string;
     isHunkHeader: boolean;
     hunkPatch?: string;
   }
 
-  interface HunkInfo {
+  interface HunkBlock {
     lines: string[];
+    minusHeader: string;
+    plusHeader: string;
   }
 
-  function extractHunks(diff: string): HunkInfo[] {
+  function extractHunks(diff: string, path: string): HunkBlock[] {
     const raw = diff.split("\n");
-    const hunks: HunkInfo[] = [];
-    let currentHunk: HunkInfo | null = null;
+    const hunks: HunkBlock[] = [];
+    let minusHeader = `--- a/${path}`;
+    let plusHeader = `+++ b/${path}`;
+    let currentHunk: HunkBlock | null = null;
 
     for (const l of raw) {
-      if (l.startsWith("@@")) {
-        if (currentHunk) {
-          hunks.push(currentHunk);
-        }
-        currentHunk = { lines: [l] };
+      if (l.startsWith("--- ")) {
+        minusHeader = l;
+      } else if (l.startsWith("+++ ")) {
+        plusHeader = l;
+      } else if (l.startsWith("@@")) {
+        if (currentHunk) hunks.push(currentHunk);
+        currentHunk = { lines: [l], minusHeader, plusHeader };
       } else if (currentHunk) {
         currentHunk.lines.push(l);
       }
     }
-    if (currentHunk) {
-      hunks.push(currentHunk);
-    }
+    if (currentHunk) hunks.push(currentHunk);
     return hunks;
+  }
+
+  function parseHunkHeaderStart(line: string): { oldStart: number; newStart: number } {
+    const m = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (!m) return { oldStart: 1, newStart: 1 };
+    return { oldStart: Number(m[1]), newStart: Number(m[2]) };
   }
 
   function parseLines(diff: string, path: string): ParsedLine[] {
     if (!diff.trim()) return [];
     const rawLines = diff.split("\n");
-    const hunks = extractHunks(diff);
+    const hunks = extractHunks(diff, path);
     let hunkIdx = 0;
+    let oldLn = 0;
+    let newLn = 0;
+    let inHunk = false;
 
     return rawLines.map((line) => {
-      let className = "diff-line";
-      let isHunkHeader = false;
-      let hunkPatch: string | undefined;
-
-      if (line.startsWith("+") && !line.startsWith("+++")) {
-        className += " add";
-      } else if (line.startsWith("-") && !line.startsWith("---")) {
-        className += " del";
-      } else if (line.startsWith("@@")) {
-        className += " meta";
-        isHunkHeader = true;
-        if (hunks[hunkIdx]) {
-          hunkPatch = `--- a/${path}\n+++ b/${path}\n${hunks[hunkIdx].lines.join("\n")}\n`;
-          hunkIdx++;
-        }
+      if (line.startsWith("@@")) {
+        const starts = parseHunkHeaderStart(line);
+        oldLn = starts.oldStart;
+        newLn = starts.newStart;
+        inHunk = true;
+        const hunk = hunks[hunkIdx++];
+        const hunkPatch = hunk
+          ? `${hunk.minusHeader}\n${hunk.plusHeader}\n${hunk.lines.join("\n")}\n`
+          : undefined;
+        return {
+          line,
+          kind: "meta",
+          oldLn: null,
+          newLn: null,
+          html: highlightLine(line),
+          isHunkHeader: true,
+          hunkPatch,
+        };
       }
-      return { line, className, html: highlightLine(line), isHunkHeader, hunkPatch };
+
+      if (
+        line.startsWith("diff ") ||
+        line.startsWith("index ") ||
+        line.startsWith("---") ||
+        line.startsWith("+++")
+      ) {
+        return {
+          line,
+          kind: "meta",
+          oldLn: null,
+          newLn: null,
+          html: highlightLine(line),
+          isHunkHeader: false,
+        };
+      }
+
+      if (line.startsWith("+")) {
+        const ln = inHunk ? newLn++ : null;
+        return {
+          line,
+          kind: "add",
+          oldLn: null,
+          newLn: ln,
+          html: highlightLine(line),
+          isHunkHeader: false,
+        };
+      }
+
+      if (line.startsWith("-")) {
+        const ln = inHunk ? oldLn++ : null;
+        return {
+          line,
+          kind: "del",
+          oldLn: ln,
+          newLn: null,
+          html: highlightLine(line),
+          isHunkHeader: false,
+        };
+      }
+
+      const o = inHunk && !line.startsWith("\\") ? oldLn++ : null;
+      const n = inHunk && !line.startsWith("\\") ? newLn++ : null;
+      return {
+        line,
+        kind: "ctx",
+        oldLn: o,
+        newLn: n,
+        html: highlightLine(line),
+        isHunkHeader: false,
+      };
     });
   }
 
   interface SplitRow {
-    leftLine: string;
+    leftLn: number | null;
     leftType: "del" | "context" | "meta" | "empty";
     leftHtml: string;
-    rightLine: string;
+    rightLn: number | null;
     rightType: "add" | "context" | "meta" | "empty";
     rightHtml: string;
+    isHunkHeader?: boolean;
+    hunkPatch?: string;
   }
 
-  function parseSplit(diff: string): SplitRow[] {
+  function parseSplit(diff: string, path: string): SplitRow[] {
     if (!diff.trim()) return [];
     const rawLines = diff.split("\n");
+    const hunks = extractHunks(diff, path);
+    let hunkIdx = 0;
     const rows: SplitRow[] = [];
 
-    let delBuffer: string[] = [];
-    let addBuffer: string[] = [];
+    let delBuffer: { line: string; ln: number }[] = [];
+    let addBuffer: { line: string; ln: number }[] = [];
+    let oldLn = 1;
+    let newLn = 1;
 
     function flushBuffers() {
       const maxLen = Math.max(delBuffer.length, addBuffer.length);
       for (let i = 0; i < maxLen; i++) {
-        const left = delBuffer[i] !== undefined ? delBuffer[i] : "";
-        const right = addBuffer[i] !== undefined ? addBuffer[i] : "";
+        const left = delBuffer[i];
+        const right = addBuffer[i];
         rows.push({
-          leftLine: left,
-          leftType: delBuffer[i] !== undefined ? "del" : "empty",
-          leftHtml: left ? highlightLine(left) : "",
-          rightLine: right,
-          rightType: addBuffer[i] !== undefined ? "add" : "empty",
-          rightHtml: right ? highlightLine(right) : "",
+          leftLn: left ? left.ln : null,
+          leftType: left ? "del" : "empty",
+          leftHtml: left ? highlightLine(left.line) : "",
+          rightLn: right ? right.ln : null,
+          rightType: right ? "add" : "empty",
+          rightHtml: right ? highlightLine(right.line) : "",
         });
       }
       delBuffer = [];
@@ -193,27 +292,37 @@
       }
       if (line.startsWith("@@")) {
         flushBuffers();
+        const starts = parseHunkHeaderStart(line);
+        oldLn = starts.oldStart;
+        newLn = starts.newStart;
+        const hunk = hunks[hunkIdx++];
+        const hunkPatch = hunk
+          ? `${hunk.minusHeader}\n${hunk.plusHeader}\n${hunk.lines.join("\n")}\n`
+          : undefined;
         const h = highlightLine(line);
         rows.push({
-          leftLine: line,
+          leftLn: null,
           leftType: "meta",
           leftHtml: h,
-          rightLine: line,
+          rightLn: null,
           rightType: "meta",
           rightHtml: h,
+          isHunkHeader: true,
+          hunkPatch,
         });
       } else if (line.startsWith("-")) {
-        delBuffer.push(line);
+        delBuffer.push({ line, ln: oldLn++ });
       } else if (line.startsWith("+")) {
-        addBuffer.push(line);
+        addBuffer.push({ line, ln: newLn++ });
       } else {
         flushBuffers();
         const h = highlightLine(line);
+        const isMetaNote = line.startsWith("\\");
         rows.push({
-          leftLine: line,
+          leftLn: isMetaNote ? null : oldLn++,
           leftType: "context",
           leftHtml: h,
-          rightLine: line,
+          rightLn: isMetaNote ? null : newLn++,
           rightType: "context",
           rightHtml: h,
         });
@@ -221,6 +330,26 @@
     }
     flushBuffers();
     return rows;
+  }
+
+  function formatInlineMarkdown(raw: string): string {
+    const inlineRegex = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)/g;
+    let out = "";
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = inlineRegex.exec(raw)) !== null) {
+      if (m.index > last) out += escapeHtml(raw.slice(last, m.index));
+      if (m[1]) {
+        out += `<code>${escapeHtml(m[1].slice(1, -1))}</code>`;
+      } else if (m[2]) {
+        out += `<strong>${escapeHtml(m[2].slice(2, -2))}</strong>`;
+      } else if (m[3]) {
+        out += `<em>${escapeHtml(m[3].slice(1, -1))}</em>`;
+      }
+      last = m.index + m[0].length;
+    }
+    if (last < raw.length) out += escapeHtml(raw.slice(last));
+    return out;
   }
 
   function renderMarkdownDiff(text: string): { type: "add" | "del" | "ctx"; html: string }[] {
@@ -249,161 +378,198 @@
         content = line.slice(1);
       }
 
-      let escaped = escapeHtml(content);
-      if (escaped.startsWith("### ")) {
-        escaped = `<h3 style="font-size: 14px; font-weight: 700; margin: 4px 0;">${escaped.slice(4)}</h3>`;
-      } else if (escaped.startsWith("## ")) {
-        escaped = `<h2 style="font-size: 16px; font-weight: 700; margin: 6px 0; border-bottom: 1px solid var(--border-muted); padding-bottom: 2px;">${escaped.slice(3)}</h2>`;
-      } else if (escaped.startsWith("# ")) {
-        escaped = `<h1 style="font-size: 18px; font-weight: 700; margin: 8px 0; border-bottom: 1px solid var(--border-default); padding-bottom: 4px;">${escaped.slice(2)}</h1>`;
-      } else if (escaped.startsWith("&gt; ")) {
-        escaped = `<blockquote style="border-left: 3px solid var(--accent-blue); padding-left: 8px; margin: 4px 0; color: var(--text-secondary);">${escaped.slice(5)}</blockquote>`;
-      } else if (escaped.startsWith("- [x] ") || escaped.startsWith("* [x] ")) {
-        escaped = `<label style="display: flex; align-items: center; gap: 6px;"><input type="checkbox" checked disabled /> <span>${escaped.slice(6)}</span></label>`;
-      } else if (escaped.startsWith("- [ ] ") || escaped.startsWith("* [ ] ")) {
-        escaped = `<label style="display: flex; align-items: center; gap: 6px;"><input type="checkbox" disabled /> <span>${escaped.slice(6)}</span></label>`;
-      } else if (escaped.startsWith("- ") || escaped.startsWith("* ")) {
-        escaped = `<li style="margin-left: 16px;">${escaped.slice(2)}</li>`;
+      let html: string;
+      if (content.startsWith("### ")) {
+        html = `<h3>${formatInlineMarkdown(content.slice(4))}</h3>`;
+      } else if (content.startsWith("## ")) {
+        html = `<h2>${formatInlineMarkdown(content.slice(3))}</h2>`;
+      } else if (content.startsWith("# ")) {
+        html = `<h1>${formatInlineMarkdown(content.slice(2))}</h1>`;
+      } else if (content.startsWith("> ")) {
+        html = `<blockquote>${formatInlineMarkdown(content.slice(2))}</blockquote>`;
+      } else if (content.startsWith("- [x] ") || content.startsWith("* [x] ")) {
+        html = `<label class="checkbox-label"><input type="checkbox" checked disabled /> <span>${formatInlineMarkdown(content.slice(6))}</span></label>`;
+      } else if (content.startsWith("- [ ] ") || content.startsWith("* [ ] ")) {
+        html = `<label class="checkbox-label"><input type="checkbox" disabled /> <span>${formatInlineMarkdown(content.slice(6))}</span></label>`;
+      } else if (content.startsWith("- ") || content.startsWith("* ")) {
+        html = `<li style="margin-left: 16px;">${formatInlineMarkdown(content.slice(2))}</li>`;
+      } else {
+        html = formatInlineMarkdown(content);
       }
 
-      escaped = escaped.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-      escaped = escaped.replace(/\*(.*?)\*/g, "<em>$1</em>");
-      escaped = escaped.replace(/`([^`]+)`/g, "<code style='background: var(--bg-subtle); padding: 1px 4px; border-radius: 3px; font-family: var(--font-mono); font-size: 11px;'>$1</code>");
-
-      result.push({ type, html: escaped });
+      result.push({ type, html });
     }
     return result;
   }
 
   let lines = $derived(parseLines(diffText, filePath));
-  let splitRows = $derived(parseSplit(diffText));
+  let splitRows = $derived(parseSplit(diffText, filePath));
+  let stats = $derived({
+    adds: lines.filter((l) => l.kind === "add").length,
+    dels: lines.filter((l) => l.kind === "del").length,
+  });
 </script>
 
 <div class="diff-container">
-  <div class="diff-header" style="display: flex; justify-content: space-between; align-items: center;">
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <span style="font-family: var(--font-mono); font-size: 12px;">{filePath}</span>
-      {#if isLfs}
-        <span style="background: var(--text-accent); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono);">
-          Git LFS
+  <div class="diff-header">
+    <div class="diff-file-meta">
+      <span class="diff-file-path" title={filePath}>{filePath}</span>
+      {#if !isImage && (stats.adds > 0 || stats.dels > 0)}
+        <span class="tabular-nums" style="font-size: 11px; display: inline-flex; gap: 6px; font-family: var(--font-mono);">
+          {#if stats.adds > 0}<span style="color: var(--diff-add-text);">+{stats.adds}</span>{/if}
+          {#if stats.dels > 0}<span style="color: var(--diff-del-text);">-{stats.dels}</span>{/if}
         </span>
       {/if}
+      {#if isLfs}
+        <span class="badge-lfs">Git LFS</span>
+      {/if}
     </div>
-    <div style="display: flex; gap: 6px; align-items: center;">
-      <div style="display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden;">
-        <button
-          onclick={() => (viewMode = "unified")}
-          style="border: none; background: {viewMode === 'unified' ? 'var(--bg-subtle)' : 'transparent'}; color: {viewMode === 'unified' ? 'var(--text-primary)' : 'var(--text-muted)'}; padding: 2px 8px; font-size: 10px; cursor: pointer; font-weight: {viewMode === 'unified' ? '600' : 'normal'};"
-        >
-          Unified
-        </button>
-        <button
-          onclick={() => (viewMode = "split")}
-          style="border: none; border-left: 1px solid var(--border-default); background: {viewMode === 'split' ? 'var(--bg-subtle)' : 'transparent'}; color: {viewMode === 'split' ? 'var(--text-primary)' : 'var(--text-muted)'}; padding: 2px 8px; font-size: 10px; cursor: pointer; font-weight: {viewMode === 'split' ? '600' : 'normal'};"
-        >
-          Split
-        </button>
-        {#if isMarkdown}
-          <button
-            onclick={() => (viewMode = "markdown")}
-            style="border: none; border-left: 1px solid var(--border-default); background: {viewMode === 'markdown' ? 'var(--bg-subtle)' : 'transparent'}; color: {viewMode === 'markdown' ? 'var(--text-primary)' : 'var(--text-muted)'}; padding: 2px 8px; font-size: 10px; cursor: pointer; font-weight: {viewMode === 'markdown' ? '600' : 'normal'};"
-          >
-            Rendered MD
-          </button>
-        {/if}
-      </div>
 
-      {#if onToggleWhitespace}
+    <div class="diff-toolbar">
+      {#if !isImage}
+        <div class="seg-group" role="group" aria-label="Mode tampilan diff">
+          <button
+            type="button"
+            class="seg-btn {viewMode === 'unified' ? 'active' : ''}"
+            aria-pressed={viewMode === "unified"}
+            onclick={() => (viewMode = "unified")}
+          >
+            Unified
+          </button>
+          <button
+            type="button"
+            class="seg-btn {viewMode === 'split' ? 'active' : ''}"
+            aria-pressed={viewMode === "split"}
+            onclick={() => (viewMode = "split")}
+          >
+            Split
+          </button>
+          {#if isMarkdown}
+            <button
+              type="button"
+              class="seg-btn {viewMode === 'markdown' ? 'active' : ''}"
+              aria-pressed={viewMode === "markdown"}
+              onclick={() => (viewMode = "markdown")}
+            >
+              Rendered MD
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      {#if !isImage && viewMode !== "markdown"}
         <button
+          type="button"
+          onclick={() => (wrapLines = !wrapLines)}
+          class="btn-secondary btn-xs {wrapLines ? 'btn-accent' : ''}"
+          aria-pressed={wrapLines}
+          title="Bungkus baris panjang agar tidak perlu scroll horizontal"
+        >
+          Wrap
+        </button>
+      {/if}
+      {#if onToggleWhitespace && !isImage}
+        <button
+          type="button"
           onclick={onToggleWhitespace}
-          class="btn-secondary"
-          style="font-size: 10px; padding: 2px 8px; {ignoreWhitespace ? 'border-color: var(--accent-blue); color: var(--accent-blue);' : ''}"
+          class="btn-secondary btn-xs {ignoreWhitespace ? 'btn-accent' : ''}"
+          aria-pressed={ignoreWhitespace}
           title="Abaikan perbedaan spasi dan indentasi (git diff -w)"
         >
-          {ignoreWhitespace ? "Abaikan Spasi: ON" : "Abaikan Spasi: OFF"}
+          {ignoreWhitespace ? "Spasi: Diabaikan" : "Abaikan Spasi"}
         </button>
       {/if}
       {#if onAddToGitignore}
         <button
+          type="button"
           onclick={() => onAddToGitignore?.(filePath)}
-          class="btn-secondary"
-          style="font-size: 10px; padding: 2px 8px;"
+          class="btn-secondary btn-xs"
           title="Tambahkan file ini ke .gitignore"
         >
-          + ke .gitignore
+          + .gitignore
         </button>
       {/if}
     </div>
   </div>
 
   {#if isImage && imageDiffData}
-    <div style="display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 16px; height: 100%; overflow-y: auto;">
-      <div style="display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden;">
+    <div class="image-diff-stage">
+      <div class="seg-group" role="group" aria-label="Mode perbandingan gambar">
         <button
+          type="button"
+          class="seg-btn {imageViewMode === '2-up' ? 'active' : ''}"
+          aria-pressed={imageViewMode === "2-up"}
           onclick={() => (imageViewMode = "2-up")}
-          style="border: none; background: {imageViewMode === '2-up' ? 'var(--bg-subtle)' : 'transparent'}; color: {imageViewMode === '2-up' ? 'var(--text-primary)' : 'var(--text-muted)'}; padding: 3px 10px; font-size: 11px; cursor: pointer; font-weight: {imageViewMode === '2-up' ? '600' : 'normal'};"
         >
           2-Up
         </button>
         <button
+          type="button"
+          class="seg-btn {imageViewMode === 'swipe' ? 'active' : ''}"
+          aria-pressed={imageViewMode === "swipe"}
           onclick={() => (imageViewMode = "swipe")}
-          style="border: none; border-left: 1px solid var(--border-default); background: {imageViewMode === 'swipe' ? 'var(--bg-subtle)' : 'transparent'}; color: {imageViewMode === 'swipe' ? 'var(--text-primary)' : 'var(--text-muted)'}; padding: 3px 10px; font-size: 11px; cursor: pointer; font-weight: {imageViewMode === 'swipe' ? '600' : 'normal'};"
         >
           Swipe
         </button>
         <button
+          type="button"
+          class="seg-btn {imageViewMode === 'onion' ? 'active' : ''}"
+          aria-pressed={imageViewMode === "onion"}
           onclick={() => (imageViewMode = "onion")}
-          style="border: none; border-left: 1px solid var(--border-default); background: {imageViewMode === 'onion' ? 'var(--bg-subtle)' : 'transparent'}; color: {imageViewMode === 'onion' ? 'var(--text-primary)' : 'var(--text-muted)'}; padding: 3px 10px; font-size: 11px; cursor: pointer; font-weight: {imageViewMode === 'onion' ? '600' : 'normal'};"
         >
           Onion Skin
         </button>
       </div>
 
       {#if imageViewMode === "2-up"}
-        <div style="display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;">
+        <div class="image-diff-grid">
           {#if imageDiffData.old_image_url}
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-              <span style="font-size: 11px; font-weight: 600; color: var(--diff-del-text);">Sebelum (Old / Deleted)</span>
-              <div style="border: 1px solid var(--border-default); background: var(--bg-canvas); padding: 8px; border-radius: var(--radius-md); max-width: 380px; max-height: 380px; display: grid; place-items: center;">
-                <img src={imageDiffData.old_image_url} alt="Old version" style="max-width: 100%; max-height: 360px; object-fit: contain;" />
+            <div class="form-field" style="align-items: center;">
+              <span class="form-label" style="color: var(--diff-del-text);">Sebelum (Old / Deleted)</span>
+              <div class="image-diff-frame">
+                <img src={imageDiffData.old_image_url} alt="Versi sebelum diubah" />
               </div>
             </div>
           {/if}
           {#if imageDiffData.new_image_url}
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-              <span style="font-size: 11px; font-weight: 600; color: var(--diff-add-text);">Sesudah (New / Modified)</span>
-              <div style="border: 1px solid var(--border-default); background: var(--bg-canvas); padding: 8px; border-radius: var(--radius-md); max-width: 380px; max-height: 380px; display: grid; place-items: center;">
-                <img src={imageDiffData.new_image_url} alt="New version" style="max-width: 100%; max-height: 360px; object-fit: contain;" />
+            <div class="form-field" style="align-items: center;">
+              <span class="form-label" style="color: var(--diff-add-text);">Sesudah (New / Modified)</span>
+              <div class="image-diff-frame">
+                <img src={imageDiffData.new_image_url} alt="Versi sesudah diubah" />
               </div>
             </div>
           {/if}
         </div>
       {:else if imageViewMode === "swipe"}
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 500px;">
-          <input type="range" min="0" max="100" bind:value={swipePercent} style="width: 100%; cursor: pointer;" />
-          <span style="font-size: 11px; color: var(--text-secondary);">Swipe: {swipePercent}% (Kiri: Sebelum | Kanan: Sesudah)</span>
-          <div style="position: relative; border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-canvas); width: 100%; height: 380px; display: grid; place-items: center;">
+        <div class="form-field" style="align-items: center; width: 100%; max-width: 520px; gap: 10px;">
+          <label class="form-label tabular-nums" for="image-swipe-range">
+            Swipe: {swipePercent}% (Kiri: Sebelum | Kanan: Sesudah)
+          </label>
+          <input id="image-swipe-range" type="range" min="0" max="100" bind:value={swipePercent} style="width: 100%;" />
+          <div class="image-diff-overlay-box">
             {#if imageDiffData.old_image_url}
-              <img src={imageDiffData.old_image_url} alt="Old" style="max-width: 100%; max-height: 360px; object-fit: contain;" />
+              <img src={imageDiffData.old_image_url} alt="Versi sebelum diubah" />
             {/if}
             {#if imageDiffData.new_image_url}
               <div style="position: absolute; inset: 0; display: grid; place-items: center; clip-path: inset(0 {100 - swipePercent}% 0 0); border-right: 2px solid var(--accent-blue);">
-                <img src={imageDiffData.new_image_url} alt="New" style="max-width: 100%; max-height: 360px; object-fit: contain;" />
+                <img src={imageDiffData.new_image_url} alt="Versi sesudah diubah" />
               </div>
             {/if}
           </div>
         </div>
-      {:else if imageViewMode === "onion"}
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 500px;">
-          <input type="range" min="0" max="100" bind:value={onionOpacity} style="width: 100%; cursor: pointer;" />
-          <span style="font-size: 11px; color: var(--text-secondary);">Opacity Gambar Baru: {onionOpacity}%</span>
-          <div style="position: relative; border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-canvas); width: 100%; height: 380px; display: grid; place-items: center;">
+      {:else}
+        <div class="form-field" style="align-items: center; width: 100%; max-width: 520px; gap: 10px;">
+          <label class="form-label tabular-nums" for="image-onion-range">
+            Opacity Gambar Baru: {onionOpacity}%
+          </label>
+          <input id="image-onion-range" type="range" min="0" max="100" bind:value={onionOpacity} style="width: 100%;" />
+          <div class="image-diff-overlay-box">
             {#if imageDiffData.old_image_url}
-              <img src={imageDiffData.old_image_url} alt="Old" style="max-width: 100%; max-height: 360px; object-fit: contain;" />
+              <img src={imageDiffData.old_image_url} alt="Versi sebelum diubah" />
             {/if}
             {#if imageDiffData.new_image_url}
               <div style="position: absolute; inset: 0; display: grid; place-items: center; opacity: {onionOpacity / 100};">
-                <img src={imageDiffData.new_image_url} alt="New" style="max-width: 100%; max-height: 360px; object-fit: contain;" />
+                <img src={imageDiffData.new_image_url} alt="Versi sesudah diubah" />
               </div>
             {/if}
           </div>
@@ -411,55 +577,77 @@
       {/if}
     </div>
   {:else if viewMode === "markdown"}
-    <div class="diff-content" style="padding: 16px; font-family: var(--font-sans); line-height: 1.6; overflow-y: auto;">
+    <div class="md-diff-view">
       {#each renderMarkdownDiff(diffText) as item}
         <div
           class="diff-line {item.type === 'add' ? 'add' : item.type === 'del' ? 'del' : ''}"
-          style="padding: 3px 8px; font-family: inherit; white-space: normal;"
+          style="padding: 3px 10px; font-family: inherit; white-space: normal;"
         >
           {@html item.html}
         </div>
       {/each}
     </div>
   {:else if lines.length === 0}
-    <div class="diff-content" style="padding: 24px; color: var(--text-muted); text-align: center;">
-      Tidak ada perbedaan teks untuk ditampilkan.
+    <div class="empty-state">
+      <span>Tidak ada perbedaan teks untuk ditampilkan.</span>
     </div>
   {:else if viewMode === "unified"}
-    <div class="diff-content">
-      {#each lines as { className, html, isHunkHeader, hunkPatch }}
-        <div class={className} style={isHunkHeader ? "display: flex; justify-content: space-between; align-items: center;" : ""}>
-          <span>{@html html}</span>
-          {#if isHunkHeader && hunkPatch && onStageHunk}
-            <button
-              class="btn-secondary"
-              style="font-size: 10px; padding: 1px 6px; margin-left: 8px; border-color: {isStaged ? 'var(--diff-del-text)' : 'var(--diff-add-text)'}; color: {isStaged ? 'var(--diff-del-text)' : 'var(--diff-add-text)'}; cursor: pointer;"
-              onclick={(e) => { e.stopPropagation(); onStageHunk(hunkPatch, isStaged); }}
-              title={isStaged ? "Batalkan stage hunk ini (Unstage hunk)" : "Stage hunk ini ke index"}
-            >
-              {isStaged ? "- Unstage Hunk" : "+ Stage Hunk"}
-            </button>
-          {/if}
-        </div>
+    <div class="diff-content {wrapLines ? 'is-wrapped' : ''}">
+      {#each lines as item}
+        {#if item.isHunkHeader}
+          <div class="diff-line-row meta-row">
+            <span class="diff-code">{@html item.html}</span>
+            {#if item.hunkPatch && onStageHunk}
+              <button
+                type="button"
+                class="btn-secondary btn-xs {isStaged ? 'btn-danger' : ''}"
+                style={!isStaged ? "border-color: var(--diff-add-text); color: var(--diff-add-text);" : ""}
+                onclick={() => onStageHunk(item.hunkPatch!, isStaged)}
+                title={isStaged ? "Batalkan stage hunk ini (Unstage hunk)" : "Stage hunk ini ke index"}
+              >
+                {isStaged ? "- Unstage Hunk" : "+ Stage Hunk"}
+              </button>
+            {/if}
+          </div>
+        {:else}
+          <div class="diff-line-row {item.kind === 'add' ? 'add' : item.kind === 'del' ? 'del' : ''}">
+            <span class="diff-ln">{item.oldLn ?? ""}</span>
+            <span class="diff-ln">{item.newLn ?? ""}</span>
+            <span class="diff-line {item.kind === 'meta' ? 'meta' : ''} diff-code">{@html item.html}</span>
+          </div>
+        {/if}
       {/each}
     </div>
   {:else}
-    <div class="diff-content" style="display: flex; flex-direction: column;">
+    <div class="diff-content {wrapLines ? 'is-wrapped' : ''}" style="padding: 0;">
       {#each splitRows as row}
-        <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border-muted);">
-          <div
-            class="diff-line {row.leftType === 'del' ? 'del' : row.leftType === 'meta' ? 'meta' : ''}"
-            style="border-right: 1px solid var(--border-default); overflow-x: auto; white-space: pre; min-height: 19px;"
-          >
-            {@html row.leftHtml}
+        {#if row.isHunkHeader}
+          <div class="diff-line-row meta-row">
+            <span class="diff-code">{@html row.leftHtml}</span>
+            {#if row.hunkPatch && onStageHunk}
+              <button
+                type="button"
+                class="btn-secondary btn-xs {isStaged ? 'btn-danger' : ''}"
+                style={!isStaged ? "border-color: var(--diff-add-text); color: var(--diff-add-text);" : ""}
+                onclick={() => onStageHunk(row.hunkPatch!, isStaged)}
+                title={isStaged ? "Batalkan stage hunk ini (Unstage hunk)" : "Stage hunk ini ke index"}
+              >
+                {isStaged ? "- Unstage Hunk" : "+ Stage Hunk"}
+              </button>
+            {/if}
           </div>
-          <div
-            class="diff-line {row.rightType === 'add' ? 'add' : row.rightType === 'meta' ? 'meta' : ''}"
-            style="overflow-x: auto; white-space: pre; min-height: 19px;"
-          >
-            {@html row.rightHtml}
+        {:else}
+          <div class="split-diff-grid">
+            <div class="split-diff-cell left {row.leftType === 'del' ? 'del' : ''}">
+              <span class="diff-ln">{row.leftLn ?? ""}</span>
+              <span class="split-diff-code diff-code">{@html row.leftHtml}</span>
+            </div>
+            <div class="split-diff-cell {row.rightType === 'add' ? 'add' : ''}">
+              <span class="diff-ln">{row.rightLn ?? ""}</span>
+              <span class="split-diff-code diff-code">{@html row.rightHtml}</span>
+            </div>
           </div>
-        </div>
+        {/if}
       {/each}
     </div>
   {/if}

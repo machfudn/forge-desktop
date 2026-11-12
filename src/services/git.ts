@@ -1,25 +1,40 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AccountHealth,
+  AccountOverview,
+  AccountProfile,
   AheadBehind,
+  AppRuntimeInfo,
   AppUpdateInfo,
   BranchInfo,
   CheckRunInfo,
+  CommitDetail,
   CommitInfo,
+  DetectedSession,
   DeviceFlowInit,
+  DeviceFlowPollOutcome,
   DiagnosticReport,
   ImageDiffData,
   IssueInfo,
+  LocalSessionSource,
+  ParsedGitHubRepo,
   PublishRepoParams,
   PullRequestInfo,
   RebaseStep,
   RemoteInfo,
   RepoConfig,
+  RepoPathState,
   RepoStatus,
-  TokenPollResult,
+  UpdateApplyResult,
+  UpdateChannel,
 } from "../types/git";
 
 export async function inspectRepository(repo: string): Promise<RepoStatus> {
   return invoke<RepoStatus>("inspect_repository", { repo });
+}
+
+export async function getRepoPathState(path: string): Promise<RepoPathState> {
+  return invoke<RepoPathState>("get_repo_path_state", { path });
 }
 
 export async function stageFile(repo: string, filePath: string): Promise<void> {
@@ -128,6 +143,26 @@ export async function getCommitHistory(
   return invoke<CommitInfo[]>("get_commit_history", { repo, limit });
 }
 
+export async function getCommitDetail(repo: string, sha: string): Promise<CommitDetail> {
+  return invoke<CommitDetail>("get_commit_detail", { repo, sha });
+}
+
+export async function getCommitFileDiff(
+  repo: string,
+  sha: string,
+  filePath: string,
+  oldPath?: string | null,
+  ignoreWhitespace?: boolean
+): Promise<string> {
+  return invoke<string>("get_commit_file_diff", {
+    repo,
+    sha,
+    filePath,
+    oldPath: oldPath || null,
+    ignoreWhitespace,
+  });
+}
+
 export async function listBranches(repo: string): Promise<BranchInfo[]> {
   return invoke<BranchInfo[]>("list_branches", { repo });
 }
@@ -175,6 +210,26 @@ export async function listRemotes(repo: string): Promise<RemoteInfo[]> {
   return invoke<RemoteInfo[]>("list_remotes", { repo });
 }
 
+export async function addRemote(
+  repo: string,
+  name: string,
+  url: string
+): Promise<string> {
+  return invoke<string>("add_remote", { repo, name, url });
+}
+
+export async function setRemoteUrl(
+  repo: string,
+  name: string,
+  url: string
+): Promise<string> {
+  return invoke<string>("set_remote_url", { repo, name, url });
+}
+
+export async function removeRemote(repo: string, name: string): Promise<string> {
+  return invoke<string>("remove_remote", { repo, name });
+}
+
 export async function getBranchAheadBehind(
   repo: string,
   branch: string
@@ -204,11 +259,11 @@ export async function gitPush(
 
 export async function cloneRepository(
   url: string,
-  targetDir: string
+  targetDir: string,
+  accountId?: string
 ): Promise<string> {
-  return invoke<string>("clone_repository", { url, targetDir });
+  return invoke<string>("clone_repository", { url, targetDir, accountId });
 }
-
 export async function initRepository(
   targetPath: string,
   defaultBranch?: string,
@@ -236,23 +291,103 @@ export async function setRepoConfig(
 }
 
 export async function githubStartDeviceFlow(
-  clientId: string
-): Promise<DeviceFlowInit> {
-  return invoke<DeviceFlowInit>("github_start_device_flow", { clientId });
-}
-
-export async function githubPollToken(
   clientId: string,
-  deviceCode: string
-): Promise<TokenPollResult> {
-  return invoke<TokenPollResult>("github_poll_token", { clientId, deviceCode });
+  host?: string
+): Promise<DeviceFlowInit> {
+  return invoke<DeviceFlowInit>("github_start_device_flow", { host, clientId });
 }
 
-export async function configureGitCredentials(
-  username: string,
-  token: string
-): Promise<void> {
-  return invoke("configure_git_credentials", { username, token });
+export async function listGithubAccounts(repo?: string): Promise<AccountOverview> {
+  return invoke<AccountOverview>("list_github_accounts", { repo });
+}
+
+export async function verifyAndConnectPat(
+  host: string,
+  token: string,
+  label?: string,
+  allowMemoryFallback = false
+): Promise<AccountProfile> {
+  return invoke<AccountProfile>("verify_and_connect_pat", {
+    host,
+    token,
+    label,
+    allowMemoryFallback,
+  });
+}
+
+export async function pollAndConnectDeviceFlow(
+  host: string,
+  clientId: string,
+  deviceCode: string,
+  label?: string,
+  allowMemoryFallback = false
+): Promise<DeviceFlowPollOutcome> {
+  return invoke<DeviceFlowPollOutcome>("poll_and_connect_device_flow", {
+    host,
+    clientId,
+    deviceCode,
+    label,
+    allowMemoryFallback,
+  });
+}
+
+export async function detectLocalGithubSessions(
+  host?: string
+): Promise<DetectedSession[]> {
+  return invoke<DetectedSession[]>("detect_local_github_sessions", { host });
+}
+
+export async function importLocalGithubSession(
+  host: string,
+  source: LocalSessionSource,
+  label?: string,
+  allowMemoryFallback = false
+): Promise<AccountProfile> {
+  return invoke<AccountProfile>("import_local_github_session", {
+    host,
+    source,
+    label,
+    allowMemoryFallback,
+  });
+}
+
+export async function bindAccountToRepo(
+  repo: string,
+  accountId: string
+): Promise<AccountOverview> {
+  return invoke<AccountOverview>("bind_account_to_repo", { repo, accountId });
+}
+
+export async function setDefaultGithubAccount(
+  accountId: string,
+  repo?: string
+): Promise<AccountOverview> {
+  return invoke<AccountOverview>("set_default_github_account", { accountId, repo });
+}
+
+export async function removeGithubAccount(
+  accountId: string,
+  repo?: string
+): Promise<AccountOverview> {
+  return invoke<AccountOverview>("remove_github_account", { accountId, repo });
+}
+
+export async function updateGithubAccountLabel(
+  accountId: string,
+  label?: string,
+  repo?: string
+): Promise<AccountOverview> {
+  return invoke<AccountOverview>("update_github_account_label", {
+    accountId,
+    label,
+    repo,
+  });
+}
+
+export async function checkGithubAccountStatus(
+  accountId: string
+): Promise<AccountHealth> {
+  return invoke<AccountHealth>("check_github_account_status", { accountId });
 }
 
 export async function discardFileChanges(
@@ -317,8 +452,8 @@ export async function openInEditor(path: string, editor?: string): Promise<void>
 
 export async function parseGithubRepository(
   remoteUrl: string
-): Promise<[string, string] | null> {
-  return invoke<[string, string] | null>("parse_github_repository", {
+): Promise<ParsedGitHubRepo | null> {
+  return invoke<ParsedGitHubRepo | null>("parse_github_repository", {
     remoteUrl,
   });
 }
@@ -326,24 +461,28 @@ export async function parseGithubRepository(
 export async function listGithubPullRequests(
   owner: string,
   repo: string,
-  token?: string
+  host?: string,
+  repoPath?: string
 ): Promise<PullRequestInfo[]> {
   return invoke<PullRequestInfo[]>("list_github_pull_requests", {
     owner,
     repo,
-    token,
+    host,
+    repoPath,
   });
 }
 
 export async function listGithubIssues(
   owner: string,
   repo: string,
-  token?: string
+  host?: string,
+  repoPath?: string
 ): Promise<IssueInfo[]> {
   return invoke<IssueInfo[]>("list_github_issues", {
     owner,
     repo,
-    token,
+    host,
+    repoPath,
   });
 }
 
@@ -363,13 +502,15 @@ export async function getCommitCheckRuns(
   owner: string,
   repo: string,
   commitSha: string,
-  token?: string
+  host?: string,
+  repoPath?: string
 ): Promise<CheckRunInfo[]> {
   return invoke<CheckRunInfo[]>("get_commit_check_runs", {
     owner,
     repo,
     commitSha,
-    token,
+    host,
+    repoPath,
   });
 }
 
@@ -413,9 +554,15 @@ export async function compareBranches(
 export async function publishRepositoryToGithub(
   repo: string,
   params: PublishRepoParams,
-  token?: string
+  accountId?: string,
+  host?: string
 ): Promise<string> {
-  return invoke<string>("publish_repository_to_github", { repo, params, token });
+  return invoke<string>("publish_repository_to_github", {
+    repo,
+    params,
+    accountId,
+    host,
+  });
 }
 
 export async function syncFork(
@@ -437,8 +584,24 @@ export async function getImageDiff(
   return invoke<ImageDiffData>("get_image_diff", { repo, filePath });
 }
 
-export async function checkAppUpdate(token?: string): Promise<AppUpdateInfo> {
-  return invoke<AppUpdateInfo>("check_app_update", { token });
+export async function getAppRuntimeInfo(): Promise<AppRuntimeInfo> {
+  return invoke<AppRuntimeInfo>("get_app_runtime_info");
+}
+
+export async function checkAppUpdate(
+  channel?: UpdateChannel
+): Promise<AppUpdateInfo> {
+  return invoke<AppUpdateInfo>("check_app_update", {
+    channel: channel ?? null,
+  });
+}
+
+export async function installAppUpdate(
+  channel?: UpdateChannel
+): Promise<UpdateApplyResult> {
+  return invoke<UpdateApplyResult>("install_app_update", {
+    channel: channel ?? null,
+  });
 }
 
 export async function stageHunk(
