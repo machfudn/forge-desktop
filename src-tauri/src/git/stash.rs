@@ -26,10 +26,14 @@ pub fn discard_changes(repo: &str, file: &str) -> Result<(), String> {
 }
 
 pub fn discard_all_changes(repo: &str) -> Result<(), String> {
-    // Unstage any staged files
-    let _ = cli::run(repo, &["reset", "HEAD"]);
-    // Restore tracked modifications
-    cli::run(repo, &["checkout", "HEAD", "--", "."])?;
+    if cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_ok() {
+        // Unstage any staged files
+        let _ = cli::run(repo, &["reset", "HEAD"]);
+        // Restore tracked modifications
+        cli::run(repo, &["checkout", "HEAD", "--", "."])?;
+    } else {
+        let _ = cli::run(repo, &["rm", "--cached", "-r", "-q", "--", "."]);
+    }
     // Remove untracked files and directories
     cli::run(repo, &["clean", "-fd"])?;
     Ok(())
@@ -56,9 +60,11 @@ pub fn list_stashes(repo: &str) -> Result<Vec<String>, String> {
     Ok(out.lines().map(|s| s.to_string()).collect())
 }
 
-pub fn stash_show(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
+fn validate_stash_ref(stash_ref: Option<&str>) -> Result<&str, String> {
     let target = stash_ref.unwrap_or("stash@{0}").trim();
-    if target.contains(';')
+    if target.is_empty()
+        || target.starts_with('-')
+        || target.contains(';')
         || target.contains('&')
         || target.contains('|')
         || target.contains('`')
@@ -66,19 +72,16 @@ pub fn stash_show(repo: &str, stash_ref: Option<&str>) -> Result<String, String>
     {
         return Err("Karakter stash ref tidak valid".into());
     }
+    Ok(target)
+}
+
+pub fn stash_show(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
+    let target = validate_stash_ref(stash_ref)?;
     cli::run(repo, &["stash", "show", "-p", target])
 }
 
 pub fn stash_drop(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
-    let target = stash_ref.unwrap_or("stash@{0}").trim();
-    if target.contains(';')
-        || target.contains('&')
-        || target.contains('|')
-        || target.contains('`')
-        || target.contains('$')
-    {
-        return Err("Karakter stash ref tidak valid".into());
-    }
+    let target = validate_stash_ref(stash_ref)?;
     cli::run(repo, &["stash", "drop", target])
 }
 

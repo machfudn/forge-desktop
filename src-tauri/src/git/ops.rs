@@ -124,10 +124,17 @@ pub fn interactive_rebase(
     }
     for s in &steps {
         validate_sha(&s.sha)?;
+        if s.action != "pick" && s.action != "drop" {
+            return Err(format!("Aksi rebase tidak valid: {}", s.action));
+        }
+    }
+
+    let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
+    if !status_out.trim().is_empty() {
+        return Err("Working tree masih memiliki perubahan belum di-commit. Commit atau stash dahulu sebelum rebase.".into());
     }
 
     let orig_head = cli::run(repo, &["rev-parse", "HEAD"])?.trim().to_string();
-
     if let Err(e) = cli::run(repo, &["reset", "--hard", base_sha]) {
         return Err(format!("Gagal reset ke base sha: {e}"));
     }
@@ -167,5 +174,11 @@ mod tests {
     fn test_reject_empty_rebase_steps() {
         assert!(interactive_rebase("/tmp", "abc1234", vec![]).is_err());
         assert!(interactive_rebase("/tmp", "invalid", vec![]).is_err());
+        assert!(interactive_rebase(
+            "/tmp",
+            "abc1234",
+            vec![RebaseStep { sha: "abc1234".into(), action: "invalid".into() }]
+        )
+        .is_err());
     }
 }

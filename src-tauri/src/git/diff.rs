@@ -37,7 +37,7 @@ fn to_base64(data: &[u8]) -> String {
 
 pub fn get_image_diff(repo: &str, file_path: &str) -> Result<ImageDiffData, String> {
     let p = file_path.trim();
-    if p.is_empty() || p.starts_with('-') {
+    if p.is_empty() || p.starts_with('-') || p.contains("..") {
         return Err("Path file tidak valid".into());
     }
     let ext = Path::new(p)
@@ -77,8 +77,9 @@ pub fn get_file_diff(
     staged: bool,
     ignore_whitespace: bool,
 ) -> Result<String, String> {
-    if file_path.trim().is_empty() {
-        return Err("Path file tidak boleh kosong".into());
+    let p = file_path.trim();
+    if p.is_empty() || p.starts_with('-') || p.contains("..") {
+        return Err("Path file tidak boleh kosong atau tidak valid".into());
     }
 
     let mut args = vec!["diff"];
@@ -89,19 +90,19 @@ pub fn get_file_diff(
         args.push("--cached");
     }
     args.push("--");
-    args.push(file_path);
+    args.push(p);
 
     let diff_out = cli::run(repo, &args)?;
     if !diff_out.is_empty() || staged {
         return Ok(diff_out);
     }
 
-    let full_path = Path::new(repo).join(file_path);
+    let full_path = Path::new(repo).join(p);
     if full_path.exists() && full_path.is_file() {
         if let Ok(content) = fs::read_to_string(&full_path) {
             let lines: Vec<String> = content.lines().map(|l| format!("+{l}")).collect();
             return Ok(format!(
-                "--- /dev/null\n+++ b/{file_path}\n@@ -0,0 +1,{} @@\n{}",
+                "--- /dev/null\n+++ b/{p}\n@@ -0,0 +1,{} @@\n{}",
                 lines.len(),
                 lines.join("\n")
             ));
@@ -131,6 +132,9 @@ pub fn add_to_gitignore(repo: &str, pattern: &str) -> Result<(), String> {
 }
 
 pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), String> {
+    if !Path::new(repo).join(".git").exists() {
+        return Err("Folder bukan repository Git".into());
+    }
     if patch_text.trim().is_empty() {
         return Err("Patch text tidak boleh kosong".into());
     }

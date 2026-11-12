@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod auth;
 pub mod branch;
 pub mod cli;
@@ -10,6 +11,7 @@ pub mod repo;
 pub mod stash;
 pub mod status;
 
+pub use accounts::*;
 pub use auth::*;
 pub use branch::*;
 pub use diff::*;

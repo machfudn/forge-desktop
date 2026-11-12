@@ -18,6 +18,7 @@ pub struct RepoStatus {
     pub has_conflicts: bool,
     pub in_merge: bool,
     pub in_rebase: bool,
+    pub has_commits: bool,
 }
 
 pub fn is_conflict_code(code: &str) -> bool {
@@ -27,12 +28,29 @@ pub fn is_conflict_code(code: &str) -> bool {
     )
 }
 
+fn clean_porcelain_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let target = if let Some((_, rhs)) = trimmed.split_once(" -> ") {
+        rhs.trim()
+    } else {
+        trimmed
+    };
+    if target.starts_with('"') && target.ends_with('"') && target.len() >= 2 {
+        target[1..target.len() - 1].to_string()
+    } else {
+        target.to_string()
+    }
+}
+
 pub fn parse_status_line(line: &str) -> Option<FileEntry> {
-    if line.len() < 4 {
+    if line.len() < 4 || !line.is_char_boundary(2) || !line.is_char_boundary(3) {
         return None;
     }
     let code = line[..2].to_string();
-    let path = line[3..].trim().to_string();
+    let path = clean_porcelain_path(&line[3..]);
+    if path.is_empty() {
+        return None;
+    }
     let is_conflict = is_conflict_code(&code);
     let index_char = code.chars().next().unwrap_or(' ');
     let staged = !is_conflict && index_char != ' ' && index_char != '?';
@@ -47,41 +65,43 @@ pub fn parse_status_line(line: &str) -> Option<FileEntry> {
 }
 
 pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
-    let branch_out = cli::run(repo, &["branch", "--show-current"])?;
-    let branch = if branch_out.is_empty() {
+    let has_commits = cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_ok();
+    let branch_out = cli::run(repo, &["branch", "--show-current"])
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| cli::run(repo, &["symbolic-ref", "--short", "HEAD"]).ok())
+        .unwrap_or_default();
+    let branch = if branch_out.trim().is_empty() {
         "HEAD terlepas".into()
     } else {
-        branch_out
+        branch_out.trim().to_string()
     };
-
     let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
     let mut files: Vec<FileEntry> = status_out
         .lines()
         .filter_map(parse_status_line)
         .collect();
 
-    // Check Git LFS status via git check-attr
+    // Check Git LFS status in bounded batches to avoid OS arg limits
     if !files.is_empty() {
-        let mut check_args = vec!["check-attr", "filter", "--"];
-        for f in &files {
-            check_args.push(&f.path);
-        }
-        if let Ok(attr_out) = cli::run(repo, &check_args) {
-            let lfs_paths: std::collections::HashSet<String> = attr_out
-                .lines()
-                .filter_map(|line| {
-                    if line.ends_with(": filter: lfs") {
-                        let path = line.split(": filter: lfs").next()?.trim();
-                        Some(path.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            for f in &mut files {
-                f.is_lfs = lfs_paths.contains(&f.path);
+        let mut lfs_paths = std::collections::HashSet::new();
+        for chunk in files.chunks(80) {
+            let mut check_args = vec!["check-attr", "filter", "--"];
+            for f in chunk {
+                check_args.push(&f.path);
             }
+            if let Ok(attr_out) = cli::run(repo, &check_args) {
+                for line in attr_out.lines() {
+                    if line.ends_with(": filter: lfs") {
+                        if let Some(path) = line.split(": filter: lfs").next() {
+                            lfs_paths.insert(path.trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
+        for f in &mut files {
+            f.is_lfs = lfs_paths.contains(&f.path);
         }
     }
 
@@ -96,6 +116,7 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
         has_conflicts,
         in_merge,
         in_rebase,
+        has_commits,
     })
 }
 
@@ -110,7 +131,11 @@ pub fn unstage_file(repo: &str, file_path: &str) -> Result<(), String> {
     if file_path.trim().is_empty() {
         return Err("Path file tidak boleh kosong".into());
     }
-    cli::run(repo, &["restore", "--staged", "--", file_path]).map(|_| ())
+    if cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_ok() {
+        cli::run(repo, &["restore", "--staged", "--", file_path]).map(|_| ())
+    } else {
+        cli::run(repo, &["rm", "--cached", "-q", "--", file_path]).map(|_| ())
+    }
 }
 
 pub fn stage_all(repo: &str) -> Result<(), String> {
@@ -118,7 +143,11 @@ pub fn stage_all(repo: &str) -> Result<(), String> {
 }
 
 pub fn unstage_all(repo: &str) -> Result<(), String> {
-    cli::run(repo, &["restore", "--staged", "."]).map(|_| ())
+    if cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_ok() {
+        cli::run(repo, &["restore", "--staged", "."]).map(|_| ())
+    } else {
+        cli::run(repo, &["rm", "--cached", "-r", "-q", "--", "."]).map(|_| ())
+    }
 }
 
 pub fn commit(
@@ -159,6 +188,9 @@ pub fn commit(
 }
 
 pub fn undo_last_commit(repo: &str) -> Result<String, String> {
+    if cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_err() {
+        return Err("Belum ada komit untuk dibatalkan.".into());
+    }
     cli::run(repo, &["reset", "--soft", "HEAD~1"])
 }
 
@@ -213,5 +245,11 @@ mod tests {
     #[test]
     fn reject_blank_commit() {
         assert!(commit("/tmp", "   ", None, false).is_err());
+    }
+    #[test]
+    fn parse_renamed_and_quoted_paths() {
+        let renamed = parse_status_line("R  old.txt -> \"new file.txt\"").unwrap();
+        assert_eq!(renamed.path, "new file.txt");
+        assert!(renamed.staged);
     }
 }
