@@ -81,14 +81,16 @@ jobs:
           BRANCH_NAME: ${{ github.ref_type == 'branch' && github.ref_name || '' }}
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
         run: |
-          EXISTING_ID=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
-          if [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "branch" ] && [ -n "$EXISTING_ID" ]; then
-            echo "Release $TAG_NAME sudah tersedia (id=$EXISTING_ID). Melewati release otomatis untuk push branch $BRANCH_NAME ini."
+          RELEASE_ROW=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | [.id, (.assets | length)] | @tsv" | head -n1 || true)
+          IFS=$'\t' read -r EXISTING_ID EXISTING_ASSETS <<< "$RELEASE_ROW"
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "branch" ] && [ -n "$EXISTING_ID" ] && [ "${EXISTING_ASSETS:-0}" -gt 0 ]; then
+            echo "Release $TAG_NAME sudah tersedia dengan ${EXISTING_ASSETS} aset (id=$EXISTING_ID). Melewati release otomatis untuk push branch $BRANCH_NAME ini."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
           echo "existing_id=$EXISTING_ID" >> "$GITHUB_OUTPUT"
+          echo "existing_assets=${EXISTING_ASSETS:-0}" >> "$GITHUB_OUTPUT"
 
       - name: Generate Channel Release Notes (Stable / Beta)
         if: steps.gate.outputs.should_release == 'true'
@@ -141,11 +143,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHOULD_RELEASE: ${{ steps.gate.outputs.should_release }}
           EXISTING_ID: ${{ steps.gate.outputs.existing_id }}
+          EXISTING_ASSETS: ${{ steps.gate.outputs.existing_assets }}
           TAG_NAME: ${{ steps.meta.outputs.tag_name }}
           RELEASE_NAME: ${{ steps.meta.outputs.release_name }}
           PRERELEASE: ${{ steps.meta.outputs.prerelease }}
           DRAFT: ${{ steps.meta.outputs.draft }}
-          CHANNEL: ${{ steps.meta.outputs.channel }}
           CUSTOM_NOTES: ${{ inputs.notes || '' }}
         run: |
           if [ "$SHOULD_RELEASE" != "true" ]; then
@@ -155,24 +157,30 @@ jobs:
           fi
           RELEASE_ID="$EXISTING_ID"
           if [ -z "$RELEASE_ID" ]; then
-            FLAGS=(--title "$RELEASE_NAME" --target "${{ github.sha }}" --notes-file release-notes.md)
             if [ "$PRERELEASE" = "true" ]; then
-              FLAGS+=(--prerelease --latest=false)
+              MAKE_LATEST="false"
             else
-              FLAGS+=(--latest)
+              MAKE_LATEST="true"
             fi
-            if [ "$DRAFT" = "true" ]; then
-              FLAGS+=(--draft)
-            fi
-            gh release create "$TAG_NAME" "${FLAGS[@]}"
-            RELEASE_ID=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | .id" | head -n1 || true)
-          elif [ -n "$CUSTOM_NOTES" ]; then
-            gh api -X PATCH "repos/${{ github.repository }}/releases/${RELEASE_ID}" -F body=@release-notes.md >/dev/null
+            RELEASE_ID=$(gh api -X POST "repos/${{ github.repository }}/releases" \
+              -f tag_name="$TAG_NAME" \
+              -f target_commitish="${{ github.sha }}" \
+              -f name="$RELEASE_NAME" \
+              -F body=@release-notes.md \
+              -F prerelease="$PRERELEASE" \
+              -F draft="$DRAFT" \
+              -f make_latest="$MAKE_LATEST" \
+              --jq '.id')
+          elif [ "${EXISTING_ASSETS:-0}" = "0" ] || [ -n "$CUSTOM_NOTES" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/releases/${RELEASE_ID}" \
+              -f name="$RELEASE_NAME" \
+              -F body=@release-notes.md >/dev/null
           fi
           if [ -z "$RELEASE_ID" ]; then
             echo "Gagal mendapatkan release_id untuk $TAG_NAME"
             exit 1
           fi
+          echo "Using release_id=$RELEASE_ID for $TAG_NAME"
           echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
