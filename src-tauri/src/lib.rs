@@ -79,6 +79,7 @@ pub fn run() {
             commands::git_stash_show,
             commands::git_stash_drop,
             commands::check_repo_exists,
+            commands::check_repos_exists,
             commands::get_repo_path_state,
             commands::get_diagnostics,
             commands::open_in_file_manager,

@@ -35,72 +35,153 @@ pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
         repo,
         &[
             "for-each-ref",
-            "--format=%(HEAD)\x1f%(refname:short)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)",
+            "--format=%(refname)\x1f%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)",
             "refs/heads",
+            "refs/remotes",
         ],
     )?;
 
-    let remote_refs: Vec<String> = cli::run(
-        repo,
-        &["for-each-ref", "--format=%(refname:short)", "refs/remotes"],
-    )
-    .map(|r| {
-        r.lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.ends_with("/HEAD"))
-            .map(ToString::to_string)
-            .collect()
-    })
-    .unwrap_or_default();
+    struct LocalBranchRaw {
+        name: String,
+        is_current: bool,
+        oid: String,
+        upstream: Option<String>,
+        ahead: usize,
+        behind: usize,
+        upstream_gone: bool,
+    }
 
-    let mut branches = Vec::new();
+    let mut local_raw = Vec::new();
+    let mut remote_refs: Vec<(String, String)> = Vec::new();
+
     for line in out.lines() {
         if line.trim().is_empty() {
             continue;
         }
         let cols: Vec<&str> = line.split('\x1f').collect();
-        if cols.len() < 2 {
+        if cols.len() < 4 {
             continue;
         }
-        let is_current = cols[0].trim() == "*";
-        let name = cols[1].trim().to_string();
-        if name.is_empty() {
+        let refname = cols[0].trim();
+        let short = cols[2].trim();
+        let oid = cols[3].trim();
+
+        if refname.starts_with("refs/remotes/") {
+            if !short.is_empty() && !short.ends_with("/HEAD") {
+                remote_refs.push((short.to_string(), oid.to_string()));
+            }
             continue;
         }
+
+        if !refname.starts_with("refs/heads/") || short.is_empty() {
+            continue;
+        }
+
+        let is_current = cols[1].trim() == "*";
         let upstream = cols
-            .get(2)
+            .get(4)
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .map(ToString::to_string);
-        let track = cols.get(3).map(|s| s.trim()).unwrap_or("");
-        let (mut ahead, mut behind, upstream_gone) = parse_track_counts(track);
+        let track = cols.get(5).map(|s| s.trim()).unwrap_or("");
+        let (ahead, behind, upstream_gone) = parse_track_counts(track);
 
-        let is_pushed = if upstream.is_some() {
-            !upstream_gone && ahead == 0
-        } else {
-            let suffix = format!("/{name}");
-            if let Some(rem_ref) = remote_refs.iter().find(|r| r.ends_with(&suffix)) {
-                let spec = format!("{name}...{rem_ref}");
-                if let Ok(ab_out) = cli::run(repo, &["rev-list", "--left-right", "--count", &spec]) {
-                    let ab = parse_ahead_behind_output(&ab_out);
-                    ahead = ab.ahead;
-                    behind = ab.behind;
-                }
-                ahead == 0
-            } else {
-                false
-            }
-        };
-
-        branches.push(BranchInfo {
-            name,
+        local_raw.push(LocalBranchRaw {
+            name: short.to_string(),
             is_current,
+            oid: oid.to_string(),
             upstream,
             ahead,
             behind,
-            is_pushed,
             upstream_gone,
         });
+    }
+
+    let mut branches = Vec::with_capacity(local_raw.len());
+    let mut pending_rev_list: Vec<(usize, String, String)> = Vec::new();
+
+    for item in local_raw {
+        if item.upstream.is_some() {
+            let is_pushed = !item.upstream_gone && item.ahead == 0;
+            branches.push(BranchInfo {
+                name: item.name,
+                is_current: item.is_current,
+                upstream: item.upstream,
+                ahead: item.ahead,
+                behind: item.behind,
+                is_pushed,
+                upstream_gone: item.upstream_gone,
+            });
+            continue;
+        }
+
+        let suffix = format!("/{}", item.name);
+        if let Some((rem_ref, rem_oid)) = remote_refs.iter().find(|(r, _)| r.ends_with(&suffix)) {
+            let idx = branches.len();
+            if !item.oid.is_empty() && item.oid == *rem_oid {
+                branches.push(BranchInfo {
+                    name: item.name,
+                    is_current: item.is_current,
+                    upstream: None,
+                    ahead: 0,
+                    behind: 0,
+                    is_pushed: true,
+                    upstream_gone: false,
+                });
+            } else {
+                let spec = format!("{}...{}", item.name, rem_ref);
+                branches.push(BranchInfo {
+                    name: item.name,
+                    is_current: item.is_current,
+                    upstream: None,
+                    ahead: 0,
+                    behind: 0,
+                    is_pushed: false,
+                    upstream_gone: false,
+                });
+                pending_rev_list.push((idx, spec, rem_ref.clone()));
+            }
+        } else {
+            branches.push(BranchInfo {
+                name: item.name,
+                is_current: item.is_current,
+                upstream: None,
+                ahead: item.ahead,
+                behind: item.behind,
+                is_pushed: false,
+                upstream_gone: item.upstream_gone,
+            });
+        }
+    }
+
+    if !pending_rev_list.is_empty() {
+        let results: Vec<(usize, Option<AheadBehind>)> = std::thread::scope(|s| {
+            let handles: Vec<_> = pending_rev_list
+                .iter()
+                .map(|(idx, spec, _)| {
+                    let idx = *idx;
+                    let spec = spec.as_str();
+                    s.spawn(move || {
+                        let ab = cli::run(repo, &["rev-list", "--left-right", "--count", spec])
+                            .ok()
+                            .map(|out| parse_ahead_behind_output(&out));
+                        (idx, ab)
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap_or((0, None))).collect()
+        });
+        for (idx, ab_opt) in results {
+            if let Some(ab) = ab_opt {
+                if let Some(b) = branches.get_mut(idx) {
+                    b.ahead = ab.ahead;
+                    b.behind = ab.behind;
+                    b.is_pushed = ab.ahead == 0;
+                }
+            } else if let Some(b) = branches.get_mut(idx) {
+                b.is_pushed = true;
+            }
+        }
     }
 
     Ok(branches)

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use serde::Serialize;
@@ -9,13 +10,34 @@ pub struct RepoConfig {
     pub user_email: String,
 }
 
+fn parse_user_config_regexp(out: &str) -> RepoConfig {
+    let mut user_name = String::new();
+    let mut user_email = String::new();
+    for line in out.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let (key, val) = match trimmed.split_once(char::is_whitespace) {
+            Some((k, v)) => (k.trim(), v.trim()),
+            None => (trimmed, ""),
+        };
+        match key {
+            "user.name" => user_name = val.to_string(),
+            "user.email" => user_email = val.to_string(),
+            _ => {}
+        }
+    }
+    RepoConfig {
+        user_name,
+        user_email,
+    }
+}
+
 pub fn get_repo_config(repo: &str) -> Result<RepoConfig, String> {
-    let name = cli::run(repo, &["config", "--get", "user.name"]).unwrap_or_default();
-    let email = cli::run(repo, &["config", "--get", "user.email"]).unwrap_or_default();
-    Ok(RepoConfig {
-        user_name: name.trim().to_string(),
-        user_email: email.trim().to_string(),
-    })
+    let out = cli::run(repo, &["config", "--get-regexp", r"^user\.(name|email)$"])
+        .unwrap_or_default();
+    Ok(parse_user_config_regexp(&out))
 }
 
 pub fn set_repo_config(repo: &str, user_name: &str, user_email: &str) -> Result<(), String> {
@@ -31,12 +53,9 @@ pub fn set_repo_config(repo: &str, user_name: &str, user_email: &str) -> Result<
 }
 
 pub fn get_global_config() -> Result<RepoConfig, String> {
-    let name = cli::run_raw(".", &["config", "--global", "user.name"]).unwrap_or_default();
-    let email = cli::run_raw(".", &["config", "--global", "user.email"]).unwrap_or_default();
-    Ok(RepoConfig {
-        user_name: name.trim().to_string(),
-        user_email: email.trim().to_string(),
-    })
+    let out = cli::run_raw(".", &["config", "--global", "--get-regexp", r"^user\.(name|email)$"])
+        .unwrap_or_default();
+    Ok(parse_user_config_regexp(&out))
 }
 
 pub fn set_global_config(user_name: &str, user_email: &str) -> Result<(), String> {
@@ -97,6 +116,13 @@ pub fn check_repo_exists(path: &str) -> bool {
     p.exists() && p.is_dir() && p.join(".git").exists()
 }
 
+pub fn check_repos_exists(paths: &[String]) -> HashMap<String, bool> {
+    paths
+        .iter()
+        .map(|p| (p.clone(), check_repo_exists(p)))
+        .collect()
+}
+
 pub fn get_repo_path_state(path: &str) -> String {
     let trimmed = path.trim();
     if trimmed.is_empty() {
@@ -137,6 +163,34 @@ mod tests {
         assert_eq!(get_repo_path_state(root.to_str().unwrap()), "git");
         // Existing .gitignore must not be overwritten
         assert_eq!(std::fs::read_to_string(root.join(".gitignore")).unwrap(), "custom-keep\n");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn parses_user_config_regexp_last_wins() {
+        let parsed = parse_user_config_regexp(
+            "user.name Global User\nuser.email global@example.com\nuser.name Local User\n",
+        );
+        assert_eq!(parsed.user_name, "Local User");
+        assert_eq!(parsed.user_email, "global@example.com");
+    }
+
+    #[test]
+    fn batch_check_repos_exists_reports_each_path() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-batch-repos-{nanos}"));
+        let valid = root.join("valid");
+        let missing = root.join("missing");
+        init_repository(valid.to_str().unwrap(), Some("main"), None, None).unwrap();
+
+        let paths = vec![
+            valid.to_string_lossy().to_string(),
+            missing.to_string_lossy().to_string(),
+        ];
+        let result = check_repos_exists(&paths);
+        assert_eq!(result.get(&paths[0]), Some(&true));
+        assert_eq!(result.get(&paths[1]), Some(&false));
 
         let _ = std::fs::remove_dir_all(&root);
     }

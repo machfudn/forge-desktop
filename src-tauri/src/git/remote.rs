@@ -292,11 +292,28 @@ pub struct AheadBehind {
     pub unpushed_commits: usize,
 }
 
+fn parse_upstream_track(track: &str) -> (usize, usize, bool) {
+    let mut ahead = 0;
+    let mut behind = 0;
+    let mut gone = false;
+    for part in track.split(',') {
+        let p = part.trim();
+        if p == "gone" {
+            gone = true;
+        } else if let Some(rest) = p.strip_prefix("ahead ") {
+            ahead = rest.trim().parse::<usize>().unwrap_or(0);
+        } else if let Some(rest) = p.strip_prefix("behind ") {
+            behind = rest.trim().parse::<usize>().unwrap_or(0);
+        }
+    }
+    (ahead, behind, gone)
+}
+
 pub fn get_ahead_behind(repo: &str, branch: &str) -> Result<AheadBehind, String> {
-    let has_remote = !list_remotes(repo).unwrap_or_default().is_empty();
-    let is_unborn = cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_err();
     let b = branch.trim();
-    if is_unborn || b.is_empty() || b.starts_with('-') {
+    if b.is_empty() || b.starts_with('-') {
+        let has_remote = !list_remotes(repo).unwrap_or_default().is_empty();
+        let is_unborn = cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_err();
         return Ok(AheadBehind {
             has_remote,
             is_unborn,
@@ -304,56 +321,86 @@ pub fn get_ahead_behind(repo: &str, branch: &str) -> Result<AheadBehind, String>
         });
     }
 
-    let upstream_query = format!("{b}@{{upstream}}");
-    if let Ok(up_raw) = cli::run(
-        repo,
-        &[
-            "rev-parse",
-            "--abbrev-ref",
-            "--symbolic-full-name",
-            &upstream_query,
-        ],
-    ) {
-        let up = up_raw.trim().to_string();
-        if !up.is_empty() {
-            let spec = format!("{b}...{up}");
-            let counts = cli::run(repo, &["rev-list", "--left-right", "--count", &spec])
-                .map(|out| parse_ahead_behind_output(&out))
-                .unwrap_or_default();
+    let head_ref = format!("refs/heads/{b}");
+    let remote_glob = format!("refs/remotes/*/{b}");
+
+    let (has_remote, refs_out) = std::thread::scope(|s| {
+        let rem_h = s.spawn(|| !list_remotes(repo).unwrap_or_default().is_empty());
+        let refs_h = s.spawn(|| {
+            cli::run(
+                repo,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)",
+                    &head_ref,
+                    &remote_glob,
+                ],
+            )
+            .unwrap_or_default()
+        });
+        (rem_h.join().unwrap_or(false), refs_h.join().unwrap_or_default())
+    });
+
+    let mut local_oid: Option<String> = None;
+    let mut upstream_name: Option<String> = None;
+    let mut track_info = String::new();
+    let mut matched_remote: Option<(String, String)> = None;
+
+    for line in refs_out.lines() {
+        let cols: Vec<&str> = line.split('\x1f').collect();
+        if cols.len() < 3 {
+            continue;
+        }
+        let full_ref = cols[0].trim();
+        let short_ref = cols[1].trim();
+        let oid = cols[2].trim();
+        if full_ref == head_ref {
+            local_oid = Some(oid.to_string());
+            upstream_name = cols
+                .get(3)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(ToString::to_string);
+            track_info = cols.get(4).map(|s| s.trim()).unwrap_or("").to_string();
+        } else if full_ref.starts_with("refs/remotes/") && matched_remote.is_none() {
+            matched_remote = Some((short_ref.to_string(), oid.to_string()));
+        }
+    }
+
+    let Some(loc_oid) = local_oid else {
+        let is_unborn = cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_err();
+        return Ok(AheadBehind {
+            has_remote,
+            is_unborn,
+            ..Default::default()
+        });
+    };
+
+    if let Some(up) = upstream_name {
+        let (ahead, behind, gone) = parse_upstream_track(&track_info);
+        if !gone {
             return Ok(AheadBehind {
-                ahead: counts.ahead,
-                behind: counts.behind,
+                ahead,
+                behind,
                 has_remote,
                 has_upstream: true,
                 upstream: Some(up),
                 remote_branch_exists: true,
                 is_unborn: false,
-                unpushed_commits: counts.ahead,
+                unpushed_commits: ahead,
             });
         }
     }
 
-    let matched_remote_ref = cli::run(
-        repo,
-        &[
-            "for-each-ref",
-            "--format=%(refname:short)",
-            &format!("refs/remotes/*/{b}"),
-        ],
-    )
-    .ok()
-    .and_then(|out| {
-        out.lines()
-            .map(str::trim)
-            .find(|l| !l.is_empty())
-            .map(ToString::to_string)
-    });
-
-    if let Some(rem_ref) = &matched_remote_ref {
-        let spec = format!("{b}...{rem_ref}");
-        let counts = cli::run(repo, &["rev-list", "--left-right", "--count", &spec])
-            .map(|out| parse_ahead_behind_output(&out))
-            .unwrap_or_default();
+    if let Some((rem_ref, rem_oid)) = matched_remote {
+        let counts = if !loc_oid.is_empty() && loc_oid == rem_oid {
+            AheadBehind::default()
+        } else {
+            let spec = format!("{b}...{rem_ref}");
+            cli::run(repo, &["rev-list", "--left-right", "--count", &spec])
+                .map(|out| parse_ahead_behind_output(&out))
+                .unwrap_or_default()
+        };
         return Ok(AheadBehind {
             ahead: counts.ahead,
             behind: counts.behind,

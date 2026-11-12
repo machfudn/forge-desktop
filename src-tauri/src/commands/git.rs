@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, AccountHealth, AccountManager, AccountOverview, AccountProfile, AheadBehind,
@@ -9,6 +10,16 @@ use crate::git::{
 use crate::system;
 use crate::updater::{self, AppRuntimeInfo, AppUpdateInfo, UpdateApplyResult, UpdateChannel};
 use tauri::State;
+
+async fn run_blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("Tugas latar belakang gagal dijalankan: {e}"))?
+}
 
 fn resolve_remote_creds(
     accounts: &AccountManager,
@@ -22,472 +33,565 @@ fn resolve_remote_creds(
 }
 
 #[tauri::command]
-pub fn inspect_repository(repo: &str) -> Result<RepoStatus, String> {
-    git::inspect(repo)
+pub async fn inspect_repository(repo: String) -> Result<RepoStatus, String> {
+    run_blocking(move || git::inspect(&repo)).await
 }
 
 #[tauri::command]
-pub fn stage_file(repo: &str, file_path: &str) -> Result<(), String> {
-    git::stage_file(repo, file_path)
+pub async fn stage_file(repo: String, file_path: String) -> Result<(), String> {
+    run_blocking(move || git::stage_file(&repo, &file_path)).await
 }
 
 #[tauri::command]
-pub fn unstage_file(repo: &str, file_path: &str) -> Result<(), String> {
-    git::unstage_file(repo, file_path)
+pub async fn unstage_file(repo: String, file_path: String) -> Result<(), String> {
+    run_blocking(move || git::unstage_file(&repo, &file_path)).await
 }
 
 #[tauri::command]
-pub fn stage_all(repo: &str) -> Result<(), String> {
-    git::stage_all(repo)
+pub async fn stage_all(repo: String) -> Result<(), String> {
+    run_blocking(move || git::stage_all(&repo)).await
 }
 
 #[tauri::command]
-pub fn unstage_all(repo: &str) -> Result<(), String> {
-    git::unstage_all(repo)
+pub async fn unstage_all(repo: String) -> Result<(), String> {
+    run_blocking(move || git::unstage_all(&repo)).await
 }
 
 #[tauri::command]
-pub fn commit_changes(
-    repo: &str,
-    summary: &str,
-    description: Option<&str>,
+pub async fn commit_changes(
+    repo: String,
+    summary: String,
+    description: Option<String>,
     amend: Option<bool>,
 ) -> Result<String, String> {
-    git::commit(repo, summary, description, amend.unwrap_or(false))
+    run_blocking(move || {
+        git::commit(&repo, &summary, description.as_deref(), amend.unwrap_or(false))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn undo_last_commit(repo: &str) -> Result<String, String> {
-    git::undo_last_commit(repo)
+pub async fn undo_last_commit(repo: String) -> Result<String, String> {
+    run_blocking(move || git::undo_last_commit(&repo)).await
 }
 
 #[tauri::command]
-pub fn get_file_diff(
-    repo: &str,
-    file_path: &str,
+pub async fn get_file_diff(
+    repo: String,
+    file_path: String,
     staged: bool,
     ignore_whitespace: Option<bool>,
 ) -> Result<String, String> {
-    git::get_file_diff(repo, file_path, staged, ignore_whitespace.unwrap_or(false))
+    run_blocking(move || {
+        git::get_file_diff(
+            &repo,
+            &file_path,
+            staged,
+            ignore_whitespace.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn add_to_gitignore(repo: &str, pattern: &str) -> Result<(), String> {
-    git::add_to_gitignore(repo, pattern)
+pub async fn add_to_gitignore(repo: String, pattern: String) -> Result<(), String> {
+    run_blocking(move || git::add_to_gitignore(&repo, &pattern)).await
 }
 
 #[tauri::command]
-pub fn get_commit_history(repo: &str, limit: Option<usize>) -> Result<Vec<CommitInfo>, String> {
+pub async fn get_commit_history(
+    repo: String,
+    limit: Option<usize>,
+) -> Result<Vec<CommitInfo>, String> {
     let lim = limit.unwrap_or(50);
-    git::get_history(repo, lim)
+    run_blocking(move || git::get_history(&repo, lim)).await
 }
 
 #[tauri::command]
-pub fn get_commit_detail(repo: &str, sha: &str) -> Result<CommitDetail, String> {
-    git::get_commit_detail(repo, sha)
+pub async fn get_commit_detail(repo: String, sha: String) -> Result<CommitDetail, String> {
+    run_blocking(move || git::get_commit_detail(&repo, &sha)).await
 }
 
 #[tauri::command]
-pub fn get_commit_file_diff(
-    repo: &str,
-    sha: &str,
-    file_path: &str,
-    old_path: Option<&str>,
+pub async fn get_commit_file_diff(
+    repo: String,
+    sha: String,
+    file_path: String,
+    old_path: Option<String>,
     ignore_whitespace: Option<bool>,
 ) -> Result<String, String> {
-    git::get_commit_file_diff(
-        repo,
-        sha,
-        file_path,
-        old_path,
-        ignore_whitespace.unwrap_or(false),
-    )
+    run_blocking(move || {
+        git::get_commit_file_diff(
+            &repo,
+            &sha,
+            &file_path,
+            old_path.as_deref(),
+            ignore_whitespace.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
-    git::list_branches(repo)
+pub async fn list_branches(repo: String) -> Result<Vec<BranchInfo>, String> {
+    run_blocking(move || git::list_branches(&repo)).await
 }
 
 #[tauri::command]
-pub fn switch_branch(repo: &str, branch_name: &str) -> Result<(), String> {
-    git::switch_branch(repo, branch_name)
+pub async fn switch_branch(repo: String, branch_name: String) -> Result<(), String> {
+    run_blocking(move || git::switch_branch(&repo, &branch_name)).await
 }
 
 #[tauri::command]
-pub fn create_branch(repo: &str, branch_name: &str) -> Result<(), String> {
-    git::create_branch(repo, branch_name)
+pub async fn create_branch(repo: String, branch_name: String) -> Result<(), String> {
+    run_blocking(move || git::create_branch(&repo, &branch_name)).await
 }
 
 #[tauri::command]
-pub fn delete_branch(repo: &str, branch_name: &str, force: Option<bool>) -> Result<String, String> {
-    git::delete_branch(repo, branch_name, force.unwrap_or(false))
-}
-
-#[tauri::command]
-pub fn rename_branch(repo: &str, old_name: &str, new_name: &str) -> Result<String, String> {
-    git::rename_branch(repo, old_name, new_name)
-}
-
-#[tauri::command]
-pub fn merge_branch(repo: &str, target_branch: &str) -> Result<String, String> {
-    git::merge_branch(repo, target_branch)
-}
-
-#[tauri::command]
-pub fn rebase_branch(repo: &str, base_branch: &str) -> Result<String, String> {
-    git::rebase_branch(repo, base_branch)
-}
-
-#[tauri::command]
-pub fn cherry_pick(repo: &str, sha: &str) -> Result<String, String> {
-    git::cherry_pick(repo, sha)
-}
-
-#[tauri::command]
-pub fn revert_commit(repo: &str, sha: &str) -> Result<String, String> {
-    git::revert_commit(repo, sha)
-}
-
-#[tauri::command]
-pub fn reset_to_commit(repo: &str, sha: &str, hard: Option<bool>) -> Result<String, String> {
-    git::reset_to_commit(repo, sha, hard.unwrap_or(false))
-}
-
-#[tauri::command]
-pub fn list_tags(repo: &str) -> Result<Vec<String>, String> {
-    git::list_tags(repo)
-}
-
-#[tauri::command]
-pub fn create_tag(
-    repo: &str,
-    tag_name: &str,
-    target_sha: Option<&str>,
+pub async fn delete_branch(
+    repo: String,
+    branch_name: String,
+    force: Option<bool>,
 ) -> Result<String, String> {
-    git::create_tag(repo, tag_name, target_sha)
+    run_blocking(move || git::delete_branch(&repo, &branch_name, force.unwrap_or(false))).await
 }
 
 #[tauri::command]
-pub fn delete_tag(repo: &str, tag_name: &str) -> Result<String, String> {
-    git::delete_tag(repo, tag_name)
+pub async fn rename_branch(
+    repo: String,
+    old_name: String,
+    new_name: String,
+) -> Result<String, String> {
+    run_blocking(move || git::rename_branch(&repo, &old_name, &new_name)).await
 }
 
 #[tauri::command]
-pub fn abort_merge(repo: &str) -> Result<(), String> {
-    git::abort_merge(repo)
+pub async fn merge_branch(repo: String, target_branch: String) -> Result<String, String> {
+    run_blocking(move || git::merge_branch(&repo, &target_branch)).await
 }
 
 #[tauri::command]
-pub fn abort_rebase(repo: &str) -> Result<(), String> {
-    git::abort_rebase(repo)
+pub async fn rebase_branch(repo: String, base_branch: String) -> Result<String, String> {
+    run_blocking(move || git::rebase_branch(&repo, &base_branch)).await
 }
 
 #[tauri::command]
-pub fn list_remotes(repo: &str) -> Result<Vec<RemoteInfo>, String> {
-    git::list_remotes(repo)
+pub async fn cherry_pick(repo: String, sha: String) -> Result<String, String> {
+    run_blocking(move || git::cherry_pick(&repo, &sha)).await
 }
 
 #[tauri::command]
-pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
-    git::add_remote(repo, name, url)
+pub async fn revert_commit(repo: String, sha: String) -> Result<String, String> {
+    run_blocking(move || git::revert_commit(&repo, &sha)).await
 }
 
 #[tauri::command]
-pub fn set_remote_url(repo: &str, name: &str, url: &str) -> Result<String, String> {
-    git::set_remote_url(repo, name, url)
+pub async fn reset_to_commit(
+    repo: String,
+    sha: String,
+    hard: Option<bool>,
+) -> Result<String, String> {
+    run_blocking(move || git::reset_to_commit(&repo, &sha, hard.unwrap_or(false))).await
 }
 
 #[tauri::command]
-pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
-    git::remove_remote(repo, name)
+pub async fn list_tags(repo: String) -> Result<Vec<String>, String> {
+    run_blocking(move || git::list_tags(&repo)).await
 }
 
 #[tauri::command]
-pub fn get_branch_ahead_behind(repo: &str, branch: &str) -> Result<AheadBehind, String> {
-    git::get_ahead_behind(repo, branch)
+pub async fn create_tag(
+    repo: String,
+    tag_name: String,
+    target_sha: Option<String>,
+) -> Result<String, String> {
+    run_blocking(move || git::create_tag(&repo, &tag_name, target_sha.as_deref())).await
 }
 
 #[tauri::command]
-pub fn git_fetch(
-    repo: &str,
-    remote: Option<&str>,
+pub async fn delete_tag(repo: String, tag_name: String) -> Result<String, String> {
+    run_blocking(move || git::delete_tag(&repo, &tag_name)).await
+}
+
+#[tauri::command]
+pub async fn abort_merge(repo: String) -> Result<(), String> {
+    run_blocking(move || git::abort_merge(&repo)).await
+}
+
+#[tauri::command]
+pub async fn abort_rebase(repo: String) -> Result<(), String> {
+    run_blocking(move || git::abort_rebase(&repo)).await
+}
+
+#[tauri::command]
+pub async fn list_remotes(repo: String) -> Result<Vec<RemoteInfo>, String> {
+    run_blocking(move || git::list_remotes(&repo)).await
+}
+
+#[tauri::command]
+pub async fn add_remote(repo: String, name: String, url: String) -> Result<String, String> {
+    run_blocking(move || git::add_remote(&repo, &name, &url)).await
+}
+
+#[tauri::command]
+pub async fn set_remote_url(repo: String, name: String, url: String) -> Result<String, String> {
+    run_blocking(move || git::set_remote_url(&repo, &name, &url)).await
+}
+
+#[tauri::command]
+pub async fn remove_remote(repo: String, name: String) -> Result<String, String> {
+    run_blocking(move || git::remove_remote(&repo, &name)).await
+}
+
+#[tauri::command]
+pub async fn get_branch_ahead_behind(
+    repo: String,
+    branch: String,
+) -> Result<AheadBehind, String> {
+    run_blocking(move || git::get_ahead_behind(&repo, &branch)).await
+}
+
+#[tauri::command]
+pub async fn git_fetch(
+    repo: String,
+    remote: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    let creds = resolve_remote_creds(&accounts, repo, remote);
-    git::fetch(
-        repo,
-        remote,
-        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
+        git::fetch(
+            &repo,
+            remote.as_deref(),
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_pull(
-    repo: &str,
-    remote: Option<&str>,
-    branch: Option<&str>,
+pub async fn git_pull(
+    repo: String,
+    remote: Option<String>,
+    branch: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    let creds = resolve_remote_creds(&accounts, repo, remote);
-    git::pull(
-        repo,
-        remote,
-        branch,
-        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
+        git::pull(
+            &repo,
+            remote.as_deref(),
+            branch.as_deref(),
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_push(
-    repo: &str,
-    remote: Option<&str>,
-    branch: Option<&str>,
+pub async fn git_push(
+    repo: String,
+    remote: Option<String>,
+    branch: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    let creds = resolve_remote_creds(&accounts, repo, remote);
-    git::push(
-        repo,
-        remote,
-        branch,
-        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
+        git::push(
+            &repo,
+            remote.as_deref(),
+            branch.as_deref(),
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_force_push(
-    repo: &str,
-    remote: Option<&str>,
-    branch: Option<&str>,
+pub async fn git_force_push(
+    repo: String,
+    remote: Option<String>,
+    branch: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    let creds = resolve_remote_creds(&accounts, repo, remote);
-    git::force_push(
-        repo,
-        remote,
-        branch,
-        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let creds = resolve_remote_creds(&mgr, &repo, remote.as_deref());
+        git::force_push(
+            &repo,
+            remote.as_deref(),
+            branch.as_deref(),
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn clone_repository(
-    url: &str,
-    target_dir: &str,
-    account_id: Option<&str>,
+pub async fn clone_repository(
+    url: String,
+    target_dir: String,
+    account_id: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    let creds = git::extract_host_from_url(url)
-        .and_then(|host| accounts.resolve_account(account_id, None, &host))
-        .map(|(p, t)| (p.login, t));
-    git::clone_repository(
-        url,
-        target_dir,
-        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let creds = git::extract_host_from_url(&url)
+            .and_then(|host| mgr.resolve_account(account_id.as_deref(), None, &host))
+            .map(|(p, t)| (p.login, t));
+        git::clone_repository(
+            &url,
+            &target_dir,
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn init_repository(
-    target_path: &str,
-    default_branch: Option<&str>,
-    gitignore_content: Option<&str>,
-    license_content: Option<&str>,
+pub async fn init_repository(
+    target_path: String,
+    default_branch: Option<String>,
+    gitignore_content: Option<String>,
+    license_content: Option<String>,
 ) -> Result<String, String> {
-    git::init_repository(target_path, default_branch, gitignore_content, license_content)
+    run_blocking(move || {
+        git::init_repository(
+            &target_path,
+            default_branch.as_deref(),
+            gitignore_content.as_deref(),
+            license_content.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_repo_config(repo: &str) -> Result<RepoConfig, String> {
-    git::get_repo_config(repo)
+pub async fn get_repo_config(repo: String) -> Result<RepoConfig, String> {
+    run_blocking(move || git::get_repo_config(&repo)).await
 }
 
 #[tauri::command]
-pub fn set_repo_config(repo: &str, user_name: &str, user_email: &str) -> Result<(), String> {
-    git::set_repo_config(repo, user_name, user_email)
+pub async fn set_repo_config(
+    repo: String,
+    user_name: String,
+    user_email: String,
+) -> Result<(), String> {
+    run_blocking(move || git::set_repo_config(&repo, &user_name, &user_email)).await
 }
 
 #[tauri::command]
-pub fn github_start_device_flow(
-    host: Option<&str>,
-    client_id: &str,
+pub async fn github_start_device_flow(
+    host: Option<String>,
+    client_id: String,
 ) -> Result<DeviceFlowInit, String> {
-    git::start_device_flow(host, client_id)
+    run_blocking(move || git::start_device_flow(host.as_deref(), &client_id)).await
 }
 
 #[tauri::command]
-pub fn list_github_accounts(
-    repo: Option<&str>,
+pub async fn list_github_accounts(
+    repo: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountOverview, String> {
-    Ok(accounts.list_overview(repo))
+    let mgr = accounts.inner().clone();
+    run_blocking(move || Ok(mgr.list_overview(repo.as_deref()))).await
 }
 
 #[tauri::command]
-pub fn verify_and_connect_pat(
-    host: Option<&str>,
-    token: &str,
-    label: Option<&str>,
+pub async fn verify_and_connect_pat(
+    host: Option<String>,
+    token: String,
+    label: Option<String>,
     allow_memory_fallback: Option<bool>,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountProfile, String> {
-    git::verify_and_connect_pat(
-        &accounts,
-        host,
-        token,
-        label,
-        allow_memory_fallback.unwrap_or(false),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::verify_and_connect_pat(
+            &mgr,
+            host.as_deref(),
+            &token,
+            label.as_deref(),
+            allow_memory_fallback.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn poll_and_connect_device_flow(
-    host: Option<&str>,
-    client_id: &str,
-    device_code: &str,
-    label: Option<&str>,
+pub async fn poll_and_connect_device_flow(
+    host: Option<String>,
+    client_id: String,
+    device_code: String,
+    label: Option<String>,
     allow_memory_fallback: Option<bool>,
     accounts: State<'_, AccountManager>,
 ) -> Result<DeviceFlowPollOutcome, String> {
-    git::poll_and_connect_device_flow(
-        &accounts,
-        host,
-        client_id,
-        device_code,
-        label,
-        allow_memory_fallback.unwrap_or(false),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::poll_and_connect_device_flow(
+            &mgr,
+            host.as_deref(),
+            &client_id,
+            &device_code,
+            label.as_deref(),
+            allow_memory_fallback.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn detect_local_github_sessions(host: Option<&str>) -> Result<Vec<DetectedSession>, String> {
-    git::detect_local_github_sessions(host.unwrap_or(GITHUB_PUBLIC_HOST))
+pub async fn detect_local_github_sessions(
+    host: Option<String>,
+) -> Result<Vec<DetectedSession>, String> {
+    run_blocking(move || {
+        git::detect_local_github_sessions(host.as_deref().unwrap_or(GITHUB_PUBLIC_HOST))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn import_local_github_session(
-    host: &str,
+pub async fn import_local_github_session(
+    host: String,
     source: LocalSessionSource,
-    label: Option<&str>,
+    label: Option<String>,
     allow_memory_fallback: Option<bool>,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountProfile, String> {
-    git::import_local_github_session(
-        &accounts,
-        host,
-        &source,
-        label,
-        allow_memory_fallback.unwrap_or(false),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::import_local_github_session(
+            &mgr,
+            &host,
+            &source,
+            label.as_deref(),
+            allow_memory_fallback.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn bind_account_to_repo(
-    repo: &str,
-    account_id: &str,
+pub async fn bind_account_to_repo(
+    repo: String,
+    account_id: String,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountOverview, String> {
-    accounts.bind_repo(repo, account_id)
+    let mgr = accounts.inner().clone();
+    run_blocking(move || mgr.bind_repo(&repo, &account_id)).await
 }
 
 #[tauri::command]
-pub fn set_default_github_account(
-    account_id: &str,
-    repo: Option<&str>,
+pub async fn set_default_github_account(
+    account_id: String,
+    repo: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountOverview, String> {
-    accounts.set_default(account_id, repo)
+    let mgr = accounts.inner().clone();
+    run_blocking(move || mgr.set_default(&account_id, repo.as_deref())).await
 }
 
 #[tauri::command]
-pub fn remove_github_account(
-    account_id: &str,
-    repo: Option<&str>,
+pub async fn remove_github_account(
+    account_id: String,
+    repo: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountOverview, String> {
-    accounts.remove_account(account_id, repo)
+    let mgr = accounts.inner().clone();
+    run_blocking(move || mgr.remove_account(&account_id, repo.as_deref())).await
 }
 
 #[tauri::command]
-pub fn update_github_account_label(
-    account_id: &str,
-    label: Option<&str>,
-    repo: Option<&str>,
+pub async fn update_github_account_label(
+    account_id: String,
+    label: Option<String>,
+    repo: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountOverview, String> {
-    accounts.update_label(account_id, label, repo)
+    let mgr = accounts.inner().clone();
+    run_blocking(move || mgr.update_label(&account_id, label.as_deref(), repo.as_deref())).await
 }
 
 #[tauri::command]
-pub fn check_github_account_status(
-    account_id: &str,
+pub async fn check_github_account_status(
+    account_id: String,
     accounts: State<'_, AccountManager>,
 ) -> Result<AccountHealth, String> {
-    git::check_account_health(&accounts, account_id)
-}
-#[tauri::command]
-pub fn discard_file_changes(repo: &str, file_path: &str) -> Result<(), String> {
-    git::discard_changes(repo, file_path)
+    let mgr = accounts.inner().clone();
+    run_blocking(move || git::check_account_health(&mgr, &account_id)).await
 }
 
 #[tauri::command]
-pub fn discard_all_changes(repo: &str) -> Result<(), String> {
-    git::discard_all_changes(repo)
+pub async fn discard_file_changes(repo: String, file_path: String) -> Result<(), String> {
+    run_blocking(move || git::discard_changes(&repo, &file_path)).await
 }
 
 #[tauri::command]
-pub fn git_stash_save(repo: &str, message: Option<&str>) -> Result<String, String> {
-    git::stash_save(repo, message)
+pub async fn discard_all_changes(repo: String) -> Result<(), String> {
+    run_blocking(move || git::discard_all_changes(&repo)).await
 }
 
 #[tauri::command]
-pub fn git_stash_pop(repo: &str) -> Result<String, String> {
-    git::stash_pop(repo)
+pub async fn git_stash_save(repo: String, message: Option<String>) -> Result<String, String> {
+    run_blocking(move || git::stash_save(&repo, message.as_deref())).await
 }
 
 #[tauri::command]
-pub fn git_list_stashes(repo: &str) -> Result<Vec<String>, String> {
-    git::list_stashes(repo)
+pub async fn git_stash_pop(repo: String) -> Result<String, String> {
+    run_blocking(move || git::stash_pop(&repo)).await
 }
 
 #[tauri::command]
-pub fn git_stash_show(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
-    git::stash_show(repo, stash_ref)
+pub async fn git_list_stashes(repo: String) -> Result<Vec<String>, String> {
+    run_blocking(move || git::list_stashes(&repo)).await
 }
 
 #[tauri::command]
-pub fn git_stash_drop(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
-    git::stash_drop(repo, stash_ref)
+pub async fn git_stash_show(repo: String, stash_ref: Option<String>) -> Result<String, String> {
+    run_blocking(move || git::stash_show(&repo, stash_ref.as_deref())).await
 }
 
 #[tauri::command]
-pub fn check_repo_exists(path: &str) -> Result<bool, String> {
-    Ok(git::check_repo_exists(path))
+pub async fn git_stash_drop(repo: String, stash_ref: Option<String>) -> Result<String, String> {
+    run_blocking(move || git::stash_drop(&repo, stash_ref.as_deref())).await
 }
 
 #[tauri::command]
-pub fn get_repo_path_state(path: &str) -> Result<String, String> {
-    Ok(git::get_repo_path_state(path))
+pub async fn check_repo_exists(path: String) -> Result<bool, String> {
+    run_blocking(move || Ok(git::check_repo_exists(&path))).await
 }
 
 #[tauri::command]
-pub fn get_diagnostics(repo: Option<&str>) -> Result<DiagnosticReport, String> {
-    Ok(diagnostics::generate_report(repo))
+pub async fn check_repos_exists(paths: Vec<String>) -> Result<HashMap<String, bool>, String> {
+    run_blocking(move || Ok(git::check_repos_exists(&paths))).await
 }
 
 #[tauri::command]
-pub fn open_in_file_manager(path: &str) -> Result<(), String> {
-    system::open_in_file_manager(path)
+pub async fn get_repo_path_state(path: String) -> Result<String, String> {
+    run_blocking(move || Ok(git::get_repo_path_state(&path))).await
 }
 
 #[tauri::command]
-pub fn open_in_terminal(path: &str) -> Result<(), String> {
-    system::open_in_terminal(path)
+pub async fn get_diagnostics(repo: Option<String>) -> Result<DiagnosticReport, String> {
+    run_blocking(move || Ok(diagnostics::generate_report(repo.as_deref()))).await
 }
 
 #[tauri::command]
-pub fn open_in_editor(path: &str, editor: Option<&str>) -> Result<(), String> {
-    system::open_in_editor(path, editor)
+pub async fn open_in_file_manager(path: String) -> Result<(), String> {
+    run_blocking(move || system::open_in_file_manager(&path)).await
+}
+
+#[tauri::command]
+pub async fn open_in_terminal(path: String) -> Result<(), String> {
+    run_blocking(move || system::open_in_terminal(&path)).await
+}
+
+#[tauri::command]
+pub async fn open_in_editor(path: String, editor: Option<String>) -> Result<(), String> {
+    run_blocking(move || system::open_in_editor(&path, editor.as_deref())).await
 }
 
 #[tauri::command]
@@ -500,85 +604,104 @@ pub fn parse_github_repository(
 }
 
 #[tauri::command]
-pub fn list_github_pull_requests(
-    owner: &str,
-    repo: &str,
-    host: Option<&str>,
-    repo_path: Option<&str>,
+pub async fn list_github_pull_requests(
+    owner: String,
+    repo: String,
+    host: Option<String>,
+    repo_path: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<Vec<PullRequestInfo>, String> {
-    let target_host = host.unwrap_or(GITHUB_PUBLIC_HOST);
-    let token = accounts
-        .resolve_account_for_repo(repo_path, target_host)
-        .map(|(_, t)| t);
-    git::list_pull_requests(target_host, owner, repo, token.as_deref())
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let target_host = host.as_deref().unwrap_or(GITHUB_PUBLIC_HOST);
+        let token = mgr
+            .resolve_account_for_repo(repo_path.as_deref(), target_host)
+            .map(|(_, t)| t);
+        git::list_pull_requests(target_host, &owner, &repo, token.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn list_github_issues(
-    owner: &str,
-    repo: &str,
-    host: Option<&str>,
-    repo_path: Option<&str>,
+pub async fn list_github_issues(
+    owner: String,
+    repo: String,
+    host: Option<String>,
+    repo_path: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<Vec<IssueInfo>, String> {
-    let target_host = host.unwrap_or(GITHUB_PUBLIC_HOST);
-    let token = accounts
-        .resolve_account_for_repo(repo_path, target_host)
-        .map(|(_, t)| t);
-    git::list_issues(target_host, owner, repo, token.as_deref())
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let target_host = host.as_deref().unwrap_or(GITHUB_PUBLIC_HOST);
+        let token = mgr
+            .resolve_account_for_repo(repo_path.as_deref(), target_host)
+            .map(|(_, t)| t);
+        git::list_issues(target_host, &owner, &repo, token.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn checkout_github_pull_request(
-    repo_path: &str,
+pub async fn checkout_github_pull_request(
+    repo_path: String,
     pr_number: u64,
-    remote: Option<&str>,
+    remote: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    let creds = resolve_remote_creds(&accounts, repo_path, remote);
-    git::checkout_pull_request(
-        repo_path,
-        pr_number,
-        remote,
-        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let creds = resolve_remote_creds(&mgr, &repo_path, remote.as_deref());
+        git::checkout_pull_request(
+            &repo_path,
+            pr_number,
+            remote.as_deref(),
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_commit_check_runs(
-    owner: &str,
-    repo: &str,
-    commit_sha: &str,
-    host: Option<&str>,
-    repo_path: Option<&str>,
+pub async fn get_commit_check_runs(
+    owner: String,
+    repo: String,
+    commit_sha: String,
+    host: Option<String>,
+    repo_path: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<Vec<CheckRunInfo>, String> {
-    let target_host = host.unwrap_or(GITHUB_PUBLIC_HOST);
-    let token = accounts
-        .resolve_account_for_repo(repo_path, target_host)
-        .map(|(_, t)| t);
-    git::get_commit_check_runs(target_host, owner, repo, commit_sha, token.as_deref())
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let target_host = host.as_deref().unwrap_or(GITHUB_PUBLIC_HOST);
+        let token = mgr
+            .resolve_account_for_repo(repo_path.as_deref(), target_host)
+            .map(|(_, t)| t);
+        git::get_commit_check_runs(target_host, &owner, &repo, &commit_sha, token.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn squash_commits(
-    repo: &str,
+pub async fn squash_commits(
+    repo: String,
     count: usize,
-    new_summary: &str,
-    new_description: Option<&str>,
+    new_summary: String,
+    new_description: Option<String>,
 ) -> Result<String, String> {
-    git::squash_commits(repo, count, new_summary, new_description)
+    run_blocking(move || {
+        git::squash_commits(&repo, count, &new_summary, new_description.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_global_config() -> Result<RepoConfig, String> {
-    git::get_global_config()
+pub async fn get_global_config() -> Result<RepoConfig, String> {
+    run_blocking(git::get_global_config).await
 }
 
 #[tauri::command]
-pub fn set_global_config(user_name: &str, user_email: &str) -> Result<(), String> {
-    git::set_global_config(user_name, user_email)
+pub async fn set_global_config(user_name: String, user_email: String) -> Result<(), String> {
+    run_blocking(move || git::set_global_config(&user_name, &user_email)).await
 }
 
 #[tauri::command]
@@ -599,46 +722,64 @@ pub fn get_cli_repo_arg() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn compare_branches(repo: &str, base: &str, target: &str) -> Result<AheadBehind, String> {
-    git::compare_branches(repo, base, target)
+pub async fn compare_branches(
+    repo: String,
+    base: String,
+    target: String,
+) -> Result<AheadBehind, String> {
+    run_blocking(move || git::compare_branches(&repo, &base, &target)).await
 }
 
 #[tauri::command]
-pub fn publish_repository_to_github(
-    repo: &str,
+pub async fn publish_repository_to_github(
+    repo: String,
     params: PublishRepoParams,
-    account_id: Option<&str>,
-    host: Option<&str>,
+    account_id: Option<String>,
+    host: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    git::publish_repository_to_github(&accounts, repo, params, account_id, host)
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::publish_repository_to_github(
+            &mgr,
+            &repo,
+            params,
+            account_id.as_deref(),
+            host.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn sync_fork(
-    repo: &str,
-    upstream_remote: Option<&str>,
-    branch: Option<&str>,
+pub async fn sync_fork(
+    repo: String,
+    upstream_remote: Option<String>,
+    branch: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    let rem = upstream_remote.unwrap_or("upstream");
-    let creds = resolve_remote_creds(&accounts, repo, Some(rem));
-    git::sync_fork(
-        repo,
-        upstream_remote,
-        branch,
-        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
-    )
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let rem = upstream_remote.as_deref().unwrap_or("upstream");
+        let creds = resolve_remote_creds(&mgr, &repo, Some(rem));
+        git::sync_fork(
+            &repo,
+            upstream_remote.as_deref(),
+            branch.as_deref(),
+            creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn get_image_diff(repo: &str, file_path: &str) -> Result<ImageDiffData, String> {
-    git::get_image_diff(repo, file_path)
+pub async fn get_image_diff(repo: String, file_path: String) -> Result<ImageDiffData, String> {
+    run_blocking(move || git::get_image_diff(&repo, &file_path)).await
 }
 
 #[tauri::command]
-pub fn get_app_runtime_info() -> AppRuntimeInfo {
-    updater::get_app_runtime_info()
+pub async fn get_app_runtime_info() -> Result<AppRuntimeInfo, String> {
+    run_blocking(|| Ok(updater::get_app_runtime_info())).await
 }
 
 #[tauri::command]
@@ -650,9 +791,7 @@ pub async fn check_app_update(
         .resolve_account_for_repo(None, GITHUB_PUBLIC_HOST)
         .map(|(_, t)| t);
     let ch = UpdateChannel::parse(channel.as_deref());
-    tauri::async_runtime::spawn_blocking(move || updater::check_app_update(ch, token.as_deref()))
-        .await
-        .map_err(|e| format!("Gagal memeriksa pembaruan: {e}"))?
+    run_blocking(move || updater::check_app_update(ch, token.as_deref())).await
 }
 
 #[tauri::command]
@@ -665,11 +804,7 @@ pub async fn install_app_update(
         .resolve_account_for_repo(None, GITHUB_PUBLIC_HOST)
         .map(|(_, t)| t);
     let ch = UpdateChannel::parse(channel.as_deref());
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        updater::download_and_install_update(ch, token.as_deref())
-    })
-    .await
-    .map_err(|e| format!("Gagal menjalankan pembaruan: {e}"))??;
+    let res = run_blocking(move || updater::download_and_install_update(ch, token.as_deref())).await?;
 
     if res.restart_pending {
         let handle = app.clone();
@@ -682,15 +817,19 @@ pub async fn install_app_update(
 }
 
 #[tauri::command]
-pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), String> {
-    git::stage_hunk(repo, patch_text, reverse)
+pub async fn stage_hunk(
+    repo: String,
+    patch_text: String,
+    reverse: bool,
+) -> Result<(), String> {
+    run_blocking(move || git::stage_hunk(&repo, &patch_text, reverse)).await
 }
 
 #[tauri::command]
-pub fn interactive_rebase(
-    repo: &str,
-    base_sha: &str,
+pub async fn interactive_rebase(
+    repo: String,
+    base_sha: String,
     steps: Vec<RebaseStep>,
 ) -> Result<String, String> {
-    git::interactive_rebase(repo, base_sha, steps)
+    run_blocking(move || git::interactive_rebase(&repo, &base_sha, steps)).await
 }

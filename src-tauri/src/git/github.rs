@@ -490,6 +490,9 @@ pub fn check_account_health(mgr: &AccountManager, account_id: &str) -> Result<Ac
     let profile = mgr
         .get_profile(account_id)
         .ok_or_else(|| "Akun GitHub tidak ditemukan".to_string())?;
+    if !profile.memory_only {
+        mgr.invalidate_token_cache(account_id);
+    }
     let Some(token) = mgr.get_token(account_id)? else {
         return Ok(AccountHealth::Expired {
             message: "Token tidak ditemukan di penyimpanan kredensial. Perbarui token untuk melanjutkan.".into(),

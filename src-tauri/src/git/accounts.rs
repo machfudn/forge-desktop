@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-
+use std::sync::{Arc, Mutex};
 pub const KEYRING_SERVICE: &str = "com.machfudin.forge-desktop.github";
 pub const GITHUB_PUBLIC_HOST: &str = "github.com";
 
@@ -220,11 +219,16 @@ pub fn canonical_repo_key(repo_path: &str) -> String {
     }
 }
 
-pub struct AccountManager {
+struct AccountManagerInner {
     registry_path: PathBuf,
     registry: Mutex<AccountRegistry>,
     secret_store: Box<dyn SecretStore>,
     session_tokens: Mutex<HashMap<String, String>>,
+}
+
+#[derive(Clone)]
+pub struct AccountManager {
+    inner: Arc<AccountManagerInner>,
 }
 
 impl AccountManager {
@@ -236,13 +240,14 @@ impl AccountManager {
     pub fn with_store(registry_path: PathBuf, secret_store: Box<dyn SecretStore>) -> Self {
         let registry = Self::load_registry(&registry_path);
         Self {
-            registry_path,
-            registry: Mutex::new(registry),
-            secret_store,
-            session_tokens: Mutex::new(HashMap::new()),
+            inner: Arc::new(AccountManagerInner {
+                registry_path,
+                registry: Mutex::new(registry),
+                secret_store,
+                session_tokens: Mutex::new(HashMap::new()),
+            }),
         }
     }
-
     fn load_registry(path: &Path) -> AccountRegistry {
         let Ok(content) = fs::read_to_string(path) else {
             return AccountRegistry::default();
@@ -251,13 +256,13 @@ impl AccountManager {
     }
 
     fn save_registry(&self, reg: &AccountRegistry) -> Result<(), String> {
-        if let Some(parent) = self.registry_path.parent() {
+        if let Some(parent) = self.inner.registry_path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Gagal membuat direktori konfigurasi akun: {e}"))?;
         }
         let json = serde_json::to_string_pretty(reg)
             .map_err(|e| format!("Gagal serialisasi registry akun: {e}"))?;
-        fs::write(&self.registry_path, json)
+        fs::write(&self.inner.registry_path, json)
             .map_err(|e| format!("Gagal menyimpan registry akun: {e}"))
     }
 
@@ -271,17 +276,18 @@ impl AccountManager {
         profile.host = norm_host.clone();
         profile.id = make_account_id(&norm_host, &profile.login);
 
-        match self.secret_store.set_token(&profile.id, token) {
+        match self.inner.secret_store.set_token(&profile.id, token) {
             Ok(()) => {
                 profile.memory_only = false;
-                if let Ok(mut mem) = self.session_tokens.lock() {
-                    mem.remove(&profile.id);
+                if let Ok(mut mem) = self.inner.session_tokens.lock() {
+                    mem.insert(profile.id.clone(), token.to_string());
                 }
             }
             Err(SecretStoreError::Unavailable(msg)) => {
                 if allow_memory_fallback {
                     profile.memory_only = true;
                     let mut mem = self
+                        .inner
                         .session_tokens
                         .lock()
                         .map_err(|_| "Gagal mengunci penyimpanan sesi".to_string())?;
@@ -294,6 +300,7 @@ impl AccountManager {
         }
 
         let mut reg = self
+            .inner
             .registry
             .lock()
             .map_err(|_| "Gagal mengunci registry akun".to_string())?;
@@ -315,14 +322,26 @@ impl AccountManager {
         Ok(profile)
     }
 
+    pub fn invalidate_token_cache(&self, account_id: &str) {
+        if let Ok(mut mem) = self.inner.session_tokens.lock() {
+            mem.remove(account_id);
+        }
+    }
+
     pub fn get_token(&self, account_id: &str) -> Result<Option<String>, String> {
-        if let Ok(mem) = self.session_tokens.lock() {
+        if let Ok(mem) = self.inner.session_tokens.lock() {
             if let Some(tok) = mem.get(account_id) {
                 return Ok(Some(tok.clone()));
             }
         }
-        match self.secret_store.get_token(account_id) {
-            Ok(tok) => Ok(tok),
+        match self.inner.secret_store.get_token(account_id) {
+            Ok(Some(tok)) => {
+                if let Ok(mut mem) = self.inner.session_tokens.lock() {
+                    mem.insert(account_id.to_string(), tok.clone());
+                }
+                Ok(Some(tok))
+            }
+            Ok(None) => Ok(None),
             Err(SecretStoreError::Unavailable(msg)) | Err(SecretStoreError::Other(msg)) => {
                 Err(msg)
             }
@@ -330,12 +349,13 @@ impl AccountManager {
     }
 
     pub fn get_profile(&self, account_id: &str) -> Option<AccountProfile> {
-        let reg = self.registry.lock().ok()?;
+        let reg = self.inner.registry.lock().ok()?;
         reg.accounts.iter().find(|a| a.id == account_id).cloned()
     }
 
     pub fn update_profile_metadata(&self, updated: &AccountProfile) -> Result<(), String> {
         let mut reg = self
+            .inner
             .registry
             .lock()
             .map_err(|_| "Gagal mengunci registry akun".to_string())?;
@@ -350,7 +370,7 @@ impl AccountManager {
     }
 
     pub fn list_overview(&self, repo: Option<&str>) -> AccountOverview {
-        let Ok(reg) = self.registry.lock() else {
+        let Ok(reg) = self.inner.registry.lock() else {
             return AccountOverview {
                 accounts: vec![],
                 default_by_host: HashMap::new(),
@@ -388,6 +408,7 @@ impl AccountManager {
             return Err("Path repositori tidak valid".into());
         }
         let mut reg = self
+            .inner
             .registry
             .lock()
             .map_err(|_| "Gagal mengunci registry akun".to_string())?;
@@ -401,6 +422,7 @@ impl AccountManager {
 
     pub fn set_default(&self, account_id: &str, repo: Option<&str>) -> Result<AccountOverview, String> {
         let mut reg = self
+            .inner
             .registry
             .lock()
             .map_err(|_| "Gagal mengunci registry akun".to_string())?;
@@ -424,6 +446,7 @@ impl AccountManager {
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
         let mut reg = self
+            .inner
             .registry
             .lock()
             .map_err(|_| "Gagal mengunci registry akun".to_string())?;
@@ -440,15 +463,16 @@ impl AccountManager {
         account_id: &str,
         repo: Option<&str>,
     ) -> Result<AccountOverview, String> {
-        if let Ok(mut mem) = self.session_tokens.lock() {
+        if let Ok(mut mem) = self.inner.session_tokens.lock() {
             mem.remove(account_id);
         }
-        match self.secret_store.delete_token(account_id) {
+        match self.inner.secret_store.delete_token(account_id) {
             Ok(()) | Err(SecretStoreError::Unavailable(_)) => {}
             Err(SecretStoreError::Other(msg)) => return Err(msg),
         }
 
         let mut reg = self
+            .inner
             .registry
             .lock()
             .map_err(|_| "Gagal mengunci registry akun".to_string())?;
@@ -482,7 +506,7 @@ impl AccountManager {
 
     pub fn registered_hosts(&self) -> Vec<String> {
         let mut hosts = vec![GITHUB_PUBLIC_HOST.to_string()];
-        if let Ok(reg) = self.registry.lock() {
+        if let Ok(reg) = self.inner.registry.lock() {
             for acc in &reg.accounts {
                 if !hosts.contains(&acc.host) {
                     hosts.push(acc.host.clone());
@@ -508,7 +532,7 @@ impl AccountManager {
     ) -> Option<(AccountProfile, String)> {
         let norm_host = normalize_github_host(host).ok()?;
         let profile = {
-            let reg = self.registry.lock().ok()?;
+            let reg = self.inner.registry.lock().ok()?;
             if let Some(explicit_id) = account_id {
                 reg.accounts.iter().find(|a| a.id == explicit_id).cloned()
             } else {

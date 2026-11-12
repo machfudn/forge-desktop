@@ -71,25 +71,41 @@ fn get_unpushed_shas(repo: &str, limit: usize) -> HashSet<String> {
 }
 
 pub fn get_history(repo: &str, limit: usize) -> Result<Vec<CommitInfo>, String> {
-    if cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_err() {
-        return Ok(Vec::new());
-    }
     let limit_str = limit.to_string();
-    let out = cli::run(
-        repo,
-        &[
-            "log",
-            "-n",
-            &limit_str,
-            "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s",
-            "--date=short",
-        ],
-    )?;
+    let (log_res, unpushed) = std::thread::scope(|s| {
+        let log_h = s.spawn(|| {
+            cli::run(
+                repo,
+                &[
+                    "log",
+                    "-n",
+                    &limit_str,
+                    "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s",
+                    "--date=short",
+                ],
+            )
+        });
+        let unpushed_h = s.spawn(|| get_unpushed_shas(repo, limit));
+        (
+            log_h.join().unwrap_or_else(|_| Err("Thread log panik".into())),
+            unpushed_h.join().unwrap_or_default(),
+        )
+    });
+
+    let out = match log_res {
+        Ok(text) => text,
+        Err(err) => {
+            let lower = err.to_ascii_lowercase();
+            if lower.contains("does not have any commits yet") || lower.contains("bad default revision") {
+                return Ok(Vec::new());
+            }
+            return Err(err);
+        }
+    };
     if out.is_empty() {
         return Ok(Vec::new());
     }
 
-    let unpushed = get_unpushed_shas(repo, limit);
     Ok(out
         .lines()
         .filter_map(|line| parse_log_line_with_status(line, &unpushed))

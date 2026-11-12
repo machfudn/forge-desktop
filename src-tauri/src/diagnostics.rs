@@ -9,21 +9,34 @@ pub struct DiagnosticReport {
 }
 
 pub fn generate_report(repo: Option<&str>) -> DiagnosticReport {
-    let git_ver = crate::system::command_no_window("git")
-        .arg("--version")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|_| "git tidak ditemukan".to_string());
-
-    let mut sanitized_config = Vec::new();
-    if let Some(r) = repo {
-        if let Ok(out) = crate::system::command_no_window("git").args(["-C", r, "config", "--list"]).output() {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            for line in stdout.lines() {
-                sanitized_config.push(sanitize_config_line(line));
+    let (git_ver, sanitized_config) = std::thread::scope(|s| {
+        let ver_h = s.spawn(|| {
+            crate::system::command_no_window("git")
+                .arg("--version")
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_else(|_| "git tidak ditemukan".to_string())
+        });
+        let cfg_h = s.spawn(|| {
+            let mut items = Vec::new();
+            if let Some(r) = repo {
+                if let Ok(out) = crate::system::command_no_window("git")
+                    .args(["-C", r, "config", "--list"])
+                    .output()
+                {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    for line in stdout.lines() {
+                        items.push(sanitize_config_line(line));
+                    }
+                }
             }
-        }
-    }
+            items
+        });
+        (
+            ver_h.join().unwrap_or_else(|_| "git tidak ditemukan".to_string()),
+            cfg_h.join().unwrap_or_default(),
+        )
+    });
 
     DiagnosticReport {
         app_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -72,7 +85,7 @@ mod tests {
     #[test]
     fn test_diagnostics_report_redacts_secrets() {
         let report = generate_report(None);
-        assert_eq!(report.app_version, "1.1.0");
+        assert_eq!(report.app_version, env!("CARGO_PKG_VERSION"));
         assert!(!report.os_info.is_empty());
         assert!(!report.git_version.is_empty());
     }
