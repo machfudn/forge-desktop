@@ -118,7 +118,7 @@
     const el = historyShellEl;
     if (!el) return;
     const updateWidth = () => {
-      isCompactWidth = el.clientWidth > 0 && el.clientWidth <= 640;
+      isCompactWidth = el.clientWidth > 0 && el.clientWidth <= 680;
     };
     updateWidth();
     const observer = new ResizeObserver(updateWidth);
@@ -286,7 +286,7 @@
   let maxGraphCols = $derived(
     Math.min(10, Math.max(1, ...graphLayouts.map((g) => g.maxLanes)))
   );
-  let graphColWidth = $derived(maxGraphCols * LANE_W + 10);
+  let graphColWidth = $derived(Math.max(54, maxGraphCols * LANE_W + 14));
 
   interface DragCommitPayload {
     sha: string;
@@ -595,26 +595,29 @@
     class="history-shell {activeResizer ? 'is-resizing-any' : ''}"
     style="--detail-pane-pct: {detailHeightPct}%; --commit-files-w: {filesWidthPx}px; --commit-files-h: {filesHeightPx}px;"
   >
+    <div class="history-toolbar">
+      <span class="history-toolbar-count tabular-nums">
+        {t("app.historySidebar.title", { count: indexedCommits.length })}
+      </span>
+      {#if onToggleAllBranches}
+        <button
+          type="button"
+          class="graph-scope-btn {allBranches ? 'active' : ''}"
+          onclick={onToggleAllBranches}
+          title={t("history.toggleAllBranchesTitle")}
+        >
+          {allBranches ? t("history.allBranchesShort") : t("history.currentBranchShort")}
+        </button>
+      {/if}
+    </div>
     <div class="history-container {selectedSha ? 'has-detail' : ''}">
     <div class="history-header-bar history-header-with-graph" style="--graph-col-w: {graphColWidth}px;">
-      <span class="history-graph-col-header">
-        <span>{t("history.colGraph")}</span>
-        {#if onToggleAllBranches}
-          <button
-            type="button"
-            class="graph-scope-btn {allBranches ? 'active' : ''}"
-            onclick={onToggleAllBranches}
-            title={t("history.toggleAllBranchesTitle")}
-          >
-            {allBranches ? t("history.allBranchesShort") : t("history.currentBranchShort")}
-          </button>
-        {/if}
-      </span>
+      <span class="history-graph-col-header">{t("history.colGraph")}</span>
       <span>{t("history.colSha")}</span>
       <span>{t("history.colCommit")}</span>
-      <span>{t("history.colStatus")}</span>
+      <span class="commit-status-col">{t("history.colStatus")}</span>
       <span class="commit-author-col">{t("history.colAuthor")}</span>
-      <span style="text-align: right;">{t("history.colDate")}</span>
+      <span class="commit-date-col">{t("history.colDate")}</span>
     </div>
 
     {#if dropActionPrompt}
@@ -884,8 +887,7 @@
               <button
                 type="button"
                 onclick={() => onReset(commit.sha)}
-                class="btn-secondary btn-xs btn-danger"
-                style="margin-left: auto;"
+                class="btn-secondary btn-xs btn-danger history-reset-btn"
                 title={t("history.resetHereTitle")}
               >
                 {t("history.resetHereBtn")}
@@ -1039,6 +1041,13 @@
                         oncontextmenu={(e) => openCommitFileContextMenu(e, file)}
                         title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}
                       >
+                        <span class="file-name">
+                          {#if slashIdx >= 0}
+                            <span class="file-dir">{file.path.slice(0, slashIdx + 1)}</span><span class="file-base">{file.path.slice(slashIdx + 1)}</span>
+                          {:else}
+                            <span class="file-base">{file.path}</span>
+                          {/if}
+                        </span>
                         <span class="file-status-badge status-{file.status_code}">
                           {#if file.status_code === "A"}
                             <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -1046,13 +1055,6 @@
                             </svg>
                           {:else}
                             {file.status_code}
-                          {/if}
-                        </span>
-                        <span class="file-name">
-                          {#if slashIdx >= 0}
-                            <span class="file-dir">{file.path.slice(0, slashIdx + 1)}</span><span class="file-base">{file.path.slice(slashIdx + 1)}</span>
-                          {:else}
-                            <span class="file-base">{file.path}</span>
                           {/if}
                         </span>
                       </button>

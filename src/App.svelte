@@ -19,6 +19,7 @@
     PullRequestInfo,
     RemoteInfo,
     RepoConfig,
+    RepoQuickSummary,
     RepoStatus,
     UpdateChannel,
   } from "./types/git";
@@ -38,6 +39,7 @@
   import TerminalDrawer from "./components/TerminalDrawer.svelte";
   import AiAssistantModal from "./components/AiAssistantModal.svelte";
   import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
+  import ProviderIcon from "./components/ProviderIcon.svelte";
   import { joinRepoPath, openExternalUrl, pathBaseName } from "./utils/path";
   import {
     copyTextToClipboard,
@@ -115,6 +117,8 @@
   let recentRepos = $state<string[]>([]);
   let repoAliases = $state<Record<string, string>>({});
   let repoMissingStatus = $state<Record<string, boolean>>({});
+  let repoSummaries = $state<Record<string, RepoQuickSummary>>({});
+  let isLoadingRepoSummaries = $state(false);
   let branchDivergenceMap = $state<Record<string, AheadBehind>>({});
   let diagReport = $state<DiagnosticReport | null>(null);
   let repoConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
@@ -132,7 +136,20 @@
   // Settings & preferences
   let activeLocale = $state<Locale>(getLocale());
   let activeTheme = $state(localStorage.getItem("forge_theme") || "dark");
-  let autofetchMinutes = $state(Number(localStorage.getItem("forge_autofetch") || "5"));
+  function readInitialAutofetchSeconds(): number {
+    const secRaw = localStorage.getItem("forge_autofetch_seconds");
+    if (secRaw !== null) {
+      const parsed = Number(secRaw);
+      return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : 300;
+    }
+    const minRaw = localStorage.getItem("forge_autofetch");
+    if (minRaw !== null) {
+      const mins = Number(minRaw);
+      if (Number.isFinite(mins) && mins >= 0) return Math.round(mins * 60);
+    }
+    return 300;
+  }
+  let autofetchSeconds = $state(readInitialAutofetchSeconds());
   let confirmDiscard = $state(localStorage.getItem("forge_confirm_discard") !== "false");
   let confirmForcePush = $state(localStorage.getItem("forge_confirm_force_push") !== "false");
   let desktopNotifEnabled = $state(localStorage.getItem("forge_desktop_notif") !== "false");
@@ -282,6 +299,12 @@
     }
     return list[0];
   });
+  let failedAvatarUrl = $state<string | null>(null);
+  const activeAvatarUrl = $derived(
+    activeRepoAccount?.avatar_url && activeRepoAccount.avatar_url !== failedAvatarUrl
+      ? activeRepoAccount.avatar_url
+      : null
+  );
 
 
   const branchPushMeta = $derived.by(() => {
@@ -454,14 +477,17 @@
     }
   }
 
-  function setupAutofetch(mins: number) {
+  function setupAutofetch(secs: number) {
     if (autofetchTimer !== null) {
       clearInterval(autofetchTimer);
       autofetchTimer = null;
     }
-    if (mins > 0 && activeRepo) {
+    const normalizedSecs = Number.isFinite(secs) ? Math.max(0, Math.round(secs)) : 0;
+    if (normalizedSecs > 0 && activeRepo) {
+      let isAutofetchRunning = false;
       autofetchTimer = window.setInterval(async () => {
-        if (!activeRepo || isLoading) return;
+        if (!activeRepo || isLoading || isAutofetchRunning) return;
+        isAutofetchRunning = true;
         try {
           await gitService.gitFetch(activeRepo);
           const status = await gitService.inspectRepository(activeRepo);
@@ -471,8 +497,10 @@
           }
         } catch {
           // Silent background fetch
+        } finally {
+          isAutofetchRunning = false;
         }
-      }, mins * 60 * 1000);
+      }, normalizedSecs * 1000);
     }
   }
 
@@ -540,13 +568,17 @@
   async function checkMissingRepos() {
     if (recentRepos.length === 0) {
       repoMissingStatus = {};
+      repoSummaries = {};
       return;
     }
+    isLoadingRepoSummaries = true;
     try {
-      const existsMap = await gitService.checkReposExists(recentRepos);
+      const summaryMap = await gitService.batchInspectRepoSummaries(recentRepos);
+      repoSummaries = summaryMap;
       const statusMap: Record<string, boolean> = {};
       for (const r of recentRepos) {
-        statusMap[r] = !existsMap[r];
+        const sum = summaryMap[r];
+        statusMap[r] = sum ? !sum.exists : false;
       }
       repoMissingStatus = statusMap;
     } catch {
@@ -555,6 +587,8 @@
         statusMap[r] = false;
       }
       repoMissingStatus = statusMap;
+    } finally {
+      isLoadingRepoSummaries = false;
     }
   }
 
@@ -621,8 +655,17 @@
         aheadBehind = { ...EMPTY_AHEAD_BEHIND, has_remote: hasRemote, is_unborn: !currentStatus.has_commits };
       }
       const origin = remotes.find((r) => r.name === "origin") || remotes[0];
-      githubRepoInfo = origin ? await gitService.parseGithubRepository(origin.url) : null;
-      hostingRepoInfo = origin ? await gitService.parseHostingRepository(origin.url).catch(() => null) : null;
+      if (origin) {
+        const [ghParsed, hostParsed] = await Promise.all([
+          gitService.parseGithubRepository(origin.url).catch(() => null),
+          gitService.parseHostingRepository(origin.url).catch(() => null),
+        ]);
+        githubRepoInfo = ghParsed;
+        hostingRepoInfo = hostParsed;
+      } else {
+        githubRepoInfo = null;
+        hostingRepoInfo = null;
+      }
     } catch {
       repoRemotes = [];
       hasRemote = false;
@@ -736,6 +779,7 @@
         issues = [];
         checkRunsMap = {};
         githubRepoInfo = null;
+        hostingRepoInfo = null;
         repoRemotes = [];
         hasRemote = false;
       }
@@ -796,6 +840,8 @@
                     githubRateLimited = true;
                   }
                 });
+            } else if (!ghParsed) {
+              issues = [];
             }
           } catch {
             githubRepoInfo = null;
@@ -804,13 +850,17 @@
         } else {
           githubRepoInfo = null;
           hostingRepoInfo = null;
+          issues = [];
         }
+      } else {
         repoRemotes = [];
         hasRemote = false;
         githubRepoInfo = null;
+        hostingRepoInfo = null;
+        issues = [];
       }
 
-      setupAutofetch(autofetchMinutes);
+      setupAutofetch(autofetchSeconds);
       setStatus(
         t("app.status.repoOpened", {
           name: pathBaseName(repoPath),
@@ -1093,7 +1143,8 @@
         commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
         tags = await gitService.listTags(activeRepo);
         if (githubRepoInfo && activeRepoAccount && !githubRateLimited && commits.length > 0) {
-          const checkPromises = commits.slice(0, 12).map(async (c) => {
+          const pushedCommits = commits.filter((c) => c.is_pushed).slice(0, 12);
+          const checkPromises = pushedCommits.map(async (c) => {
             try {
               const runs = await gitService.getCommitCheckRuns(
                 githubRepoInfo!.owner,
@@ -1334,7 +1385,7 @@
     globalConfig: RepoConfig;
     activeTheme: string;
     locale: Locale;
-    autofetchMinutes: number;
+    autofetchSeconds: number;
     confirmDiscard: boolean;
     confirmForcePush: boolean;
     desktopNotifEnabled: boolean;
@@ -1358,7 +1409,7 @@
       activeTheme = cfg.activeTheme;
       activeLocale = cfg.locale;
       setLocale(cfg.locale);
-      autofetchMinutes = cfg.autofetchMinutes;
+      autofetchSeconds = cfg.autofetchSeconds;
       confirmDiscard = cfg.confirmDiscard;
       confirmForcePush = cfg.confirmForcePush;
       desktopNotifEnabled = cfg.desktopNotifEnabled;
@@ -1367,14 +1418,15 @@
       updateChannel = cfg.updateChannel;
 
       localStorage.setItem("forge_theme", activeTheme);
-      localStorage.setItem("forge_autofetch", String(autofetchMinutes));
+      localStorage.setItem("forge_autofetch_seconds", String(autofetchSeconds));
+      localStorage.removeItem("forge_autofetch");
       localStorage.setItem("forge_confirm_discard", String(confirmDiscard));
       localStorage.setItem("forge_confirm_force_push", String(confirmForcePush));
       localStorage.setItem("forge_desktop_notif", String(desktopNotifEnabled));
       localStorage.setItem("forge_external_editor", externalEditor);
       localStorage.setItem("forge_update_channel", updateChannel);
       applyTheme(activeTheme);
-      setupAutofetch(autofetchMinutes);
+      setupAutofetch(autofetchSeconds);
       if (prevChannel !== updateChannel) {
         void handleCheckUpdates(updateChannel);
       }
@@ -1917,6 +1969,7 @@
         startupTasks.push(loadRepo(initialRepo));
       } else {
         setStatus(t("app.selectOrCloneStart"));
+        startupTasks.push(checkMissingRepos());
       }
       await Promise.allSettled(startupTasks);
 
@@ -2034,9 +2087,10 @@
         oncontextmenu={openRepoHeaderContextMenu}
         title={activeRepo || t("app.openRepoTooltip")}
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink: 0; color: var(--text-secondary);">
-          <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z" />
-        </svg>
+        <ProviderIcon
+          provider={hostingRepoInfo?.provider || (githubRepoInfo ? "github" : "local")}
+          size={14}
+        />
         <span class="picker-pill-label">
           {activeRepo ? repoAliases[activeRepo] || pathBaseName(activeRepo) : t("app.openRepo")}
         </span>
@@ -2290,14 +2344,31 @@
             ? t("app.githubAccountActiveTooltip", { login: activeRepoAccount.login, host: activeRepoAccount.host })
             : t("app.connectGithubAccountTooltip")}
         >
-          <span class="header-account-dot {isHeaderAccWarn ? 'is-warn' : ''}"></span>
-          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            {#if activeRepoAccount}
+          {#if activeRepoAccount}
+            <span class="header-account-avatar-wrap">
+              {#if activeAvatarUrl}
+                <img
+                  class="header-account-avatar"
+                  src={activeAvatarUrl}
+                  alt=""
+                  onerror={() => (failedAvatarUrl = activeRepoAccount.avatar_url ?? null)}
+                />
+              {:else}
+                <span class="header-account-avatar-fallback">
+                  {activeRepoAccount.login.slice(0, 1).toUpperCase()}
+                </span>
+              {/if}
+              <span class="header-account-status-dot {isHeaderAccWarn ? 'is-warn' : ''}"></span>
+            </span>
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
               @{activeRepoAccount.login}{#if activeRepoAccount.host !== "github.com"}<span class="header-account-host"> · {activeRepoAccount.host}</span>{/if}
-            {:else}
+            </span>
+          {:else}
+            <span class="header-account-dot"></span>
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
               {t("app.signInGithub")}
-            {/if}
-          </span>
+            </span>
+          {/if}
         </button>
       {/if}
 
@@ -2435,10 +2506,24 @@
                 activeModal = "auth";
               }}
             >
-              <span>
-                {activeRepoAccount
-                  ? t("app.menu.githubAccountNamed", { login: activeRepoAccount.login })
-                  : t("app.menu.manageGithubAccounts")}
+              <span class="menu-account-label">
+                {#if activeRepoAccount}
+                  {#if activeAvatarUrl}
+                    <img
+                      class="menu-account-avatar"
+                      src={activeAvatarUrl}
+                      alt=""
+                      onerror={() => (failedAvatarUrl = activeRepoAccount.avatar_url ?? null)}
+                    />
+                  {:else}
+                    <span class="menu-account-avatar-fallback">
+                      {activeRepoAccount.login.slice(0, 1).toUpperCase()}
+                    </span>
+                  {/if}
+                  <span>{t("app.menu.githubAccountNamed", { login: activeRepoAccount.login })}</span>
+                {:else}
+                  <span>{t("app.menu.manageGithubAccounts")}</span>
+                {/if}
               </span>
               {#if accountOverview.accounts.length > 0}
                 <span class="popover-item-hint" style="color: var(--diff-add-text);">
@@ -2555,29 +2640,87 @@
               <button type="button" class="btn-primary" onclick={openOpenModal}>{t("app.welcome.openRepo")}</button>
               <button type="button" class="btn-secondary" onclick={() => (activeModal = "clone")}>{t("app.welcome.cloneUrl")}</button>
               <button type="button" class="btn-secondary" onclick={() => (activeModal = "init")}>{t("app.welcome.newRepo")}</button>
-              <button type="button" class="btn-secondary" onclick={() => (activeModal = "auth")}>
-                {activeRepoAccount
-                  ? t("app.welcome.githubAccount", { login: activeRepoAccount.login })
-                  : t("app.welcome.signInGithub")}
+              <button type="button" class="btn-secondary welcome-account-btn" onclick={() => (activeModal = "auth")}>
+                {#if activeRepoAccount}
+                  {#if activeAvatarUrl}
+                    <img
+                      class="menu-account-avatar"
+                      src={activeAvatarUrl}
+                      alt=""
+                      onerror={() => (failedAvatarUrl = activeRepoAccount.avatar_url ?? null)}
+                    />
+                  {:else}
+                    <span class="menu-account-avatar-fallback">
+                      {activeRepoAccount.login.slice(0, 1).toUpperCase()}
+                    </span>
+                  {/if}
+                  <span>{t("app.welcome.githubAccount", { login: activeRepoAccount.login })}</span>
+                {:else}
+                  <span>{t("app.welcome.signInGithub")}</span>
+                {/if}
               </button>
               <button type="button" class="btn-secondary" onclick={openSettingsModal}>{t("app.welcome.settings")}</button>
             </div>
 
             {#if recentRepos.length > 0}
               <div class="form-field">
-                <span class="form-label">{t("app.welcome.recentRepos")}</span>
-                <div class="list-box">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <span class="form-label">{t("app.welcome.recentRepos")}</span>
+                  {#if isLoadingRepoSummaries}
+                    <span style="font-size: 10px; color: var(--text-muted);">{t("wsModal.open.loadingSummary")}</span>
+                  {/if}
+                </div>
+                <div class="repo-list-box">
                   {#each recentRepos.slice(0, 6) as r (r)}
+                    {@const sum = repoSummaries[r]}
+                    {@const isMissing = sum ? !sum.exists : Boolean(repoMissingStatus[r])}
+                    {@const iconKind = isMissing ? "missing" : sum?.provider || "local"}
+                    {@const pushCount = sum ? (sum.has_upstream ? sum.ahead : sum.unpushed_commits) : 0}
                     <button
                       type="button"
-                      class="list-row"
+                      class="repo-card {isMissing ? 'is-missing' : ''}"
                       style="width: 100%; text-align: left;"
+                      disabled={isMissing}
                       onclick={() => loadRepo(r)}
                     >
-                      <span style="font-weight: 600;">{repoAliases[r] || pathBaseName(r)}</span>
-                      <span style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {r}
-                      </span>
+                      <div class="repo-card-top">
+                        <span class="repo-card-icon">
+                          <ProviderIcon provider={iconKind} size={17} />
+                        </span>
+                        <span class="repo-card-body">
+                          <span class="repo-card-title-row">
+                            <span class="repo-card-name">{repoAliases[r] || pathBaseName(r)}</span>
+                            {#if isMissing}
+                              <span class="badge-warn">{t("wsModal.open.missingBadge")}</span>
+                            {/if}
+                          </span>
+                          <span class="repo-card-path">{r}</span>
+                          {#if sum && !isMissing && sum.is_git}
+                            <span class="repo-status-row">
+                              {#if sum.branch}
+                                <span class="repo-chip repo-chip-branch">{sum.branch}</span>
+                              {/if}
+                              {#if sum.dirty_count > 0}
+                                <span class="repo-chip repo-chip-dirty">{t("wsModal.open.dirtyBadge", { count: sum.dirty_count })}</span>
+                              {/if}
+                              {#if pushCount > 0}
+                                <span class="repo-chip repo-chip-push">↑ {t("wsModal.open.pushBadge", { count: pushCount })}</span>
+                              {/if}
+                              {#if sum.behind > 0}
+                                <span class="repo-chip repo-chip-pull">↓ {t("wsModal.open.pullBadge", { count: sum.behind })}</span>
+                              {/if}
+                              {#if sum.has_remote && sum.has_upstream && sum.dirty_count === 0 && pushCount === 0 && sum.behind === 0}
+                                <span class="repo-chip repo-chip-synced">✓ {t("wsModal.open.syncedBadge")}</span>
+                              {:else if !sum.has_remote}
+                                <span class="badge-neutral">{t("wsModal.open.localBadge")}</span>
+                              {/if}
+                            </span>
+                          {/if}
+                        </span>
+                        {#if !isMissing}
+                          <span class="repo-card-open-cue">{t("wsModal.open.openCardHint")} →</span>
+                        {/if}
+                      </div>
                     </button>
                   {/each}
                 </div>
@@ -2832,6 +2975,8 @@
     {recentRepos}
     {repoAliases}
     {repoMissingStatus}
+    {repoSummaries}
+    {isLoadingRepoSummaries}
     {diagReport}
     {isLoadingDiag}
     {repoConfig}
@@ -2839,7 +2984,7 @@
     {isLoadingSettings}
     {activeTheme}
     {activeLocale}
-    {autofetchMinutes}
+    {autofetchSeconds}
     {confirmDiscard}
     {confirmForcePush}
     {desktopNotifEnabled}

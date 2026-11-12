@@ -16,6 +16,7 @@
     ParsedGitHubRepo,
     RemoteInfo,
     RepoConfig,
+    RepoQuickSummary,
     UpdateChannel,
   } from "../types/git";
   import {
@@ -33,6 +34,7 @@
     getAppErrorLogs,
   } from "../utils/appLog.svelte";
   import { renderMarkdownHtml } from "../utils/markdown";
+  import ProviderIcon from "./ProviderIcon.svelte";
 
   export type WorkspaceModalType =
     | "open"
@@ -51,6 +53,8 @@
     recentRepos: string[];
     repoAliases: Record<string, string>;
     repoMissingStatus: Record<string, boolean>;
+    repoSummaries?: Record<string, RepoQuickSummary>;
+    isLoadingRepoSummaries?: boolean;
     diagReport: DiagnosticReport | null;
     isLoadingDiag?: boolean;
     repoConfig: RepoConfig;
@@ -58,7 +62,7 @@
     isLoadingSettings?: boolean;
     activeTheme: string;
     activeLocale: Locale;
-    autofetchMinutes: number;
+    autofetchSeconds: number;
     confirmDiscard: boolean;
     confirmForcePush: boolean;
     desktopNotifEnabled: boolean;
@@ -86,7 +90,7 @@
       globalConfig: RepoConfig;
       activeTheme: string;
       locale: Locale;
-      autofetchMinutes: number;
+      autofetchSeconds: number;
       confirmDiscard: boolean;
       confirmForcePush: boolean;
       desktopNotifEnabled: boolean;
@@ -114,6 +118,8 @@
     recentRepos,
     repoAliases,
     repoMissingStatus,
+    repoSummaries = {},
+    isLoadingRepoSummaries = false,
     diagReport,
     isLoadingDiag = false,
     repoConfig: initialRepoConfig,
@@ -121,7 +127,7 @@
     isLoadingSettings = false,
     activeTheme: initialTheme,
     activeLocale: initialLocale,
-    autofetchMinutes: initialAutofetch,
+    autofetchSeconds: initialAutofetchSeconds,
     confirmDiscard: initialConfirmDiscard,
     confirmForcePush: initialConfirmForcePush,
     desktopNotifEnabled: initialDesktopNotif,
@@ -159,6 +165,7 @@
 
   // Open modal states
   let openRepoPath = $state("");
+  let openRepoFilter = $state("");
   let editingAliasFor = $state<string | null>(null);
   let aliasInput = $state("");
   let relocatingPathFor = $state<string | null>(null);
@@ -218,7 +225,7 @@
   let settingsAuthorsDirty = $state(false);
   let draftTheme = $state("dark");
   let draftLocale = $state<Locale>("id");
-  let draftAutofetch = $state(5);
+  let draftAutofetchSeconds = $state<number | null>(300);
   let draftConfirmDiscard = $state(true);
   let draftConfirmForcePush = $state(true);
   let draftDesktopNotif = $state(true);
@@ -387,7 +394,7 @@
         draftGlobalConfig = { ...initialGlobalConfig };
         draftTheme = initialTheme;
         draftLocale = initialLocale;
-        draftAutofetch = initialAutofetch;
+        draftAutofetchSeconds = initialAutofetchSeconds;
         draftConfirmDiscard = initialConfirmDiscard;
         draftConfirmForcePush = initialConfirmForcePush;
         draftDesktopNotif = initialDesktopNotif;
@@ -1097,6 +1104,16 @@
 
     <div class="modal-body {modal === 'settings' ? 'settings-modal-body' : ''}">
       {#if modal === "open"}
+        {@const q = openRepoFilter.trim().toLowerCase()}
+        {@const filteredRecents = q
+          ? recentRepos.filter((r) => {
+              const alias = (repoAliases[r] || "").toLowerCase();
+              const name = (pathBaseName(r) || "").toLowerCase();
+              const sum = repoSummaries[r];
+              const branch = (sum?.branch || "").toLowerCase();
+              return r.toLowerCase().includes(q) || alias.includes(q) || name.includes(q) || branch.includes(q);
+            })
+          : recentRepos}
         <div class="form-field">
           <label class="form-label" for="open-repo-path">{t("wsModal.open.pathLabel")}</label>
           <div style="display: flex; gap: 6px; align-items: center;">
@@ -1120,7 +1137,11 @@
               disabled={isBrowsingDir}
               onclick={async () => {
                 const picked = await browseDirectory(openRepoPath, t("wsModal.open.pickRepoTitle"), false);
-                if (picked) openRepoPath = picked;
+                if (picked) {
+                  openRepoPath = picked;
+                  onClose();
+                  onLoadRepo(picked);
+                }
               }}
             >
               {t("common.browse")}
@@ -1130,130 +1151,207 @@
 
         {#if recentRepos.length > 0}
           <div class="form-field">
-            <span class="form-label">{t("wsModal.open.recentAndAliases")}</span>
-            <div class="list-box">
-              {#each recentRepos as r (r)}
-                {@const isMissing = repoMissingStatus[r]}
-                {@const alias = repoAliases[r]}
-                <div class="list-row {r === activeRepo ? 'is-active' : ''}" style="flex-direction: column; align-items: stretch; gap: 6px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                    <button
-                      type="button"
-                      disabled={isMissing}
-                      onclick={() => { openRepoPath = r; }}
-                      style="flex: 1; min-width: 0; text-align: left;"
-                    >
-                      <div style="font-weight: 600; display: flex; align-items: center; gap: 6px; font-size: 12px;">
-                        <span>{alias || pathBaseName(r) || r}</span>
-                        {#if alias}
-                          <span style="font-size: 10px; font-weight: 400; color: var(--text-muted); font-family: var(--font-mono);">
-                            ({pathBaseName(r)})
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <span class="form-label">{t("wsModal.open.recentAndAliases")}</span>
+              {#if isLoadingRepoSummaries}
+                <span style="font-size: 10px; color: var(--text-muted);">{t("wsModal.open.loadingSummary")}</span>
+              {/if}
+            </div>
+            <input
+              type="search"
+              class="form-input"
+              aria-label={t("wsModal.open.searchPlaceholder")}
+              placeholder={t("wsModal.open.searchPlaceholder")}
+              bind:value={openRepoFilter}
+            />
+            {#if filteredRecents.length === 0}
+              <div style="padding: 14px; text-align: center; font-size: 12px; color: var(--text-muted); border: 1px solid var(--border-default); border-radius: var(--radius-sm);">
+                {t("wsModal.open.emptyFilter")}
+              </div>
+            {:else}
+              <div class="repo-list-box">
+                {#each filteredRecents as r (r)}
+                  {@const sum = repoSummaries[r]}
+                  {@const isMissing = sum ? !sum.exists : Boolean(repoMissingStatus[r])}
+                  {@const alias = repoAliases[r]}
+                  {@const iconKind = isMissing ? "missing" : sum?.provider || "local"}
+                  {@const pushCount = sum ? (sum.has_upstream ? sum.ahead : sum.unpushed_commits) : 0}
+                  <div class="repo-card {r === activeRepo ? 'is-active' : ''} {isMissing ? 'is-missing' : ''}">
+                    <div class="repo-card-top">
+                      <button
+                        type="button"
+                        class="repo-card-trigger"
+                        disabled={isMissing}
+                        onclick={() => {
+                          onClose();
+                          onLoadRepo(r);
+                        }}
+                      >
+                        <span class="repo-card-icon">
+                          <ProviderIcon provider={iconKind} size={17} />
+                        </span>
+                        <span class="repo-card-body">
+                          <span class="repo-card-title-row">
+                            <span class="repo-card-name">{alias || pathBaseName(r) || r}</span>
+                            {#if alias}
+                              <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);">
+                                ({pathBaseName(r)})
+                              </span>
+                            {/if}
+                            {#if r === activeRepo}
+                              <span class="badge-accent">{t("wsModal.open.activeBadge")}</span>
+                            {/if}
+                            {#if isMissing}
+                              <span class="badge-warn">{t("wsModal.open.missingBadge")}</span>
+                            {/if}
                           </span>
+                          <span class="repo-card-path">{r}</span>
+                          {#if sum && !isMissing && sum.is_git}
+                            <span class="repo-status-row">
+                              {#if sum.branch}
+                                <span class="repo-chip repo-chip-branch">
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                    <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
+                                  </svg>
+                                  {sum.branch}
+                                </span>
+                              {/if}
+                              {#if sum.dirty_count > 0}
+                                <span class="repo-chip repo-chip-dirty">
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                    <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Z" />
+                                  </svg>
+                                  {t("wsModal.open.dirtyBadge", { count: sum.dirty_count })}
+                                </span>
+                              {/if}
+                              {#if pushCount > 0}
+                                <span class="repo-chip repo-chip-push">
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                    <path d="M3.47 7.78a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l4.25 4.25a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018L9 4.81v7.44a.75.75 0 0 1-1.5 0V4.81L4.53 7.78a.75.75 0 0 1-1.06 0Z" />
+                                  </svg>
+                                  {t("wsModal.open.pushBadge", { count: pushCount })}
+                                </span>
+                              {/if}
+                              {#if sum.behind > 0}
+                                <span class="repo-chip repo-chip-pull">
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                    <path d="M12.53 8.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L2.97 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L7 11.19V3.75a.75.75 0 0 1 1.5 0v7.44l2.97-2.97a.75.75 0 0 1 1.06 0Z" />
+                                  </svg>
+                                  {t("wsModal.open.pullBadge", { count: sum.behind })}
+                                </span>
+                              {/if}
+                              {#if sum.has_remote && sum.has_upstream && sum.dirty_count === 0 && pushCount === 0 && sum.behind === 0}
+                                <span class="repo-chip repo-chip-synced">✓ {t("wsModal.open.syncedBadge")}</span>
+                              {:else if !sum.has_remote}
+                                <span class="badge-neutral">{t("wsModal.open.localBadge")}</span>
+                              {/if}
+                            </span>
+                          {/if}
+                        </span>
+                        {#if !isMissing}
+                          <span class="repo-card-open-cue">{t("wsModal.open.openCardHint")} →</span>
                         {/if}
-                        {#if isMissing}
-                          <span style="font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--danger-bg); color: var(--diff-del-text); font-weight: 700;">
-                            {t("wsModal.open.missingBadge")}
-                          </span>
-                        {/if}
-                      </div>
-                      <div style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {r}
-                      </div>
-                    </button>
+                      </button>
 
-                    <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                      {#if isMissing}
+                      <div class="repo-card-actions">
+                        {#if isMissing}
+                          <button
+                            type="button"
+                            class="btn-secondary btn-xs"
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              relocatingPathFor = relocatingPathFor === r ? null : r;
+                              relocateInput = r;
+                            }}
+                          >
+                            {t("wsModal.open.relocateBtn")}
+                          </button>
+                        {/if}
                         <button
                           type="button"
                           class="btn-secondary btn-xs"
-                          onclick={() => {
-                            relocatingPathFor = relocatingPathFor === r ? null : r;
-                            relocateInput = r;
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            editingAliasFor = editingAliasFor === r ? null : r;
+                            aliasInput = alias || "";
                           }}
                         >
-                          {t("wsModal.open.relocateBtn")}
+                          {t("wsModal.open.aliasBtn")}
                         </button>
-                      {/if}
-                      <button
-                        type="button"
-                        class="btn-secondary btn-xs"
-                        onclick={() => {
-                          editingAliasFor = editingAliasFor === r ? null : r;
-                          aliasInput = alias || "";
-                        }}
-                      >
-                        {t("wsModal.open.aliasBtn")}
-                      </button>
-                      <button
-                        type="button"
-                        class="btn-secondary btn-xs btn-danger"
-                        aria-label={t("wsModal.open.removeAria", { path: r })}
-                        onclick={() => onRemoveRecent(r)}
-                      >
-                        {t("common.delete")}
-                      </button>
+                        <button
+                          type="button"
+                          class="btn-secondary btn-xs btn-danger"
+                          aria-label={t("wsModal.open.removeAria", { path: r })}
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            onRemoveRecent(r);
+                          }}
+                        >
+                          {t("common.delete")}
+                        </button>
+                      </div>
                     </div>
+
+                    {#if editingAliasFor === r}
+                      <div style="display: flex; gap: 6px; padding-top: 2px;">
+                        <input
+                          type="text"
+                          class="form-input"
+                          aria-label={t("wsModal.open.aliasAria", { path: r })}
+                          placeholder={t("wsModal.open.aliasPlaceholder")}
+                          bind:value={aliasInput}
+                          style="flex: 1; font-size: 11px;"
+                        />
+                        <button
+                          type="button"
+                          class="btn-primary btn-xs"
+                          onclick={() => {
+                            onSetAlias(r, aliasInput);
+                            editingAliasFor = null;
+                          }}
+                        >
+                          {t("common.save")}
+                        </button>
+                      </div>
+                    {/if}
+
+                    {#if relocatingPathFor === r}
+                      <div style="display: flex; gap: 6px; padding-top: 2px;">
+                        <input
+                          type="text"
+                          class="form-input"
+                          aria-label={t("wsModal.open.relocateAria", { path: r })}
+                          placeholder={t("wsModal.open.relocatePlaceholder")}
+                          bind:value={relocateInput}
+                          style="flex: 1; font-size: 11px;"
+                        />
+                        <button
+                          type="button"
+                          class="btn-secondary btn-xs"
+                          disabled={isBrowsingDir}
+                          onclick={async () => {
+                            const picked = await browseDirectory(relocateInput, t("wsModal.open.relocatePickerTitle"), false);
+                            if (picked) relocateInput = picked;
+                          }}
+                        >
+                          {t("common.browse")}
+                        </button>
+                        <button
+                          type="button"
+                          class="btn-primary btn-xs"
+                          onclick={async () => {
+                            await onRelocateRepo(r, relocateInput);
+                            relocatingPathFor = null;
+                          }}
+                        >
+                          {t("wsModal.open.moveBtn")}
+                        </button>
+                      </div>
+                    {/if}
                   </div>
-
-                  {#if editingAliasFor === r}
-                    <div style="display: flex; gap: 6px; padding-top: 2px;">
-                      <input
-                        type="text"
-                        class="form-input"
-                        aria-label={t("wsModal.open.aliasAria", { path: r })}
-                        placeholder={t("wsModal.open.aliasPlaceholder")}
-                        bind:value={aliasInput}
-                        style="flex: 1; font-size: 11px;"
-                      />
-                      <button
-                        type="button"
-                        class="btn-primary btn-xs"
-                        onclick={() => {
-                          onSetAlias(r, aliasInput);
-                          editingAliasFor = null;
-                        }}
-                      >
-                        {t("common.save")}
-                      </button>
-                    </div>
-                  {/if}
-
-                  {#if relocatingPathFor === r}
-                    <div style="display: flex; gap: 6px; padding-top: 2px;">
-                      <input
-                        type="text"
-                        class="form-input"
-                        aria-label={t("wsModal.open.relocateAria", { path: r })}
-                        placeholder={t("wsModal.open.relocatePlaceholder")}
-                        bind:value={relocateInput}
-                        style="flex: 1; font-size: 11px;"
-                      />
-                      <button
-                        type="button"
-                        class="btn-secondary btn-xs"
-                        disabled={isBrowsingDir}
-                        onclick={async () => {
-                          const picked = await browseDirectory(relocateInput, t("wsModal.open.relocatePickerTitle"), false);
-                          if (picked) relocateInput = picked;
-                        }}
-                      >
-                        {t("common.browse")}
-                      </button>
-                      <button
-                        type="button"
-                        class="btn-primary btn-xs"
-                        onclick={async () => {
-                          await onRelocateRepo(r, relocateInput);
-                          relocatingPathFor = null;
-                        }}
-                      >
-                        {t("wsModal.open.moveBtn")}
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
 
@@ -2432,14 +2530,39 @@
                   <span class="settings-group-title">{t("wsModal.settings.autofetchSection")}</span>
                 </div>
                 <div class="settings-row">
-                  <label class="form-label" for="autofetch-select">{t("wsModal.settings.autofetchLabel")}</label>
-                  <select id="autofetch-select" class="form-select" bind:value={draftAutofetch}>
-                    <option value={0}>{t("wsModal.settings.autofetchOff")}</option>
-                    <option value={1}>{t("wsModal.settings.autofetch1m")}</option>
-                    <option value={5}>{t("wsModal.settings.autofetch5m")}</option>
-                    <option value={10}>{t("wsModal.settings.autofetch10m")}</option>
-                    <option value={15}>{t("wsModal.settings.autofetch15m")}</option>
-                  </select>
+                  <label class="form-label" for="autofetch-seconds">{t("wsModal.settings.autofetchLabel")}</label>
+                  <div class="autofetch-control">
+                    <div class="autofetch-input-group">
+                      <input
+                        id="autofetch-seconds"
+                        type="number"
+                        class="form-input autofetch-input tabular-nums"
+                        min="0"
+                        max="86400"
+                        step="1"
+                        placeholder={t("wsModal.settings.autofetchPlaceholder")}
+                        bind:value={draftAutofetchSeconds}
+                      />
+                      <span class="autofetch-unit">{t("wsModal.settings.autofetchUnitSeconds")}</span>
+                    </div>
+                    <div class="autofetch-presets">
+                      {#each [
+                        { value: 0, label: t("wsModal.settings.autofetchOff") },
+                        { value: 30, label: t("wsModal.settings.autofetch30s") },
+                        { value: 60, label: t("wsModal.settings.autofetch60s") },
+                        { value: 300, label: t("wsModal.settings.autofetch300s") },
+                        { value: 600, label: t("wsModal.settings.autofetch600s") },
+                      ] as preset (preset.value)}
+                        <button
+                          type="button"
+                          class="autofetch-preset-btn {draftAutofetchSeconds === preset.value ? 'active' : ''}"
+                          onclick={() => (draftAutofetchSeconds = preset.value)}
+                        >
+                          {preset.label}
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
                 </div>
                 <p class="settings-hint">{t("wsModal.settings.autofetchHint")}</p>
               </div>
@@ -2760,6 +2883,18 @@
               inlineError = t("wsModal.settings.customEditorRequired");
               return;
             }
+            const parsedAutofetch = Number(draftAutofetchSeconds);
+            if (
+              draftAutofetchSeconds === null ||
+              !Number.isFinite(parsedAutofetch) ||
+              !Number.isInteger(parsedAutofetch) ||
+              parsedAutofetch < 0 ||
+              parsedAutofetch > 86400
+            ) {
+              settingsTab = "safety";
+              inlineError = t("wsModal.settings.autofetchInvalid");
+              return;
+            }
             inlineError = "";
             const aiOk = await persistAiConfig(aiConfig.memory_only);
             if (!aiOk && aiKeyringFallbackPending) {
@@ -2771,7 +2906,7 @@
               globalConfig: draftGlobalConfig,
               activeTheme: draftTheme,
               locale: draftLocale,
-              autofetchMinutes: draftAutofetch,
+              autofetchSeconds: parsedAutofetch,
               confirmDiscard: draftConfirmDiscard,
               confirmForcePush: draftConfirmForcePush,
               desktopNotifEnabled: draftDesktopNotif,

@@ -52,12 +52,39 @@
   let branchToRename = $state<string | null>(null);
   let renameBranchInput = $state("");
   let inlineError = $state("");
+  let branchFilterTab = $state<"all" | "local" | "remote">("all");
+  let isFetchingBranches = $state(false);
 
-  let filteredBranches = $derived(
-    branches.filter((b) =>
-      b.name.toLowerCase().includes(branchSearch.trim().toLowerCase())
-    )
-  );
+  let localBranches = $derived(branches.filter((b) => !b.is_remote));
+  let remoteBranches = $derived(branches.filter((b) => Boolean(b.is_remote)));
+
+  let filteredBranches = $derived.by(() => {
+    const q = branchSearch.trim().toLowerCase();
+    const pool =
+      branchFilterTab === "local"
+        ? localBranches
+        : branchFilterTab === "remote"
+          ? remoteBranches
+          : branches;
+    if (!q) return pool;
+    return pool.filter((b) => b.name.toLowerCase().includes(q));
+  });
+
+  async function handleFetchAllBranches() {
+    inlineError = "";
+    isFetchingBranches = true;
+    try {
+      await gitService.fetchAllRemotes(activeRepo);
+      branches = await gitService.listBranches(activeRepo);
+      onStatus(t("branchModal.fetchedStatus"));
+    } catch (err) {
+      inlineError = String(err);
+      onStatus(String(err), true);
+    } finally {
+      isFetchingBranches = false;
+    }
+  }
+
 
   async function handleSwitchBranch(name: string) {
     if (hasDirtyFiles) {
@@ -303,6 +330,47 @@
         placeholder={t("branchModal.filterPlaceholder")}
         bind:value={branchSearch}
       />
+      {#if hasRemote}
+        <div class="branch-toolbar">
+          <div class="branch-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={branchFilterTab === "all"}
+              class="branch-tab {branchFilterTab === 'all' ? 'active' : ''}"
+              onclick={() => (branchFilterTab = "all")}
+            >
+              {t("branchModal.tabAll", { count: branches.length })}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={branchFilterTab === "local"}
+              class="branch-tab {branchFilterTab === 'local' ? 'active' : ''}"
+              onclick={() => (branchFilterTab = "local")}
+            >
+              {t("branchModal.tabLocal", { count: localBranches.length })}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={branchFilterTab === "remote"}
+              class="branch-tab {branchFilterTab === 'remote' ? 'active' : ''}"
+              onclick={() => (branchFilterTab = "remote")}
+            >
+              {t("branchModal.tabRemote", { count: remoteBranches.length })}
+            </button>
+          </div>
+          <button
+            type="button"
+            class="btn-secondary btn-xs"
+            disabled={isFetchingBranches}
+            onclick={handleFetchAllBranches}
+          >
+            {isFetchingBranches ? t("branchModal.fetchingBtn") : t("branchModal.fetchAllBtn")}
+          </button>
+        </div>
+      {/if}
       <div style="display: flex; flex-wrap: wrap; gap: 6px;">
         <input
           type="text"
@@ -358,10 +426,11 @@
         {:else}
           {#each filteredBranches as b (b.name)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="list-row {b.is_current ? 'is-active' : ''}" oncontextmenu={(e) => openBranchContextMenu(e, b)}>
+            <div class="list-row {b.is_current ? 'is-active' : ''}" oncontextmenu={(e) => { if (!b.is_remote) openBranchContextMenu(e, b); }}>
               <button
                 type="button"
                 onclick={() => handleSwitchBranch(b.name)}
+                title={b.is_remote ? t("branchModal.checkoutRemoteTitle", { name: b.name }) : undefined}
                 onmouseenter={() => {
                   if (!b.is_current) onInspectBranch?.(b.name);
                 }}
@@ -373,35 +442,39 @@
                 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; {b.is_current ? 'font-weight: 600;' : ''}">
                   {b.name}
                 </span>
-                {#if b.is_current}
+                {#if b.is_remote}
+                  <span class="badge-accent" style="flex-shrink: 0;">{b.remote_name || t("branchModal.remoteBadge")}</span>
+                {:else if b.is_current}
                   <span style="color: var(--text-accent); font-size: 10px; font-weight: 600; flex-shrink: 0;">{t("branchModal.activeTag")}</span>
                 {/if}
-                {#if b.upstream_gone}
-                  <span class="badge-warn" style="flex-shrink: 0;" title={t("branchModal.remoteGoneTitle", { upstream: b.upstream || "" })}>
-                    {t("branchModal.remoteGone")}
-                  </span>
-                {:else if !hasRemote}
-                  <span class="badge-neutral" style="flex-shrink: 0;" title={t("branchModal.localOnlyTitle")}>
-                    {t("branchModal.localOnly")}
-                  </span>
-                {:else if b.upstream}
-                  {#if b.ahead === 0 && b.behind === 0}
-                    <span class="badge-success" style="flex-shrink: 0;" title={t("branchModal.syncedTitle", { upstream: b.upstream })}>
-                      {t("branchModal.synced")}
+                {#if !b.is_remote}
+                  {#if b.upstream_gone}
+                    <span class="badge-warn" style="flex-shrink: 0;" title={t("branchModal.remoteGoneTitle", { upstream: b.upstream || "" })}>
+                      {t("branchModal.remoteGone")}
+                    </span>
+                  {:else if !hasRemote}
+                    <span class="badge-neutral" style="flex-shrink: 0;" title={t("branchModal.localOnlyTitle")}>
+                      {t("branchModal.localOnly")}
+                    </span>
+                  {:else if b.upstream}
+                    {#if b.ahead === 0 && b.behind === 0}
+                      <span class="badge-success" style="flex-shrink: 0;" title={t("branchModal.syncedTitle", { upstream: b.upstream })}>
+                        {t("branchModal.synced")}
+                      </span>
+                    {:else}
+                      <span class="badge-warning tabular-nums" style="flex-shrink: 0;" title={t("branchModal.upstreamTitle", { upstream: b.upstream })}>
+                        {b.ahead > 0 ? `${t("branchModal.unpushedPrefix")} ↑${b.ahead}` : ""}{b.ahead > 0 && b.behind > 0 ? " " : ""}{b.behind > 0 ? `↓${b.behind}` : ""}
+                      </span>
+                    {/if}
+                  {:else if b.is_pushed}
+                    <span class="badge-neutral" style="flex-shrink: 0;" title={t("branchModal.onRemoteTitle")}>
+                      {t("branchModal.onRemote")}
                     </span>
                   {:else}
-                    <span class="badge-warning tabular-nums" style="flex-shrink: 0;" title={t("branchModal.upstreamTitle", { upstream: b.upstream })}>
-                      {b.ahead > 0 ? `${t("branchModal.unpushedPrefix")} ↑${b.ahead}` : ""}{b.ahead > 0 && b.behind > 0 ? " " : ""}{b.behind > 0 ? `↓${b.behind}` : ""}
+                    <span class="badge-warning" style="flex-shrink: 0;" title={t("branchModal.neverPushedTitle")}>
+                      {t("branchModal.unpushedPrefix")}
                     </span>
                   {/if}
-                {:else if b.is_pushed}
-                  <span class="badge-neutral" style="flex-shrink: 0;" title={t("branchModal.onRemoteTitle")}>
-                    {t("branchModal.onRemote")}
-                  </span>
-                {:else}
-                  <span class="badge-warning" style="flex-shrink: 0;" title={t("branchModal.neverPushedTitle")}>
-                    {t("branchModal.unpushedPrefix")}
-                  </span>
                 {/if}
                 {#if !b.is_current && branchDivergenceMap[b.name]}
                   {@const div = branchDivergenceMap[b.name]}
@@ -415,7 +488,7 @@
               </button>
 
               <div class="branch-row-actions">
-                {#if hasRemote && hasCommits && (!b.is_pushed || b.ahead > 0)}
+                {#if !b.is_remote && hasRemote && hasCommits && (!b.is_pushed || b.ahead > 0)}
                   <button
                     type="button"
                     onclick={() => handlePushBranch(b.name)}
@@ -435,12 +508,14 @@
                   <button type="button" onclick={() => handleRebase(b.name)} class="btn-secondary btn-xs" title={t("branchModal.rebaseTitle")}>
                     {t("branchModal.rebaseBtn")}
                   </button>
-                  <button type="button" onclick={() => handleStartRename(b.name)} class="btn-secondary btn-xs" title={t("branchModal.renameTitle")}>
-                    {t("branchModal.renameBtn")}
-                  </button>
-                  <button type="button" onclick={() => handleDeleteBranch(b.name, b.is_current)} class="btn-secondary btn-xs btn-danger branch-delete-btn" title={t("branchModal.deleteBtnTitle")}>
-                    {t("branchModal.deleteBtn")}
-                  </button>
+                  {#if !b.is_remote}
+                    <button type="button" onclick={() => handleStartRename(b.name)} class="btn-secondary btn-xs" title={t("branchModal.renameTitle")}>
+                      {t("branchModal.renameBtn")}
+                    </button>
+                    <button type="button" onclick={() => handleDeleteBranch(b.name, b.is_current)} class="btn-secondary btn-xs btn-danger branch-delete-btn" title={t("branchModal.deleteBtnTitle")}>
+                      {t("branchModal.deleteBtn")}
+                    </button>
+                  {/if}
                 {/if}
               </div>
             </div>

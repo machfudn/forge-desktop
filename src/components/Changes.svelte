@@ -417,15 +417,6 @@
           onclick={() => onSelectFile(file)}
           title={file.path}
         >
-          <span class="file-status-badge {badge.class}">
-            {#if badge.isAdded}
-              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
-              </svg>
-            {:else}
-              {badge.text}
-            {/if}
-          </span>
           {#if file.is_lfs}
             <span class="badge-lfs">LFS</span>
           {/if}
@@ -435,6 +426,15 @@
               <span class="file-base">{file.path.slice(slashIdx + 1)}</span>
             {:else}
               <span class="file-base">{file.path}</span>
+            {/if}
+          </span>
+          <span class="file-status-badge {badge.class}">
+            {#if badge.isAdded}
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+              </svg>
+            {:else}
+              {badge.text}
             {/if}
           </span>
         </button>
