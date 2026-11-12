@@ -2,11 +2,23 @@ pub mod commands;
 pub mod diagnostics;
 pub mod git;
 pub mod system;
+pub mod updater;
+use crate::git::AccountManager;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("forge-desktop"));
+            app.manage(AccountManager::new(app_data_dir));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::inspect_repository,
             commands::stage_file,
@@ -18,6 +30,8 @@ pub fn run() {
             commands::get_file_diff,
             commands::add_to_gitignore,
             commands::get_commit_history,
+            commands::get_commit_detail,
+            commands::get_commit_file_diff,
             commands::list_branches,
             commands::switch_branch,
             commands::create_branch,
@@ -34,6 +48,9 @@ pub fn run() {
             commands::abort_merge,
             commands::abort_rebase,
             commands::list_remotes,
+            commands::add_remote,
+            commands::set_remote_url,
+            commands::remove_remote,
             commands::get_branch_ahead_behind,
             commands::git_fetch,
             commands::git_pull,
@@ -44,8 +61,16 @@ pub fn run() {
             commands::get_repo_config,
             commands::set_repo_config,
             commands::github_start_device_flow,
-            commands::github_poll_token,
-            commands::configure_git_credentials,
+            commands::list_github_accounts,
+            commands::verify_and_connect_pat,
+            commands::poll_and_connect_device_flow,
+            commands::detect_local_github_sessions,
+            commands::import_local_github_session,
+            commands::bind_account_to_repo,
+            commands::set_default_github_account,
+            commands::remove_github_account,
+            commands::update_github_account_label,
+            commands::check_github_account_status,
             commands::discard_file_changes,
             commands::discard_all_changes,
             commands::git_stash_save,
@@ -54,6 +79,7 @@ pub fn run() {
             commands::git_stash_show,
             commands::git_stash_drop,
             commands::check_repo_exists,
+            commands::get_repo_path_state,
             commands::get_diagnostics,
             commands::open_in_file_manager,
             commands::open_in_terminal,
@@ -71,9 +97,10 @@ pub fn run() {
             commands::publish_repository_to_github,
             commands::sync_fork,
             commands::get_image_diff,
+            commands::get_app_runtime_info,
             commands::check_app_update,
+            commands::install_app_update,
             commands::stage_hunk,
-            commands::interactive_rebase,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

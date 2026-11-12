@@ -1,10 +1,25 @@
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
-    self, AheadBehind, AppUpdateInfo, BranchInfo, CheckRunInfo, CommitInfo, DeviceFlowInit,
-    ImageDiffData, IssueInfo, PublishRepoParams, PullRequestInfo, RebaseStep, RemoteInfo,
-    RepoConfig, RepoStatus, TokenPollResult,
+    self, AccountHealth, AccountManager, AccountOverview, AccountProfile, AheadBehind,
+    BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, DetectedSession, DeviceFlowInit,
+    DeviceFlowPollOutcome, ImageDiffData, IssueInfo, LocalSessionSource, ParsedGitHubRepo,
+    PublishRepoParams, PullRequestInfo, RebaseStep, RemoteInfo, RepoConfig, RepoStatus,
+    GITHUB_PUBLIC_HOST,
 };
 use crate::system;
+use crate::updater::{self, AppRuntimeInfo, AppUpdateInfo, UpdateApplyResult, UpdateChannel};
+use tauri::State;
+
+fn resolve_remote_creds(
+    accounts: &AccountManager,
+    repo: &str,
+    remote: Option<&str>,
+) -> Option<(String, String)> {
+    let host = git::infer_remote_host(repo, remote)?;
+    accounts
+        .resolve_account_for_repo(Some(repo), &host)
+        .map(|(p, t)| (p.login, t))
+}
 
 #[tauri::command]
 pub fn inspect_repository(repo: &str) -> Result<RepoStatus, String> {
@@ -65,6 +80,28 @@ pub fn add_to_gitignore(repo: &str, pattern: &str) -> Result<(), String> {
 pub fn get_commit_history(repo: &str, limit: Option<usize>) -> Result<Vec<CommitInfo>, String> {
     let lim = limit.unwrap_or(50);
     git::get_history(repo, lim)
+}
+
+#[tauri::command]
+pub fn get_commit_detail(repo: &str, sha: &str) -> Result<CommitDetail, String> {
+    git::get_commit_detail(repo, sha)
+}
+
+#[tauri::command]
+pub fn get_commit_file_diff(
+    repo: &str,
+    sha: &str,
+    file_path: &str,
+    old_path: Option<&str>,
+    ignore_whitespace: Option<bool>,
+) -> Result<String, String> {
+    git::get_commit_file_diff(
+        repo,
+        sha,
+        file_path,
+        old_path,
+        ignore_whitespace.unwrap_or(false),
+    )
 }
 
 #[tauri::command]
@@ -152,23 +189,69 @@ pub fn list_remotes(repo: &str) -> Result<Vec<RemoteInfo>, String> {
 }
 
 #[tauri::command]
+pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
+    git::add_remote(repo, name, url)
+}
+
+#[tauri::command]
+pub fn set_remote_url(repo: &str, name: &str, url: &str) -> Result<String, String> {
+    git::set_remote_url(repo, name, url)
+}
+
+#[tauri::command]
+pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
+    git::remove_remote(repo, name)
+}
+
+#[tauri::command]
 pub fn get_branch_ahead_behind(repo: &str, branch: &str) -> Result<AheadBehind, String> {
     git::get_ahead_behind(repo, branch)
 }
 
 #[tauri::command]
-pub fn git_fetch(repo: &str, remote: Option<&str>) -> Result<String, String> {
-    git::fetch(repo, remote)
+pub fn git_fetch(
+    repo: &str,
+    remote: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let creds = resolve_remote_creds(&accounts, repo, remote);
+    git::fetch(
+        repo,
+        remote,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 #[tauri::command]
-pub fn git_pull(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<String, String> {
-    git::pull(repo, remote, branch)
+pub fn git_pull(
+    repo: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let creds = resolve_remote_creds(&accounts, repo, remote);
+    git::pull(
+        repo,
+        remote,
+        branch,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 #[tauri::command]
-pub fn git_push(repo: &str, remote: Option<&str>, branch: Option<&str>) -> Result<String, String> {
-    git::push(repo, remote, branch)
+pub fn git_push(
+    repo: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let creds = resolve_remote_creds(&accounts, repo, remote);
+    git::push(
+        repo,
+        remote,
+        branch,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 #[tauri::command]
@@ -176,13 +259,32 @@ pub fn git_force_push(
     repo: &str,
     remote: Option<&str>,
     branch: Option<&str>,
+    accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    git::force_push(repo, remote, branch)
+    let creds = resolve_remote_creds(&accounts, repo, remote);
+    git::force_push(
+        repo,
+        remote,
+        branch,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 #[tauri::command]
-pub fn clone_repository(url: &str, target_dir: &str) -> Result<String, String> {
-    git::clone_repository(url, target_dir)
+pub fn clone_repository(
+    url: &str,
+    target_dir: &str,
+    account_id: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let creds = git::extract_host_from_url(url)
+        .and_then(|host| accounts.resolve_account(account_id, None, &host))
+        .map(|(p, t)| (p.login, t));
+    git::clone_repository(
+        url,
+        target_dir,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 #[tauri::command]
@@ -206,20 +308,123 @@ pub fn set_repo_config(repo: &str, user_name: &str, user_email: &str) -> Result<
 }
 
 #[tauri::command]
-pub fn github_start_device_flow(client_id: &str) -> Result<DeviceFlowInit, String> {
-    git::start_device_flow(client_id)
+pub fn github_start_device_flow(
+    host: Option<&str>,
+    client_id: &str,
+) -> Result<DeviceFlowInit, String> {
+    git::start_device_flow(host, client_id)
 }
 
 #[tauri::command]
-pub fn github_poll_token(client_id: &str, device_code: &str) -> Result<TokenPollResult, String> {
-    git::poll_device_token(client_id, device_code)
+pub fn list_github_accounts(
+    repo: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountOverview, String> {
+    Ok(accounts.list_overview(repo))
 }
 
 #[tauri::command]
-pub fn configure_git_credentials(username: &str, token: &str) -> Result<(), String> {
-    git::configure_git_credentials(username, token)
+pub fn verify_and_connect_pat(
+    host: Option<&str>,
+    token: &str,
+    label: Option<&str>,
+    allow_memory_fallback: Option<bool>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountProfile, String> {
+    git::verify_and_connect_pat(
+        &accounts,
+        host,
+        token,
+        label,
+        allow_memory_fallback.unwrap_or(false),
+    )
 }
 
+#[tauri::command]
+pub fn poll_and_connect_device_flow(
+    host: Option<&str>,
+    client_id: &str,
+    device_code: &str,
+    label: Option<&str>,
+    allow_memory_fallback: Option<bool>,
+    accounts: State<'_, AccountManager>,
+) -> Result<DeviceFlowPollOutcome, String> {
+    git::poll_and_connect_device_flow(
+        &accounts,
+        host,
+        client_id,
+        device_code,
+        label,
+        allow_memory_fallback.unwrap_or(false),
+    )
+}
+
+#[tauri::command]
+pub fn detect_local_github_sessions(host: Option<&str>) -> Result<Vec<DetectedSession>, String> {
+    git::detect_local_github_sessions(host.unwrap_or(GITHUB_PUBLIC_HOST))
+}
+
+#[tauri::command]
+pub fn import_local_github_session(
+    host: &str,
+    source: LocalSessionSource,
+    label: Option<&str>,
+    allow_memory_fallback: Option<bool>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountProfile, String> {
+    git::import_local_github_session(
+        &accounts,
+        host,
+        &source,
+        label,
+        allow_memory_fallback.unwrap_or(false),
+    )
+}
+
+#[tauri::command]
+pub fn bind_account_to_repo(
+    repo: &str,
+    account_id: &str,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountOverview, String> {
+    accounts.bind_repo(repo, account_id)
+}
+
+#[tauri::command]
+pub fn set_default_github_account(
+    account_id: &str,
+    repo: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountOverview, String> {
+    accounts.set_default(account_id, repo)
+}
+
+#[tauri::command]
+pub fn remove_github_account(
+    account_id: &str,
+    repo: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountOverview, String> {
+    accounts.remove_account(account_id, repo)
+}
+
+#[tauri::command]
+pub fn update_github_account_label(
+    account_id: &str,
+    label: Option<&str>,
+    repo: Option<&str>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountOverview, String> {
+    accounts.update_label(account_id, label, repo)
+}
+
+#[tauri::command]
+pub fn check_github_account_status(
+    account_id: &str,
+    accounts: State<'_, AccountManager>,
+) -> Result<AccountHealth, String> {
+    git::check_account_health(&accounts, account_id)
+}
 #[tauri::command]
 pub fn discard_file_changes(repo: &str, file_path: &str) -> Result<(), String> {
     git::discard_changes(repo, file_path)
@@ -261,6 +466,11 @@ pub fn check_repo_exists(path: &str) -> Result<bool, String> {
 }
 
 #[tauri::command]
+pub fn get_repo_path_state(path: &str) -> Result<String, String> {
+    Ok(git::get_repo_path_state(path))
+}
+
+#[tauri::command]
 pub fn get_diagnostics(repo: Option<&str>) -> Result<DiagnosticReport, String> {
     Ok(diagnostics::generate_report(repo))
 }
@@ -281,26 +491,42 @@ pub fn open_in_editor(path: &str, editor: Option<&str>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn parse_github_repository(remote_url: &str) -> Result<Option<(String, String)>, String> {
-    Ok(git::parse_github_repo(remote_url))
+pub fn parse_github_repository(
+    remote_url: &str,
+    accounts: State<'_, AccountManager>,
+) -> Result<Option<ParsedGitHubRepo>, String> {
+    let hosts = accounts.registered_hosts();
+    Ok(git::parse_github_repo_with_hosts(remote_url, &hosts))
 }
 
 #[tauri::command]
 pub fn list_github_pull_requests(
     owner: &str,
     repo: &str,
-    token: Option<&str>,
+    host: Option<&str>,
+    repo_path: Option<&str>,
+    accounts: State<'_, AccountManager>,
 ) -> Result<Vec<PullRequestInfo>, String> {
-    git::list_pull_requests(owner, repo, token)
+    let target_host = host.unwrap_or(GITHUB_PUBLIC_HOST);
+    let token = accounts
+        .resolve_account_for_repo(repo_path, target_host)
+        .map(|(_, t)| t);
+    git::list_pull_requests(target_host, owner, repo, token.as_deref())
 }
 
 #[tauri::command]
 pub fn list_github_issues(
     owner: &str,
     repo: &str,
-    token: Option<&str>,
+    host: Option<&str>,
+    repo_path: Option<&str>,
+    accounts: State<'_, AccountManager>,
 ) -> Result<Vec<IssueInfo>, String> {
-    git::list_issues(owner, repo, token)
+    let target_host = host.unwrap_or(GITHUB_PUBLIC_HOST);
+    let token = accounts
+        .resolve_account_for_repo(repo_path, target_host)
+        .map(|(_, t)| t);
+    git::list_issues(target_host, owner, repo, token.as_deref())
 }
 
 #[tauri::command]
@@ -308,8 +534,15 @@ pub fn checkout_github_pull_request(
     repo_path: &str,
     pr_number: u64,
     remote: Option<&str>,
+    accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    git::checkout_pull_request(repo_path, pr_number, remote)
+    let creds = resolve_remote_creds(&accounts, repo_path, remote);
+    git::checkout_pull_request(
+        repo_path,
+        pr_number,
+        remote,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 #[tauri::command]
@@ -317,9 +550,15 @@ pub fn get_commit_check_runs(
     owner: &str,
     repo: &str,
     commit_sha: &str,
-    token: Option<&str>,
+    host: Option<&str>,
+    repo_path: Option<&str>,
+    accounts: State<'_, AccountManager>,
 ) -> Result<Vec<CheckRunInfo>, String> {
-    git::get_commit_check_runs(owner, repo, commit_sha, token)
+    let target_host = host.unwrap_or(GITHUB_PUBLIC_HOST);
+    let token = accounts
+        .resolve_account_for_repo(repo_path, target_host)
+        .map(|(_, t)| t);
+    git::get_commit_check_runs(target_host, owner, repo, commit_sha, token.as_deref())
 }
 
 #[tauri::command]
@@ -368,9 +607,11 @@ pub fn compare_branches(repo: &str, base: &str, target: &str) -> Result<AheadBeh
 pub fn publish_repository_to_github(
     repo: &str,
     params: PublishRepoParams,
-    token: Option<&str>,
+    account_id: Option<&str>,
+    host: Option<&str>,
+    accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    git::publish_repository_to_github(repo, params, token)
+    git::publish_repository_to_github(&accounts, repo, params, account_id, host)
 }
 
 #[tauri::command]
@@ -378,8 +619,16 @@ pub fn sync_fork(
     repo: &str,
     upstream_remote: Option<&str>,
     branch: Option<&str>,
+    accounts: State<'_, AccountManager>,
 ) -> Result<String, String> {
-    git::sync_fork(repo, upstream_remote, branch)
+    let rem = upstream_remote.unwrap_or("upstream");
+    let creds = resolve_remote_creds(&accounts, repo, Some(rem));
+    git::sync_fork(
+        repo,
+        upstream_remote,
+        branch,
+        creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+    )
 }
 
 #[tauri::command]
@@ -388,8 +637,48 @@ pub fn get_image_diff(repo: &str, file_path: &str) -> Result<ImageDiffData, Stri
 }
 
 #[tauri::command]
-pub fn check_app_update(token: Option<&str>) -> Result<AppUpdateInfo, String> {
-    git::check_app_update(token)
+pub fn get_app_runtime_info() -> AppRuntimeInfo {
+    updater::get_app_runtime_info()
+}
+
+#[tauri::command]
+pub async fn check_app_update(
+    channel: Option<String>,
+    accounts: State<'_, AccountManager>,
+) -> Result<AppUpdateInfo, String> {
+    let token = accounts
+        .resolve_account_for_repo(None, GITHUB_PUBLIC_HOST)
+        .map(|(_, t)| t);
+    let ch = UpdateChannel::parse(channel.as_deref());
+    tauri::async_runtime::spawn_blocking(move || updater::check_app_update(ch, token.as_deref()))
+        .await
+        .map_err(|e| format!("Gagal memeriksa pembaruan: {e}"))?
+}
+
+#[tauri::command]
+pub async fn install_app_update(
+    channel: Option<String>,
+    app: tauri::AppHandle,
+    accounts: State<'_, AccountManager>,
+) -> Result<UpdateApplyResult, String> {
+    let token = accounts
+        .resolve_account_for_repo(None, GITHUB_PUBLIC_HOST)
+        .map(|(_, t)| t);
+    let ch = UpdateChannel::parse(channel.as_deref());
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        updater::download_and_install_update(ch, token.as_deref())
+    })
+    .await
+    .map_err(|e| format!("Gagal menjalankan pembaruan: {e}"))??;
+
+    if res.restart_pending {
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(350));
+            handle.exit(0);
+        });
+    }
+    Ok(res)
 }
 
 #[tauri::command]
