@@ -1,4 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { logAppError } from "../utils/appLog.svelte";
 import type {
   AccountHealth,
   AccountOverview,
@@ -40,6 +41,15 @@ import type {
   UpdateChannel,
   WorktreeInfo,
 } from "../types/git";
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await tauriInvoke<T>(cmd, args);
+  } catch (err) {
+    logAppError({ source: `ipc:${cmd}`, error: err });
+    throw err;
+  }
+}
 export async function inspectRepository(repo: string): Promise<RepoStatus> {
   return invoke<RepoStatus>("inspect_repository", { repo });
 }

@@ -53,6 +53,7 @@
     t,
     type Locale,
   } from "./i18n/index.svelte";
+  import { getAppErrorLogs, logAppError } from "./utils/appLog.svelte";
 
   type ModalType = "branch" | WorkspaceModalType | HistoryGithubModalType | null;
 
@@ -126,6 +127,7 @@
   let diagModalSeq = 0;
   let loadRepoSeq = 0;
   const pendingBranchCompares = new Set<string>();
+  const appErrorLogs = $derived(getAppErrorLogs());
 
   // Settings & preferences
   let activeLocale = $state<Locale>(getLocale());
@@ -348,6 +350,9 @@
   function setStatus(msg: string, isError = false) {
     statusMessage = msg;
     statusIsError = isError;
+    if (isError && msg.trim()) {
+      logAppError({ source: "ui", message: msg });
+    }
   }
 
   function isGithubRateLimitError(err: unknown): boolean {
@@ -1447,6 +1452,11 @@
       });
   }
 
+  function openLogsModal() {
+    toolsMenuOpen = false;
+    activeModal = "logs";
+  }
+
   async function handleFetch() {
     if (!activeRepo) return;
     try {
@@ -1941,6 +1951,7 @@
       activeModal === "remote" ||
       activeModal === "stash" ||
       activeModal === "diag" ||
+      activeModal === "logs" ||
       activeModal === "auth" ||
       activeModal === "settings"
       ? activeModal
@@ -2301,7 +2312,9 @@
             syncMenuOpen = false;
           }}
         >
-          {#if appUpdateInfo?.has_update}
+          {#if appErrorLogs.length > 0}
+            <span class="update-dot is-error" title={t("app.errorLogDotTitle", { count: appErrorLogs.length })}></span>
+          {:else if appUpdateInfo?.has_update}
             <span class="update-dot" title={t("app.updateAvailableDotTitle", { version: appUpdateInfo.latest_version })}></span>
           {/if}
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -2437,6 +2450,12 @@
             </button>
             <button type="button" role="menuitem" class="popover-item" onclick={openDiagModal}>
               <span>{t("app.menu.diagnostics")}</span>
+            </button>
+            <button type="button" role="menuitem" class="popover-item" onclick={openLogsModal}>
+              <span>{t("app.menu.appLogs")}</span>
+              {#if appErrorLogs.length > 0}
+                <span class="popover-item-hint is-error">{appErrorLogs.length}</span>
+              {/if}
             </button>
             <button type="button" role="menuitem" class="popover-item" onclick={openSettingsModal}>
               <span>{t("app.menu.settings")}</span>
