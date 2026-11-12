@@ -17,6 +17,12 @@ export interface RepoStatus {
 
 export type RepoPathState = "git" | "non_git" | "missing";
 
+export interface CommitRef {
+  kind: "head" | "branch" | "remote" | "tag" | string;
+  name: string;
+  is_current: boolean;
+}
+
 export interface CommitInfo {
   sha: string;
   short_sha: string;
@@ -25,6 +31,8 @@ export interface CommitInfo {
   summary: string;
   is_pushed: boolean;
   tags?: string[];
+  parents?: string[];
+  refs?: CommitRef[];
 }
 
 export interface CommitChangedFile {
@@ -229,4 +237,119 @@ export interface ParsedGitHubRepo {
   host: string;
   owner: string;
   repo: string;
+}
+
+export interface BlameLine {
+  line_no: number;
+  sha: string;
+  short_sha: string;
+  author: string;
+  author_email: string;
+  date: string;
+  summary: string;
+  content: string;
+}
+
+export interface ConflictBlock {
+  index: number;
+  start_line: number;
+  end_line: number;
+  ours_label: string;
+  theirs_label: string;
+  ours: string;
+  base?: string | null;
+  theirs: string;
+}
+
+export interface ConflictFileData {
+  file_path: string;
+  base_content?: string | null;
+  ours_content?: string | null;
+  theirs_content?: string | null;
+  working_content: string;
+  blocks: ConflictBlock[];
+}
+
+export interface ReflogEntry {
+  sha: string;
+  short_sha: string;
+  selector: string;
+  action: string;
+  date_relative: string;
+  author: string;
+}
+
+export interface SubmoduleInfo {
+  path: string;
+  sha: string;
+  status: "clean" | "modified" | "uninitialized" | "conflict" | string;
+  describe: string;
+  url?: string | null;
+}
+
+export interface WorktreeInfo {
+  path: string;
+  head: string;
+  branch?: string | null;
+  is_bare: boolean;
+  is_detached: boolean;
+  is_locked: boolean;
+  is_prunable: boolean;
+  is_main: boolean;
+}
+
+export type HostingProvider = "github" | "gitlab" | "bitbucket" | "azure_devops";
+
+export interface ParsedHostingRepo {
+  provider: HostingProvider;
+  host: string;
+  namespace: string;
+  repo: string;
+  web_url: string;
+}
+
+export type AiProviderKind = "openai_compatible" | "anthropic";
+
+export interface AiConfigPublic {
+  provider_kind: AiProviderKind;
+  endpoint: string;
+  model: string;
+  system_prompt: string;
+  max_tokens: number;
+  has_api_key: boolean;
+  api_key_preview: string;
+  memory_only: boolean;
+}
+
+export interface SaveAiConfigInput {
+  provider_kind: AiProviderKind;
+  endpoint: string;
+  model: string;
+  system_prompt: string;
+  max_tokens: number;
+  api_key?: string;
+  clear_api_key?: boolean;
+  allow_memory_fallback?: boolean;
+}
+
+export interface AiTestResult {
+  ok: boolean;
+  resolved_url: string;
+  model: string;
+  reply_preview: string;
+  latency_ms: number;
+}
+
+export interface AiTaskResult {
+  content: string;
+  summary?: string | null;
+  description?: string | null;
+  model: string;
+  latency_ms: number;
+}
+
+export interface TerminalExecResult {
+  session_id: string;
+  exit_code: number;
+  cwd: string;
 }

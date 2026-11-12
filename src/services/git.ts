@@ -4,31 +4,42 @@ import type {
   AccountOverview,
   AccountProfile,
   AheadBehind,
+  AiConfigPublic,
+  AiTaskResult,
+  AiTestResult,
   AppRuntimeInfo,
   AppUpdateInfo,
+  BlameLine,
   BranchInfo,
   CheckRunInfo,
   CommitDetail,
   CommitInfo,
+  ConflictFileData,
   DetectedSession,
   DeviceFlowInit,
   DeviceFlowPollOutcome,
   DiagnosticReport,
+  HostingProvider,
   ImageDiffData,
   IssueInfo,
   LocalSessionSource,
   ParsedGitHubRepo,
+  ParsedHostingRepo,
   PublishRepoParams,
   PullRequestInfo,
   RebaseStep,
+  ReflogEntry,
   RemoteInfo,
   RepoConfig,
   RepoPathState,
   RepoStatus,
+  SaveAiConfigInput,
+  SubmoduleInfo,
+  TerminalExecResult,
   UpdateApplyResult,
   UpdateChannel,
+  WorktreeInfo,
 } from "../types/git";
-
 export async function inspectRepository(repo: string): Promise<RepoStatus> {
   return invoke<RepoStatus>("inspect_repository", { repo });
 }
@@ -138,9 +149,10 @@ export async function gitForcePush(
 
 export async function getCommitHistory(
   repo: string,
-  limit?: number
+  limit?: number,
+  allBranches = true
 ): Promise<CommitInfo[]> {
-  return invoke<CommitInfo[]>("get_commit_history", { repo, limit });
+  return invoke<CommitInfo[]>("get_commit_history", { repo, limit, allBranches });
 }
 
 export async function getCommitDetail(repo: string, sha: string): Promise<CommitDetail> {
@@ -624,4 +636,207 @@ export async function interactiveRebase(
   steps: RebaseStep[]
 ): Promise<string> {
   return invoke<string>("interactive_rebase", { repo, baseSha, steps });
+}
+
+export async function stageLines(
+  repo: string,
+  hunkPatch: string,
+  selectedIndices: number[],
+  reverse: boolean
+): Promise<void> {
+  return invoke<void>("stage_lines", { repo, hunkPatch, selectedIndices, reverse });
+}
+
+export async function getFileBlame(
+  repo: string,
+  filePath: string,
+  rev?: string
+): Promise<BlameLine[]> {
+  return invoke<BlameLine[]>("get_file_blame", { repo, filePath, rev });
+}
+
+export async function getFileHistory(
+  repo: string,
+  filePath: string,
+  limit?: number
+): Promise<CommitInfo[]> {
+  return invoke<CommitInfo[]>("get_file_history", { repo, filePath, limit });
+}
+
+export async function getConflictFile(
+  repo: string,
+  filePath: string
+): Promise<ConflictFileData> {
+  return invoke<ConflictFileData>("get_conflict_file", { repo, filePath });
+}
+
+export async function resolveConflictFile(
+  repo: string,
+  filePath: string,
+  resolvedContent: string,
+  stageAfter = true
+): Promise<void> {
+  return invoke<void>("resolve_conflict_file", {
+    repo,
+    filePath,
+    resolvedContent,
+    stageAfter,
+  });
+}
+
+export async function listReflog(repo: string, limit?: number): Promise<ReflogEntry[]> {
+  return invoke<ReflogEntry[]>("list_reflog", { repo, limit });
+}
+
+export async function listSubmodules(repo: string): Promise<SubmoduleInfo[]> {
+  return invoke<SubmoduleInfo[]>("list_submodules", { repo });
+}
+
+export async function addSubmodule(
+  repo: string,
+  url: string,
+  path: string
+): Promise<string> {
+  return invoke<string>("add_submodule", { repo, url, path });
+}
+
+export async function updateSubmodules(
+  repo: string,
+  init = true,
+  recursive = true
+): Promise<string> {
+  return invoke<string>("update_submodules", { repo, init, recursive });
+}
+
+export async function syncSubmodules(repo: string): Promise<string> {
+  return invoke<string>("sync_submodules", { repo });
+}
+
+export async function listWorktrees(repo: string): Promise<WorktreeInfo[]> {
+  return invoke<WorktreeInfo[]>("list_worktrees", { repo });
+}
+
+export async function addWorktree(
+  repo: string,
+  path: string,
+  branch: string,
+  createNewBranch = false
+): Promise<string> {
+  return invoke<string>("add_worktree", { repo, path, branch, createNewBranch });
+}
+
+export async function removeWorktree(
+  repo: string,
+  path: string,
+  force = false
+): Promise<string> {
+  return invoke<string>("remove_worktree", { repo, path, force });
+}
+
+export async function pruneWorktrees(repo: string): Promise<string> {
+  return invoke<string>("prune_worktrees", { repo });
+}
+
+export async function parseHostingRepository(
+  remoteUrl: string
+): Promise<ParsedHostingRepo | null> {
+  return invoke<ParsedHostingRepo | null>("parse_hosting_repository", { remoteUrl });
+}
+
+export async function connectProviderPat(
+  provider: HostingProvider,
+  host: string,
+  token: string,
+  label?: string,
+  allowMemoryFallback = false
+): Promise<AccountProfile> {
+  return invoke<AccountProfile>("connect_provider_pat", {
+    provider,
+    host,
+    token,
+    label,
+    allowMemoryFallback,
+  });
+}
+
+export async function listProviderPullRequests(
+  remoteUrl: string,
+  repo?: string
+): Promise<PullRequestInfo[]> {
+  return invoke<PullRequestInfo[]>("list_provider_pull_requests", { remoteUrl, repo });
+}
+
+export async function listProviderIssues(
+  remoteUrl: string,
+  repo?: string
+): Promise<IssueInfo[]> {
+  return invoke<IssueInfo[]>("list_provider_issues", { remoteUrl, repo });
+}
+
+export async function checkoutProviderPullRequest(
+  repo: string,
+  provider: HostingProvider,
+  prNumber: number,
+  headBranch: string
+): Promise<string> {
+  return invoke<string>("checkout_provider_pull_request", {
+    repo,
+    provider,
+    prNumber,
+    headBranch,
+  });
+}
+
+export async function getAiConfig(): Promise<AiConfigPublic> {
+  return invoke<AiConfigPublic>("get_ai_config");
+}
+
+export async function saveAiConfig(input: SaveAiConfigInput): Promise<AiConfigPublic> {
+  return invoke<AiConfigPublic>("save_ai_config", { input });
+}
+
+export async function testAiConnection(): Promise<AiTestResult> {
+  return invoke<AiTestResult>("test_ai_connection");
+}
+
+export async function aiRunTask(
+  taskKind:
+    | "commit_message"
+    | "resolve_conflict"
+    | "explain_diff"
+    | "explain_commit"
+    | "review_changes"
+    | "custom_ask",
+  promptInput: string,
+  repo?: string,
+  extraContext?: string
+): Promise<AiTaskResult> {
+  return invoke<AiTaskResult>("ai_run_task", {
+    taskKind,
+    promptInput,
+    repo,
+    extraContext,
+  });
+}
+
+export async function runTerminalCommand(
+  sessionId: string,
+  repo: string,
+  command: string,
+  shellKind?: string
+): Promise<TerminalExecResult> {
+  return invoke<TerminalExecResult>("run_terminal_command", {
+    sessionId,
+    repo,
+    command,
+    shellKind,
+  });
+}
+
+export async function killTerminalCommand(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("kill_terminal_command", { sessionId });
+}
+
+export async function getTerminalCwd(sessionId: string, repo: string): Promise<string> {
+  return invoke<string>("get_terminal_cwd", { sessionId, repo });
 }
