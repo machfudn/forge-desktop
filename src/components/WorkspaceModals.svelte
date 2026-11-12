@@ -27,6 +27,12 @@
     pickFile,
   } from "../utils/path";
   import { SUPPORTED_LOCALES, t, type Locale } from "../i18n/index.svelte";
+  import {
+    clearAppErrorLogs,
+    formatAppErrorLogsText,
+    getAppErrorLogs,
+  } from "../utils/appLog.svelte";
+  import { renderMarkdownHtml } from "../utils/markdown";
 
   export type WorkspaceModalType =
     | "open"
@@ -36,6 +42,7 @@
     | "remote"
     | "stash"
     | "diag"
+    | "logs"
     | "auth"
     | "settings";
   interface Props {
@@ -187,6 +194,24 @@
   let stashDiff = $state("");
   let isLoadingStashDiff = $state(false);
 
+  type SettingsTabId = "git" | "appearance" | "safety" | "updates" | "ai";
+  let settingsTab = $state<SettingsTabId>("git");
+  const SETTINGS_TAB_ORDER: SettingsTabId[] = ["git", "appearance", "safety", "updates", "ai"];
+  function handleSettingsTabKeydown(e: KeyboardEvent, current: SettingsTabId) {
+    const idx = SETTINGS_TAB_ORDER.indexOf(current);
+    if (idx < 0) return;
+    let nextIdx = -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") nextIdx = (idx + 1) % SETTINGS_TAB_ORDER.length;
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") nextIdx = (idx - 1 + SETTINGS_TAB_ORDER.length) % SETTINGS_TAB_ORDER.length;
+    else if (e.key === "Home") nextIdx = 0;
+    else if (e.key === "End") nextIdx = SETTINGS_TAB_ORDER.length - 1;
+    if (nextIdx >= 0) {
+      e.preventDefault();
+      const nextId = SETTINGS_TAB_ORDER[nextIdx];
+      settingsTab = nextId;
+      document.getElementById(`settings-tab-${nextId}`)?.focus();
+    }
+  }
   // Settings local drafts
   let draftRepoConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
   let draftGlobalConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
@@ -356,6 +381,7 @@
             .catch((err) => (inlineError = String(err)));
         }
       } else if (m === "settings") {
+        settingsTab = "git";
         settingsAuthorsDirty = false;
         draftRepoConfig = { ...initialRepoConfig };
         draftGlobalConfig = { ...initialGlobalConfig };
@@ -989,6 +1015,23 @@
     window.setTimeout(() => (copiedCode = false), 2000);
   }
 
+  const appErrorLogs = $derived(getAppErrorLogs());
+  function formatLogTime(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function handleReleaseNoteClick(e: MouseEvent) {
+    const target = e.target as HTMLElement | null;
+    const anchor = target?.closest("a");
+    const href = anchor?.getAttribute("href");
+    if (href && /^https?:\/\//i.test(href)) {
+      e.preventDefault();
+      void openExternalUrl(href);
+    }
+  }
+
   const modalTitle = $derived.by(() => {
     switch (modal) {
       case "open": return t("wsModal.titleOpen");
@@ -998,6 +1041,7 @@
       case "remote": return t("wsModal.titleRemote");
       case "stash": return t("wsModal.titleStash");
       case "diag": return t("wsModal.titleDiag");
+      case "logs": return t("wsModal.titleLogs");
       case "auth":
         return authView === "add"
           ? t("wsModal.titleAuthAdd")
@@ -1007,11 +1051,13 @@
   });
 
   const modalWidth = $derived(
-    modal === "stash"
-      ? "720px"
-      : modal === "open" || modal === "diag" || modal === "auth" || modal === "remote"
-        ? "540px"
-        : "480px"
+    modal === "settings"
+      ? "760px"
+      : modal === "stash" || modal === "logs"
+        ? "720px"
+        : modal === "open" || modal === "diag" || modal === "auth" || modal === "remote"
+          ? "540px"
+          : "480px"
   );
 
 </script>
@@ -1049,7 +1095,7 @@
       </div>
     {/if}
 
-    <div class="modal-body">
+    <div class="modal-body {modal === 'settings' ? 'settings-modal-body' : ''}">
       {#if modal === "open"}
         <div class="form-field">
           <label class="form-label" for="open-repo-path">{t("wsModal.open.pathLabel")}</label>
@@ -1552,6 +1598,43 @@
             <div><strong>{t("wsModal.diag.gitVersionLabel")}</strong> {diagReport?.git_version || "-"}</div>
             <div class="form-label" style="margin-top: 4px;">{t("wsModal.diag.sanitizedConfigLabel")}</div>
             <pre style="background: var(--bg-app); border: 1px solid var(--border-default); padding: 10px; border-radius: var(--radius-sm); max-height: 200px; overflow: auto; font-family: var(--font-mono); font-size: 11px; user-select: text;">{diagReport?.sanitized_config.join("\n") || t("wsModal.diag.noConfig")}</pre>
+          </div>
+        {/if}
+
+      {:else if modal === "logs"}
+        <div class="app-logs-toolbar">
+          <span class="app-logs-summary">
+            {appErrorLogs.length === 0
+              ? t("wsModal.logs.emptyCount")
+              : appErrorLogs.length === 1
+                ? t("wsModal.logs.countOne", { count: appErrorLogs.length })
+                : t("wsModal.logs.countMany", { count: appErrorLogs.length })}
+          </span>
+          {#if appErrorLogs.length > 0}
+            <span class="app-logs-hint">{t("wsModal.logs.sessionHint")}</span>
+          {/if}
+        </div>
+        {#if appErrorLogs.length === 0}
+          <div class="app-logs-empty">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.751.751 0 0 0-.018-1.042.751.751 0 0 0-1.042-.018L6.75 9.19 5.28 7.72a.751.751 0 0 0-1.042.018.751.751 0 0 0-.018 1.042l2 2a.75.75 0 0 0 1.06 0Z" />
+            </svg>
+            <span>{t("wsModal.logs.emptyState")}</span>
+          </div>
+        {:else}
+          <div class="app-logs-list" role="log" aria-live="polite">
+            {#each appErrorLogs as entry (entry.id)}
+              <div class="app-log-item">
+                <div class="app-log-meta">
+                  <span class="app-log-time" title={entry.timestamp}>{formatLogTime(entry.timestamp)}</span>
+                  <span class="app-log-source">{entry.source}</span>
+                </div>
+                <div class="app-log-message">{entry.message}</div>
+                {#if entry.detail}
+                  <pre class="app-log-detail">{entry.detail}</pre>
+                {/if}
+              </div>
+            {/each}
           </div>
         {/if}
 
@@ -2155,281 +2238,444 @@
           {/if}
         {/if}
       {:else if modal === "settings"}
-        <div class="modal-section-heading">
-          {t("wsModal.settings.localRepoSection")}{isLoadingSettings ? t("wsModal.settings.loadingSuffix") : ""}
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="repo-user-name">{t("wsModal.settings.repoNameLabel")}</label>
-          <input id="repo-user-name" type="text" class="form-input" bind:value={draftRepoConfig.user_name} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.repoNamePlaceholder")} />
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="repo-user-email">{t("wsModal.settings.repoEmailLabel")}</label>
-          <input id="repo-user-email" type="text" class="form-input" bind:value={draftRepoConfig.user_email} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.repoEmailPlaceholder")} />
-        </div>
-
-        <div class="modal-section-heading">{t("wsModal.settings.globalGitSection")}</div>
-        <div class="form-field">
-          <label class="form-label" for="global-user-name">{t("wsModal.settings.globalNameLabel")}</label>
-          <input id="global-user-name" type="text" class="form-input" bind:value={draftGlobalConfig.user_name} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.globalNamePlaceholder")} />
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="global-user-email">{t("wsModal.settings.globalEmailLabel")}</label>
-          <input id="global-user-email" type="text" class="form-input" bind:value={draftGlobalConfig.user_email} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.globalEmailPlaceholder")} />
-        </div>
-
-        <div class="modal-section-heading">{t("wsModal.settings.appearanceSyncSection")}</div>
-        <div class="settings-row">
-          <label class="form-label" for="language-select">{t("wsModal.settings.languageLabel")}</label>
-          <select id="language-select" class="form-select" bind:value={draftLocale}>
-            {#each SUPPORTED_LOCALES as loc (loc.value)}
-              <option value={loc.value}>{loc.label}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="settings-row">
-          <label class="form-label" for="theme-select">{t("wsModal.settings.themeLabel")}</label>
-          <select id="theme-select" class="form-select" bind:value={draftTheme}>
-            <option value="dark">{t("wsModal.settings.themeDark")}</option>
-            <option value="light">{t("wsModal.settings.themeLight")}</option>
-            <option value="system">{t("wsModal.settings.themeSystem")}</option>
-          </select>
-        </div>
-        <div class="settings-row">
-          <label class="form-label" for="autofetch-select">{t("wsModal.settings.autofetchLabel")}</label>
-          <select id="autofetch-select" class="form-select" bind:value={draftAutofetch}>
-            <option value={0}>{t("wsModal.settings.autofetchOff")}</option>
-            <option value={1}>{t("wsModal.settings.autofetch1m")}</option>
-            <option value={5}>{t("wsModal.settings.autofetch5m")}</option>
-            <option value={10}>{t("wsModal.settings.autofetch10m")}</option>
-            <option value={15}>{t("wsModal.settings.autofetch15m")}</option>
-          </select>
-        </div>
-
-        <div class="modal-section-heading">{t("wsModal.settings.externalEditorSection")}</div>
-        <div class="settings-row">
-          <label class="form-label" for="external-editor-select">{t("wsModal.settings.textEditorLabel")}</label>
-          <select id="external-editor-select" class="form-select" bind:value={draftEditorPreset}>
-            {#each EXTERNAL_EDITOR_PRESETS as preset (preset.value)}
-              <option value={preset.value}>{preset.label}</option>
-            {/each}
-          </select>
-        </div>
-        {#if draftEditorPreset === "custom"}
-          <div class="form-field">
-            <label class="form-label" for="custom-editor-input">{t("wsModal.settings.customEditorLabel")}</label>
-            <div style="display: flex; gap: 6px;">
-              <input
-                id="custom-editor-input"
-                type="text"
-                class="form-input"
-                bind:value={draftCustomEditor}
-                placeholder={t("wsModal.settings.customEditorPlaceholder")}
-                style="flex: 1;"
-              />
-              <button type="button" class="btn-secondary btn-xs" onclick={handlePickCustomEditor}>
-                {t("wsModal.settings.pickBtn")}
-              </button>
-            </div>
+        <div class="settings-shell">
+          <div class="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("wsModal.settings.navAria")}>
+            <button
+              id="settings-tab-git"
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "git"}
+              aria-controls="settings-panel-git"
+              tabindex={settingsTab === "git" ? 0 : -1}
+              class="settings-nav-item {settingsTab === 'git' ? 'active' : ''}"
+              onclick={() => (settingsTab = "git")}
+              onkeydown={(e) => handleSettingsTabKeydown(e, "git")}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.004 6.004 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
+              </svg>
+              <span>{t("wsModal.settings.tabGit")}</span>
+            </button>
+            <button
+              id="settings-tab-appearance"
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "appearance"}
+              aria-controls="settings-panel-appearance"
+              tabindex={settingsTab === "appearance" ? 0 : -1}
+              class="settings-nav-item {settingsTab === 'appearance' ? 'active' : ''}"
+              onclick={() => (settingsTab = "appearance")}
+              onkeydown={(e) => handleSettingsTabKeydown(e, "appearance")}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M1.75 2.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25H1.75ZM0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 13H9.06l1.397 1.397a.75.75 0 1 1-1.06 1.06L7.94 14H4.75a.75.75 0 0 1 0-1.5h9.5V2.5H1.75v10h1a.75.75 0 0 1 0 1.5h-1A1.75 1.75 0 0 1 0 11.25v-8.5Z" />
+              </svg>
+              <span>{t("wsModal.settings.tabAppearance")}</span>
+            </button>
+            <button
+              id="settings-tab-safety"
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "safety"}
+              aria-controls="settings-panel-safety"
+              tabindex={settingsTab === "safety" ? 0 : -1}
+              class="settings-nav-item {settingsTab === 'safety' ? 'active' : ''}"
+              onclick={() => (settingsTab = "safety")}
+              onkeydown={(e) => handleSettingsTabKeydown(e, "safety")}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M7.467.133a1.748 1.748 0 0 1 1.066 0l5.25 1.68A1.75 1.75 0 0 1 15 3.48V7c0 1.566-.32 3.182-1.303 4.682-.983 1.498-2.585 2.813-5.032 3.855a1.697 1.697 0 0 1-1.33 0c-2.447-1.042-4.049-2.357-5.032-3.855C1.32 10.182 1 8.566 1 7V3.48a1.75 1.75 0 0 1 1.217-1.667Zm.61 1.429a.25.25 0 0 0-.153 0l-5.25 1.68a.25.25 0 0 0-.174.238V7c0 1.358.275 2.666 1.057 3.86.784 1.194 2.121 2.34 4.366 3.297a.196.196 0 0 0 .154 0c2.245-.957 3.582-2.103 4.366-3.297C13.225 9.666 13.5 8.358 13.5 7V3.48a.25.25 0 0 0-.174-.237Z" />
+              </svg>
+              <span>{t("wsModal.settings.tabSafety")}</span>
+            </button>
+            <button
+              id="settings-tab-updates"
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "updates"}
+              aria-controls="settings-panel-updates"
+              tabindex={settingsTab === "updates" ? 0 : -1}
+              class="settings-nav-item {settingsTab === 'updates' ? 'active' : ''}"
+              onclick={() => (settingsTab = "updates")}
+              onkeydown={(e) => handleSettingsTabKeydown(e, "updates")}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z" />
+              </svg>
+              <span>{t("wsModal.settings.tabUpdates")}</span>
+            </button>
+            <button
+              id="settings-tab-ai"
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "ai"}
+              aria-controls="settings-panel-ai"
+              tabindex={settingsTab === "ai" ? 0 : -1}
+              class="settings-nav-item {settingsTab === 'ai' ? 'active' : ''}"
+              onclick={() => (settingsTab = "ai")}
+              onkeydown={(e) => handleSettingsTabKeydown(e, "ai")}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M7.53 1.282a.5.5 0 0 1 .94 0l1.158 3.128a2 2 0 0 0 1.186 1.186l3.128 1.158a.5.5 0 0 1 0 .94l-3.128 1.158a2 2 0 0 0-1.186 1.186L8.47 13.166a.5.5 0 0 1-.94 0l-1.158-3.128a2 2 0 0 0-1.186-1.186L2.058 7.694a.5.5 0 0 1 0-.94l3.128-1.158a2 2 0 0 0 1.186-1.186L7.53 1.282Z" />
+              </svg>
+              <span>{t("wsModal.settings.tabAi")}</span>
+            </button>
           </div>
-        {/if}
-        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45;">
-          {#if draftEditorPreset === "system"}
-            {t("wsModal.settings.editorSystemDesc")}
-          {:else}
-            {t("wsModal.settings.editorCustomDesc")}
-          {/if}
-        </div>
 
-        <div class="modal-section-heading">{t("wsModal.settings.updatesSection")}</div>
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px;">
-          <span style="color: var(--text-secondary);">
-            {t("wsModal.settings.currentVersion")}
-            <strong>v{appUpdateInfo?.current_version || appRuntimeInfo?.current_version || "1.1.0"}</strong>
-            {#if appUpdateInfo?.install_mode || appRuntimeInfo?.install_mode}
-              <span style="margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 10px; background: var(--bg-subtle); color: var(--text-muted); border: 1px solid var(--border-subtle);">
-                {(appUpdateInfo?.install_mode || appRuntimeInfo?.install_mode) === "portable" ? "Portable" : "Installed"}
-                ({appUpdateInfo?.package_kind || appRuntimeInfo?.package_kind})
-              </span>
-            {/if}
-          </span>
-          <button
-            type="button"
-            class="btn-secondary btn-xs"
-            disabled={isCheckingUpdate || isInstallingUpdate}
-            onclick={() => onCheckUpdates(draftUpdateChannel)}
-          >
-            {isCheckingUpdate ? t("wsModal.settings.checkingUpdatesBtn") : t("wsModal.settings.checkUpdatesBtn")}
-          </button>
-        </div>
-        <div class="settings-row">
-          <label class="form-label" for="update-channel-select">{t("wsModal.settings.updateChannelLabel")}</label>
-          <select id="update-channel-select" class="form-select" bind:value={draftUpdateChannel}>
-            <option value="auto">{t("wsModal.settings.channelAuto")}</option>
-            <option value="stable">{t("wsModal.settings.channelStable")}</option>
-            <option value="beta">{t("wsModal.settings.channelBeta")}</option>
-          </select>
-        </div>
-        {#if updateError}
-          <div style="font-size: 11px; color: var(--diff-del-text); background: var(--bg-subtle); padding: 8px; border-radius: var(--radius-sm);">
-            {updateError}
-          </div>
-        {/if}
-        {#if appUpdateInfo}
-          <div style="font-size: 11px; color: {appUpdateInfo.has_update ? 'var(--text-accent)' : 'var(--diff-add-text)'}; background: var(--bg-subtle); padding: 8px; border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 6px;">
-            {#if appUpdateInfo.has_update}
-              <div>
-                {t("wsModal.settings.newVersionAvailablePrefix")}<strong>v{appUpdateInfo.latest_version}</strong>
-                {t("wsModal.settings.newVersionAvailableSuffix", { tier: appUpdateInfo.is_prerelease ? "Beta" : "Stable" })}
-                {#if appUpdateInfo.asset_name}
-                  <div style="color: var(--text-muted); margin-top: 2px;">
-                    {t("wsModal.settings.packageLabel", { name: appUpdateInfo.asset_name })}
-                    {#if appUpdateInfo.asset_size}
-                      ({(appUpdateInfo.asset_size / (1024 * 1024)).toFixed(1)} MB)
+          <div class="settings-panel" role="tabpanel" id="settings-panel-{settingsTab}" aria-labelledby="settings-tab-{settingsTab}">
+            {#if settingsTab === "git"}
+              <div class="settings-panel-header">
+                <h4 class="settings-panel-title">{t("wsModal.settings.tabGit")}</h4>
+                <p class="settings-panel-desc">{t("wsModal.settings.tabGitDesc")}</p>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">
+                    {t("wsModal.settings.localRepoSection")}{isLoadingSettings ? t("wsModal.settings.loadingSuffix") : ""}
+                  </span>
+                  <span class="settings-hint">{t("wsModal.settings.localRepoHint")}</span>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-field">
+                    <label class="form-label" for="repo-user-name">{t("wsModal.settings.repoNameLabel")}</label>
+                    <input id="repo-user-name" type="text" class="form-input" bind:value={draftRepoConfig.user_name} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.repoNamePlaceholder")} />
+                  </div>
+                  <div class="form-field">
+                    <label class="form-label" for="repo-user-email">{t("wsModal.settings.repoEmailLabel")}</label>
+                    <input id="repo-user-email" type="text" class="form-input" bind:value={draftRepoConfig.user_email} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.repoEmailPlaceholder")} />
+                  </div>
+                </div>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("wsModal.settings.globalGitSection")}</span>
+                  <span class="settings-hint">{t("wsModal.settings.globalGitHint")}</span>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-field">
+                    <label class="form-label" for="global-user-name">{t("wsModal.settings.globalNameLabel")}</label>
+                    <input id="global-user-name" type="text" class="form-input" bind:value={draftGlobalConfig.user_name} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.globalNamePlaceholder")} />
+                  </div>
+                  <div class="form-field">
+                    <label class="form-label" for="global-user-email">{t("wsModal.settings.globalEmailLabel")}</label>
+                    <input id="global-user-email" type="text" class="form-input" bind:value={draftGlobalConfig.user_email} oninput={() => (settingsAuthorsDirty = true)} placeholder={t("wsModal.settings.globalEmailPlaceholder")} />
+                  </div>
+                </div>
+              </div>
+            {:else if settingsTab === "appearance"}
+              <div class="settings-panel-header">
+                <h4 class="settings-panel-title">{t("wsModal.settings.tabAppearance")}</h4>
+                <p class="settings-panel-desc">{t("wsModal.settings.tabAppearanceDesc")}</p>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("wsModal.settings.appearanceSyncSection")}</span>
+                </div>
+                <div class="settings-row">
+                  <label class="form-label" for="language-select">{t("wsModal.settings.languageLabel")}</label>
+                  <select id="language-select" class="form-select" bind:value={draftLocale}>
+                    {#each SUPPORTED_LOCALES as loc (loc.value)}
+                      <option value={loc.value}>{loc.label}</option>
+                    {/each}
+                  </select>
+                </div>
+                <div class="settings-row">
+                  <label class="form-label" for="theme-select">{t("wsModal.settings.themeLabel")}</label>
+                  <select id="theme-select" class="form-select" bind:value={draftTheme}>
+                    <option value="dark">{t("wsModal.settings.themeDark")}</option>
+                    <option value="light">{t("wsModal.settings.themeLight")}</option>
+                    <option value="system">{t("wsModal.settings.themeSystem")}</option>
+                  </select>
+                </div>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("wsModal.settings.externalEditorSection")}</span>
+                </div>
+                <div class="settings-row">
+                  <label class="form-label" for="external-editor-select">{t("wsModal.settings.textEditorLabel")}</label>
+                  <select id="external-editor-select" class="form-select" bind:value={draftEditorPreset}>
+                    {#each EXTERNAL_EDITOR_PRESETS as preset (preset.value)}
+                      <option value={preset.value}>{preset.label}</option>
+                    {/each}
+                  </select>
+                </div>
+                {#if draftEditorPreset === "custom"}
+                  <div class="form-field">
+                    <label class="form-label" for="custom-editor-input">{t("wsModal.settings.customEditorLabel")}</label>
+                    <div style="display: flex; gap: 6px;">
+                      <input
+                        id="custom-editor-input"
+                        type="text"
+                        class="form-input"
+                        bind:value={draftCustomEditor}
+                        placeholder={t("wsModal.settings.customEditorPlaceholder")}
+                        style="flex: 1;"
+                      />
+                      <button type="button" class="btn-secondary btn-xs" onclick={handlePickCustomEditor}>
+                        {t("wsModal.settings.pickBtn")}
+                      </button>
+                    </div>
+                  </div>
+                {/if}
+                <p class="settings-hint">
+                  {draftEditorPreset === "system" ? t("wsModal.settings.editorSystemDesc") : t("wsModal.settings.editorCustomDesc")}
+                </p>
+              </div>
+            {:else if settingsTab === "safety"}
+              <div class="settings-panel-header">
+                <h4 class="settings-panel-title">{t("wsModal.settings.tabSafety")}</h4>
+                <p class="settings-panel-desc">{t("wsModal.settings.tabSafetyDesc")}</p>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("wsModal.settings.autofetchSection")}</span>
+                </div>
+                <div class="settings-row">
+                  <label class="form-label" for="autofetch-select">{t("wsModal.settings.autofetchLabel")}</label>
+                  <select id="autofetch-select" class="form-select" bind:value={draftAutofetch}>
+                    <option value={0}>{t("wsModal.settings.autofetchOff")}</option>
+                    <option value={1}>{t("wsModal.settings.autofetch1m")}</option>
+                    <option value={5}>{t("wsModal.settings.autofetch5m")}</option>
+                    <option value={10}>{t("wsModal.settings.autofetch10m")}</option>
+                    <option value={15}>{t("wsModal.settings.autofetch15m")}</option>
+                  </select>
+                </div>
+                <p class="settings-hint">{t("wsModal.settings.autofetchHint")}</p>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("wsModal.settings.safetySection")}</span>
+                </div>
+                <label class="settings-check-row">
+                  <input type="checkbox" bind:checked={draftConfirmDiscard} />
+                  <span class="settings-check-copy">
+                    <span class="settings-check-title">{t("wsModal.settings.confirmDiscardLabel")}</span>
+                    <span class="settings-hint">{t("wsModal.settings.confirmDiscardHint")}</span>
+                  </span>
+                </label>
+                <label class="settings-check-row">
+                  <input type="checkbox" bind:checked={draftConfirmForcePush} />
+                  <span class="settings-check-copy">
+                    <span class="settings-check-title">{t("wsModal.settings.confirmForcePushLabel")}</span>
+                    <span class="settings-hint">{t("wsModal.settings.confirmForcePushHint")}</span>
+                  </span>
+                </label>
+                <label class="settings-check-row">
+                  <input type="checkbox" bind:checked={draftDesktopNotif} />
+                  <span class="settings-check-copy">
+                    <span class="settings-check-title">{t("wsModal.settings.desktopNotifLabel")}</span>
+                    <span class="settings-hint">{t("wsModal.settings.desktopNotifHint")}</span>
+                  </span>
+                </label>
+              </div>
+            {:else if settingsTab === "updates"}
+              <div class="settings-panel-header">
+                <h4 class="settings-panel-title">{t("wsModal.settings.tabUpdates")}</h4>
+                <p class="settings-panel-desc">{t("wsModal.settings.tabUpdatesDesc")}</p>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("wsModal.settings.updatesSection")}</span>
+                </div>
+                <div class="settings-version-row">
+                  <div class="settings-version-meta">
+                    <span class="form-label">{t("wsModal.settings.currentVersion")}</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <strong class="tabular-nums" style="font-size: 13px;">v{appUpdateInfo?.current_version || appRuntimeInfo?.current_version || "1.1.0"}</strong>
+                      {#if appUpdateInfo?.install_mode || appRuntimeInfo?.install_mode}
+                        <span class="badge-neutral">
+                          {(appUpdateInfo?.install_mode || appRuntimeInfo?.install_mode) === "portable" ? "Portable" : "Installed"}
+                          ({appUpdateInfo?.package_kind || appRuntimeInfo?.package_kind})
+                        </span>
+                      {/if}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-secondary btn-xs"
+                    disabled={isCheckingUpdate || isInstallingUpdate}
+                    onclick={() => onCheckUpdates(draftUpdateChannel)}
+                  >
+                    {isCheckingUpdate ? t("wsModal.settings.checkingUpdatesBtn") : t("wsModal.settings.checkUpdatesBtn")}
+                  </button>
+                </div>
+                <div class="settings-row">
+                  <label class="form-label" for="update-channel-select">{t("wsModal.settings.updateChannelLabel")}</label>
+                  <select id="update-channel-select" class="form-select" bind:value={draftUpdateChannel}>
+                    <option value="auto">{t("wsModal.settings.channelAuto")}</option>
+                    <option value="stable">{t("wsModal.settings.channelStable")}</option>
+                    <option value="beta">{t("wsModal.settings.channelBeta")}</option>
+                  </select>
+                </div>
+                {#if updateError}
+                  <div class="settings-status-box is-error">{updateError}</div>
+                {/if}
+                {#if appUpdateInfo}
+                  <div class="settings-status-box {appUpdateInfo.has_update ? 'is-accent' : 'is-success'}">
+                    {#if appUpdateInfo.has_update}
+                      <div>
+                        {t("wsModal.settings.newVersionAvailablePrefix")}<strong>v{appUpdateInfo.latest_version}</strong>
+                        {t("wsModal.settings.newVersionAvailableSuffix", { tier: appUpdateInfo.is_prerelease ? "Beta" : "Stable" })}
+                        {#if appUpdateInfo.asset_name}
+                          <div class="settings-hint" style="margin-top: 2px;">
+                            {t("wsModal.settings.packageLabel", { name: appUpdateInfo.asset_name })}
+                            {#if appUpdateInfo.asset_size}
+                              ({(appUpdateInfo.asset_size / (1024 * 1024)).toFixed(1)} MB)
+                            {/if}
+                          </div>
+                        {/if}
+                      </div>
+                      {#if appUpdateInfo.release_notes?.trim()}
+                        <div class="settings-release-notes">
+                          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+                            {t("wsModal.settings.releaseNotesHeader", { tier: appUpdateInfo.is_prerelease ? "Beta" : "Stable" })}
+                          </div>
+                          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                          <div class="settings-release-scroll settings-release-md" onclick={handleReleaseNoteClick}>
+                            {@html renderMarkdownHtml(appUpdateInfo.release_notes.trim())}
+                          </div>
+                        </div>
+                      {/if}
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        {#if appUpdateInfo.can_self_update}
+                          <button
+                            type="button"
+                            class="btn-primary btn-xs"
+                            disabled={isInstallingUpdate || isCheckingUpdate}
+                            onclick={() => onInstallUpdate(draftUpdateChannel)}
+                          >
+                            {isInstallingUpdate ? t("wsModal.settings.installingUpdateBtn") : t("wsModal.settings.installUpdateBtn")}
+                          </button>
+                        {:else}
+                          <span class="settings-hint">{t("wsModal.settings.manualUpdateNote")}</span>
+                        {/if}
+                        {#if appUpdateInfo.html_url}
+                          <button type="button" class="link-btn" onclick={() => openExternalUrl(appUpdateInfo!.html_url!)}>
+                            {t("wsModal.settings.openReleasesBtn")}
+                          </button>
+                        {/if}
+                      </div>
+                    {:else}
+                      <div>
+                        {t("wsModal.settings.alreadyLatest", { version: appUpdateInfo.current_version, channel: appUpdateInfo.channel })}
+                      </div>
+                      {#if appUpdateInfo.release_notes?.trim()}
+                        <details style="margin-top: 2px;">
+                          <summary style="cursor: pointer; color: var(--text-secondary);">
+                            {t("wsModal.settings.viewReleaseNotes", { tier: appUpdateInfo.is_prerelease ? "Beta" : "Stable", version: appUpdateInfo.latest_version })}
+                          </summary>
+                          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                          <div class="settings-release-notes settings-release-scroll settings-release-md" style="margin-top: 6px;" onclick={handleReleaseNoteClick}>
+                            {@html renderMarkdownHtml(appUpdateInfo.release_notes.trim())}
+                          </div>
+                        </details>
+                      {/if}
                     {/if}
                   </div>
                 {/if}
               </div>
-              {#if appUpdateInfo.release_notes?.trim()}
-                <div style="background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px; color: var(--text-secondary);">
-                  <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
-                    {t("wsModal.settings.releaseNotesHeader", { tier: appUpdateInfo.is_prerelease ? "Beta" : "Stable" })}
+            {:else if settingsTab === "ai"}
+              <div class="settings-panel-header">
+                <h4 class="settings-panel-title">
+                  {t("ai.settingsSection")}{isLoadingAi ? t("wsModal.settings.loadingSuffix") : ""}
+                </h4>
+                <p class="settings-panel-desc">{t("wsModal.settings.tabAiDesc")}</p>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("ai.connectionGroup")}</span>
+                </div>
+                <div class="settings-row">
+                  <label class="form-label" for="ai-provider-select">{t("ai.providerKindLabel")}</label>
+                  <select id="ai-provider-select" class="form-select" bind:value={aiConfig.provider_kind}>
+                    <option value="openai_compatible">OpenAI-Compatible (/chat/completions)</option>
+                    <option value="anthropic">Anthropic (/messages)</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="ai-endpoint-input">{t("ai.endpointLabel")}</label>
+                  <input
+                    id="ai-endpoint-input"
+                    type="text"
+                    class="form-input"
+                    style="font-family: var(--font-mono);"
+                    bind:value={aiConfig.endpoint}
+                    placeholder={t("ai.endpointPlaceholder")}
+                  />
+                  <span class="settings-hint">{t("ai.endpointHint")}</span>
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="ai-model-input">{t("ai.modelLabel")}</label>
+                  <input
+                    id="ai-model-input"
+                    type="text"
+                    class="form-input"
+                    style="font-family: var(--font-mono);"
+                    bind:value={aiConfig.model}
+                    placeholder={t("ai.modelPlaceholder")}
+                  />
+                </div>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group-head">
+                  <span class="settings-group-title">{t("ai.authGroup")}</span>
+                </div>
+                <div class="form-field">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label class="form-label" for="ai-apikey-input">{t("ai.apiKeyLabel")}</label>
+                    {#if aiConfig.has_api_key}
+                      <span class="badge-neutral">{aiConfig.memory_only ? t("ai.keyStoredMemory") : t("ai.keyStoredKeyring")}</span>
+                    {/if}
                   </div>
-                  <div style="max-height: 150px; overflow-y: auto; white-space: pre-wrap; line-height: 1.45; font-size: 11px;">
-                    {appUpdateInfo.release_notes.trim()}
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <input
+                      id="ai-apikey-input"
+                      type={showAiApiKey ? "text" : "password"}
+                      class="form-input"
+                      style="flex: 1; font-family: var(--font-mono);"
+                      bind:value={aiApiKeyInput}
+                      placeholder={aiConfig.has_api_key ? t("ai.apiKeyKeepExisting") : "sk-..."}
+                      autocomplete="off"
+                    />
+                    <button type="button" class="btn-secondary btn-xs" onclick={() => (showAiApiKey = !showAiApiKey)}>
+                      {showAiApiKey ? t("wsModal.auth.hidePat") : t("wsModal.auth.showPat")}
+                    </button>
                   </div>
                 </div>
-              {/if}
-              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                {#if appUpdateInfo.can_self_update}
+                <div class="form-field">
+                  <label class="form-label" for="ai-system-prompt">{t("ai.systemPromptLabel")}</label>
+                  <textarea
+                    id="ai-system-prompt"
+                    class="form-input"
+                    rows="2"
+                    bind:value={aiConfig.system_prompt}
+                    placeholder={t("ai.systemPromptPlaceholder")}
+                  ></textarea>
+                </div>
+                <div class="settings-ai-test-row">
                   <button
                     type="button"
-                    class="btn-primary btn-xs"
-                    disabled={isInstallingUpdate || isCheckingUpdate}
-                    onclick={() => onInstallUpdate(draftUpdateChannel)}
+                    class="btn-secondary btn-xs"
+                    disabled={isTestingAi || !aiConfig.endpoint.trim() || !aiConfig.model.trim()}
+                    onclick={() => void handleTestAiConnection(false)}
                   >
-                    {isInstallingUpdate ? t("wsModal.settings.installingUpdateBtn") : t("wsModal.settings.installUpdateBtn")}
+                    {isTestingAi ? t("ai.testingBtn") : t("ai.testConnectionBtn")}
                   </button>
-                {:else}
-                  <span style="color: var(--text-muted);">{t("wsModal.settings.manualUpdateNote")}</span>
-                {/if}
-                {#if appUpdateInfo.html_url}
-                  <button type="button" class="link-btn" onclick={() => openExternalUrl(appUpdateInfo!.html_url!)}>
-                    {t("wsModal.settings.openReleasesBtn")}
-                  </button>
-                {/if}
+                  {#if aiKeyringFallbackPending}
+                    <button type="button" class="btn-primary btn-xs" onclick={() => void handleTestAiConnection(true)}>
+                      {t("wsModal.auth.saveMemoryOnlyBtn")}
+                    </button>
+                  {/if}
+                  {#if aiTestResult}
+                    <span class="settings-test-result {aiTestResult.ok ? 'is-ok' : 'is-err'}">
+                      {aiTestResult.msg}
+                    </span>
+                  {/if}
+                </div>
               </div>
-            {:else}
-              <div>
-                {t("wsModal.settings.alreadyLatest", { version: appUpdateInfo.current_version, channel: appUpdateInfo.channel })}
-              </div>
-              {#if appUpdateInfo.release_notes?.trim()}
-                <details style="margin-top: 2px;">
-                  <summary style="cursor: pointer; color: var(--text-secondary);">
-                    {t("wsModal.settings.viewReleaseNotes", { tier: appUpdateInfo.is_prerelease ? "Beta" : "Stable", version: appUpdateInfo.latest_version })}
-                  </summary>
-                  <div style="margin-top: 6px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; line-height: 1.45; font-size: 11px; color: var(--text-secondary); background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px;">
-                    {appUpdateInfo.release_notes.trim()}
-                  </div>
-                </details>
-              {/if}
             {/if}
           </div>
-        {/if}
-        <div class="modal-section-heading">{t("wsModal.settings.safetySection")}</div>
-        <label class="checkbox-label">
-          <input type="checkbox" bind:checked={draftConfirmDiscard} />
-          <span>{t("wsModal.settings.confirmDiscardLabel")}</span>
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" bind:checked={draftConfirmForcePush} />
-          <span>{t("wsModal.settings.confirmForcePushLabel")}</span>
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" bind:checked={draftDesktopNotif} />
-          <span>{t("wsModal.settings.desktopNotifLabel")}</span>
-        </label>
-        <div class="modal-section-heading">
-          ✦ {t("ai.settingsSection")}{isLoadingAi ? t("wsModal.settings.loadingSuffix") : ""}
-        </div>
-        <div class="settings-row">
-          <label class="form-label" for="ai-provider-select">{t("ai.providerKindLabel")}</label>
-          <select id="ai-provider-select" class="form-select" bind:value={aiConfig.provider_kind}>
-            <option value="openai_compatible">OpenAI-Compatible (/chat/completions)</option>
-            <option value="anthropic">Anthropic (/messages)</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="ai-endpoint-input">{t("ai.endpointLabel")}</label>
-          <input
-            id="ai-endpoint-input"
-            type="text"
-            class="form-input"
-            style="font-family: var(--font-mono);"
-            bind:value={aiConfig.endpoint}
-          />
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="ai-model-input">{t("ai.modelLabel")}</label>
-          <input
-            id="ai-model-input"
-            type="text"
-            class="form-input"
-            style="font-family: var(--font-mono);"
-            bind:value={aiConfig.model}
-            placeholder="gpt-4o-mini"
-          />
-        </div>
-        <div class="form-field">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label class="form-label" for="ai-apikey-input">{t("ai.apiKeyLabel")}</label>
-            {#if aiConfig.has_api_key}
-              <span class="badge-neutral">{aiConfig.memory_only ? t("ai.keyStoredMemory") : t("ai.keyStoredKeyring")}</span>
-            {/if}
-          </div>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <input
-              id="ai-apikey-input"
-              type={showAiApiKey ? "text" : "password"}
-              class="form-input"
-              style="flex: 1; font-family: var(--font-mono);"
-              bind:value={aiApiKeyInput}
-              placeholder={aiConfig.has_api_key ? t("ai.apiKeyKeepExisting") : "sk-..."}
-              autocomplete="off"
-            />
-            <button type="button" class="btn-secondary btn-xs" onclick={() => (showAiApiKey = !showAiApiKey)}>
-              {showAiApiKey ? t("wsModal.auth.hidePat") : t("wsModal.auth.showPat")}
-            </button>
-          </div>
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="ai-system-prompt">{t("ai.systemPromptLabel")}</label>
-          <textarea
-            id="ai-system-prompt"
-            class="form-input"
-            rows="2"
-            bind:value={aiConfig.system_prompt}
-            placeholder={t("ai.systemPromptPlaceholder")}
-          ></textarea>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <button
-            type="button"
-            class="btn-secondary btn-xs"
-            disabled={isTestingAi || !aiConfig.endpoint.trim() || !aiConfig.model.trim()}
-            onclick={() => void handleTestAiConnection(false)}
-          >
-            {isTestingAi ? t("ai.testingBtn") : t("ai.testConnectionBtn")}
-          </button>
-          {#if aiKeyringFallbackPending}
-            <button type="button" class="btn-primary btn-xs" onclick={() => void handleTestAiConnection(true)}>
-              {t("wsModal.auth.saveMemoryOnlyBtn")}
-            </button>
-          {/if}
-          {#if aiTestResult}
-            <span style="font-size: 11px; color: {aiTestResult.ok ? 'var(--diff-add-text)' : 'var(--diff-del-text)'};">
-              {aiTestResult.msg}
-            </span>
-          {/if}
         </div>
       {/if}
     </div>
@@ -2475,6 +2721,34 @@
           {t("wsModal.diag.copyBtn")}
         </button>
         <button type="button" class="btn-primary" onclick={onClose}>{t("common.close")}</button>
+      {:else if modal === "logs"}
+        <button
+          type="button"
+          class="btn-secondary"
+          disabled={appErrorLogs.length === 0}
+          onclick={() => {
+            clearAppErrorLogs();
+            onStatus(t("wsModal.logs.clearedStatus"));
+          }}
+        >
+          {t("wsModal.logs.clearBtn")}
+        </button>
+        <button
+          type="button"
+          class="btn-secondary"
+          disabled={appErrorLogs.length === 0}
+          onclick={async () => {
+            try {
+              await navigator.clipboard.writeText(formatAppErrorLogsText(appRuntimeInfo?.current_version));
+              onStatus(t("wsModal.logs.copiedStatus"));
+            } catch (err) {
+              onStatus(String(err), true);
+            }
+          }}
+        >
+          {t("wsModal.logs.copyBtn")}
+        </button>
+        <button type="button" class="btn-primary" onclick={onClose}>{t("common.close")}</button>
       {:else if modal === "settings"}
         <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
         <button
@@ -2482,12 +2756,16 @@
           class="btn-primary"
           onclick={async () => {
             if (draftEditorPreset === "custom" && !draftCustomEditor.trim()) {
+              settingsTab = "appearance";
               inlineError = t("wsModal.settings.customEditorRequired");
               return;
             }
             inlineError = "";
             const aiOk = await persistAiConfig(aiConfig.memory_only);
-            if (!aiOk && aiKeyringFallbackPending) return;
+            if (!aiOk && aiKeyringFallbackPending) {
+              settingsTab = "ai";
+              return;
+            }
             onSaveSettings({
               repoConfig: draftRepoConfig,
               globalConfig: draftGlobalConfig,
