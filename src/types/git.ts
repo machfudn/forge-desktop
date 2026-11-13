@@ -206,9 +206,19 @@ export interface UpdateApplyResult {
   downloaded_path?: string | null;
 }
 
+export type RebaseAction = "pick" | "reword" | "edit" | "squash" | "fixup" | "drop";
+
 export interface RebaseStep {
   sha: string;
-  action: "pick" | "drop";
+  action: RebaseAction;
+  message?: string;
+}
+
+export interface RebaseCommitItem {
+  sha: string;
+  short_sha: string;
+  author: string;
+  summary: string;
 }
 
 export type AuthMethod =

@@ -107,10 +107,45 @@ pub fn squash_commits(
     cli::run(repo, &args)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RebaseStep {
     pub sha: String,
     pub action: String,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RebaseCommitItem {
+    pub sha: String,
+    pub short_sha: String,
+    pub author: String,
+    pub summary: String,
+}
+
+pub fn get_rebase_commits(repo: &str, base_sha: &str) -> Result<Vec<RebaseCommitItem>, String> {
+    validate_sha(base_sha)?;
+    let rev_range = format!("{base_sha}..HEAD");
+    let out = cli::run(repo, &["log", "--reverse", "--format=%H%x00%an%x00%s", &rev_range])?;
+    let mut commits = Vec::new();
+    for line in out.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split('\0').collect();
+        if parts.len() >= 3 {
+            let sha = parts[0].to_string();
+            let short_sha = if sha.len() >= 7 { sha[..7].to_string() } else { sha.clone() };
+            commits.push(RebaseCommitItem {
+                sha,
+                short_sha,
+                author: parts[1].to_string(),
+                summary: parts[2].to_string(),
+            });
+        }
+    }
+    Ok(commits)
 }
 
 pub fn interactive_rebase(
@@ -124,8 +159,9 @@ pub fn interactive_rebase(
     }
     for s in &steps {
         validate_sha(&s.sha)?;
-        if s.action != "pick" && s.action != "drop" {
-            return Err(format!("Aksi rebase tidak valid: {}", s.action));
+        match s.action.as_str() {
+            "pick" | "reword" | "squash" | "fixup" | "drop" | "edit" => {}
+            _ => return Err(format!("Aksi rebase tidak valid: {}", s.action)),
         }
     }
 
@@ -140,15 +176,62 @@ pub fn interactive_rebase(
     }
 
     for step in &steps {
-        if step.action == "drop" {
-            continue;
-        }
-        if step.action == "pick" {
-            if let Err(e) = cli::run(repo, &["cherry-pick", &step.sha]) {
-                let _ = cli::run(repo, &["cherry-pick", "--abort"]);
-                let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
-                return Err(format!("Gagal saat rebase pada commit {}: {e}", step.sha));
+        match step.action.as_str() {
+            "drop" => continue,
+            "pick" | "edit" => {
+                if let Err(e) = cli::run(repo, &["cherry-pick", &step.sha]) {
+                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    return Err(format!("Gagal saat rebase pada commit {}: {e}", step.sha));
+                }
             }
+            "reword" => {
+                if let Err(e) = cli::run(repo, &["cherry-pick", &step.sha]) {
+                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    return Err(format!("Gagal saat rebase pada commit {}: {e}", step.sha));
+                }
+                if let Some(msg) = &step.message {
+                    if !msg.trim().is_empty() {
+                        if let Err(e) = cli::run(repo, &["commit", "--amend", "-m", msg.trim()]) {
+                            let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                            return Err(format!("Gagal saat reword commit {}: {e}", step.sha));
+                        }
+                    }
+                }
+            }
+            "squash" => {
+                if let Err(e) = cli::run(repo, &["cherry-pick", "-n", &step.sha]) {
+                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    return Err(format!("Gagal saat squash commit {}: {e}", step.sha));
+                }
+                let commit_res = if let Some(msg) = &step.message {
+                    if !msg.trim().is_empty() {
+                        cli::run(repo, &["commit", "--amend", "-m", msg.trim()])
+                    } else {
+                        cli::run(repo, &["commit", "--amend", "--no-edit"])
+                    }
+                } else {
+                    cli::run(repo, &["commit", "--amend", "--no-edit"])
+                };
+                if let Err(e) = commit_res {
+                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    return Err(format!("Gagal saat commit squash {}: {e}", step.sha));
+                }
+            }
+            "fixup" => {
+                if let Err(e) = cli::run(repo, &["cherry-pick", "-n", &step.sha]) {
+                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    return Err(format!("Gagal saat fixup commit {}: {e}", step.sha));
+                }
+                if let Err(e) = cli::run(repo, &["commit", "--amend", "--no-edit"]) {
+                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    return Err(format!("Gagal saat commit fixup {}: {e}", step.sha));
+                }
+            }
+            _ => {}
         }
     }
 
@@ -177,7 +260,7 @@ mod tests {
         assert!(interactive_rebase(
             "/tmp",
             "abc1234",
-            vec![RebaseStep { sha: "abc1234".into(), action: "invalid".into() }]
+            vec![RebaseStep { sha: "abc1234".into(), action: "invalid".into(), message: None }]
         )
         .is_err());
     }

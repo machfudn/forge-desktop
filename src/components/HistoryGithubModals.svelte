@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { IssueInfo, ParsedGitHubRepo, ParsedHostingRepo, PullRequestInfo } from "../types/git";
+  import type { IssueInfo, ParsedGitHubRepo, ParsedHostingRepo, PullRequestInfo, RebaseAction } from "../types/git";
   import * as gitService from "../services/git";
   import { openExternalUrl } from "../utils/path";
   import { t } from "../i18n/index.svelte";
@@ -16,7 +16,8 @@
     short_sha: string;
     summary: string;
     author: string;
-    action: "pick" | "drop";
+    action: RebaseAction;
+    message?: string;
   }
 
   interface Props {
@@ -138,15 +139,56 @@
     rebaseItems = next;
   }
 
-  function toggleRebaseAction(index: number) {
+  let draggedItemIdx = $state<number | null>(null);
+
+  function handleDragStart(index: number, e: DragEvent) {
+    draggedItemIdx = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(index));
+    }
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "move";
+    }
+  }
+
+  function handleDrop(targetIndex: number, e: DragEvent) {
+    e.preventDefault();
+    if (draggedItemIdx !== null && draggedItemIdx !== targetIndex) {
+      const next = [...rebaseItems];
+      const [item] = next.splice(draggedItemIdx, 1);
+      next.splice(targetIndex, 0, item);
+      rebaseItems = next;
+    }
+    draggedItemIdx = null;
+  }
+
+  function setRebaseAction(index: number, action: RebaseAction) {
     rebaseItems = rebaseItems.map((item, i) =>
-      i === index ? { ...item, action: item.action === "pick" ? "drop" : "pick" } : item
+      i === index ? { ...item, action, message: item.message ?? item.summary } : item
     );
   }
 
+  const rebaseSummary = $derived.by(() => {
+    let pick = 0, reword = 0, edit = 0, squash = 0, fixup = 0, drop = 0;
+    for (const item of rebaseItems) {
+      if (item.action === "pick") pick++;
+      else if (item.action === "reword") reword++;
+      else if (item.action === "edit") edit++;
+      else if (item.action === "squash") squash++;
+      else if (item.action === "fixup") fixup++;
+      else if (item.action === "drop") drop++;
+    }
+    return { pick, reword, edit, squash, fixup, drop, total: rebaseItems.length };
+  });
+
   async function executeInteractiveRebase() {
     if (!activeRepo || !rebaseBaseSha) return;
-    const activeSteps = rebaseItems.filter((i) => i.action === "pick");
+    const activeSteps = rebaseItems.filter((i) => i.action !== "drop");
     if (activeSteps.length === 0) {
       inlineError = t("hgModal.rebaseNeedPick");
       return;
@@ -156,7 +198,11 @@
       await gitService.interactiveRebase(
         activeRepo,
         rebaseBaseSha,
-        rebaseItems.map((i) => ({ sha: i.sha, action: i.action }))
+        rebaseItems.map((i) => ({
+          sha: i.sha,
+          action: i.action,
+          message: i.message?.trim() || undefined,
+        }))
       );
       onClose();
       onStatus(t("hgModal.rebasedStatus"));
@@ -206,7 +252,7 @@
   });
 
   const modalWidth = $derived(
-    modal === "rebase" ? "580px" : modal === "pr" ? "560px" : modal === "squash" ? "440px" : "420px"
+    modal === "rebase" ? "680px" : modal === "pr" ? "560px" : modal === "squash" ? "440px" : "420px"
   );
 </script>
 
@@ -290,18 +336,34 @@
         </div>
 
       {:else if modal === "rebase"}
-        <p style="font-size: 12px; color: var(--text-secondary);">
-          {t("hgModal.rebaseHint")}
-          <code style="font-family: var(--font-mono); color: var(--text-accent);">{rebaseBaseSha.substring(0, 7)}</code>.
-        </p>
-        <div class="list-box" style="max-height: 300px; padding: 6px; display: flex; flex-direction: column; gap: 5px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">
+            {t("hgModal.rebaseHint")}
+            <code style="font-family: var(--font-mono); color: var(--text-accent);">{rebaseBaseSha.substring(0, 7)}</code>
+          </p>
+          <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+            {t("interactiveRebase.commitsCount", { count: rebaseItems.length })}
+          </span>
+        </div>
+
+        <div class="list-box rebase-item-list" style="max-height: 380px; padding: 6px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto;">
           {#each rebaseItems as item, idx (item.sha)}
-            <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--bg-panel); border: 1px solid var(--border-muted);">
-              <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div
+              class="rebase-card {item.action === 'drop' ? 'is-dropped' : ''}"
+              draggable="true"
+              ondragstart={(e) => handleDragStart(idx, e)}
+              ondragover={handleDragOver}
+              ondrop={(e) => handleDrop(idx, e)}
+              role="listitem"
+            >
+              <div class="rebase-drag-handle" title="Drag to reorder">
+                ⋮⋮
+              </div>
+
+              <div class="rebase-move-btns">
                 <button
                   type="button"
-                  class="btn-secondary btn-xs"
-                  style="padding: 0 5px; font-size: 9px; line-height: 12px; height: 14px;"
+                  class="btn-secondary btn-xs rebase-arrow-btn"
                   disabled={idx === 0}
                   aria-label={t("hgModal.moveUpAria", { sha: item.short_sha })}
                   onclick={() => moveRebaseItem(idx, "up")}
@@ -310,8 +372,7 @@
                 </button>
                 <button
                   type="button"
-                  class="btn-secondary btn-xs"
-                  style="padding: 0 5px; font-size: 9px; line-height: 12px; height: 14px;"
+                  class="btn-secondary btn-xs rebase-arrow-btn"
                   disabled={idx === rebaseItems.length - 1}
                   aria-label={t("hgModal.moveDownAria", { sha: item.short_sha })}
                   onclick={() => moveRebaseItem(idx, "down")}
@@ -319,30 +380,64 @@
                   ▼
                 </button>
               </div>
-              <button
-                type="button"
-                class="btn-secondary btn-xs"
-                style="font-weight: 700; min-width: 48px; text-transform: uppercase; border-color: {item.action === 'pick' ? 'var(--diff-add-text)' : 'var(--diff-del-text)'}; color: {item.action === 'pick' ? 'var(--diff-add-text)' : 'var(--diff-del-text)'};"
-                onclick={() => toggleRebaseAction(idx)}
+
+              <select
+                class="form-select form-select-xs rebase-action-select action-{item.action}"
+                value={item.action}
+                onchange={(e) => setRebaseAction(idx, e.currentTarget.value as RebaseAction)}
               >
-                {item.action}
-              </button>
-              <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums;">
+                <option value="pick">pick</option>
+                <option value="reword">reword</option>
+                <option value="edit">edit</option>
+                <option value="squash">squash</option>
+                <option value="fixup">fixup</option>
+                <option value="drop">drop</option>
+              </select>
+
+              <span class="rebase-sha-badge">
                 {item.short_sha}
               </span>
-              <span
-                style="flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: {item.action === 'drop' ? 'var(--text-muted)' : 'var(--text-primary)'}; {item.action === 'drop' ? 'text-decoration: line-through;' : ''}"
-                title={item.summary}
-              >
-                {item.summary}
-              </span>
-              <span style="font-size: 11px; color: var(--text-muted); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+
+              <div class="rebase-content-cell">
+                {#if item.action === "reword"}
+                  <input
+                    type="text"
+                    class="form-input form-input-xs"
+                    placeholder={t("interactiveRebase.rewordPlaceholder")}
+                    bind:value={item.message}
+                  />
+                {:else if item.action === "squash"}
+                  <input
+                    type="text"
+                    class="form-input form-input-xs"
+                    placeholder={item.summary}
+                    bind:value={item.message}
+                  />
+                {:else}
+                  <span
+                    class="rebase-summary-text {item.action === 'drop' ? 'is-dropped' : ''}"
+                    title={item.summary}
+                  >
+                    {item.summary}
+                  </span>
+                {/if}
+              </div>
+
+              <span class="rebase-author-text">
                 {item.author}
               </span>
             </div>
           {/each}
         </div>
 
+        <div class="rebase-summary-bar">
+          <span class="rebase-summary-pill pick">{rebaseSummary.pick} pick</span>
+          <span class="rebase-summary-pill reword">{rebaseSummary.reword} reword</span>
+          <span class="rebase-summary-pill edit">{rebaseSummary.edit} edit</span>
+          <span class="rebase-summary-pill squash">{rebaseSummary.squash} squash</span>
+          <span class="rebase-summary-pill fixup">{rebaseSummary.fixup} fixup</span>
+          <span class="rebase-summary-pill drop">{rebaseSummary.drop} drop</span>
+        </div>
       {:else if modal === "pr"}
         <div class="seg-group" style="align-self: flex-start;">
           <button
@@ -456,7 +551,7 @@
           type="button"
           class="btn-primary"
           onclick={executeInteractiveRebase}
-          disabled={rebaseItems.filter((i) => i.action === "pick").length === 0}
+          disabled={rebaseItems.filter((i) => i.action !== "drop").length === 0}
         >
           {t("hgModal.startRebaseBtn")}
         </button>

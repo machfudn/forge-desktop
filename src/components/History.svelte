@@ -27,7 +27,7 @@
     onFilterBranches?: (filter: { all: boolean; selected: string[] }) => void;
     tags?: string[];
     onCreateTag?: () => void;
-    onInteractiveRebase?: () => void;
+    onInteractiveRebase?: (baseSha?: string) => void;
     onSearchChange?: (q: string) => void;
     onTagContextMenu?: (e: MouseEvent, tagName: string) => void;
     checkRunsMap?: Record<string, { status: string; conclusion?: string }>;
@@ -960,6 +960,12 @@
         onSelect: () => onReset(commit.sha),
       });
     }
+    if (onInteractiveRebase && index > 0) {
+      items.push({
+        label: t("ctx.history.interactiveRebase"),
+        onSelect: () => onInteractiveRebase(commit.sha),
+      });
+    }
 
     items.push({ type: "divider" });
     items.push({
@@ -1444,7 +1450,7 @@
           <button
             type="button"
             class="btn-secondary btn-xs"
-            onclick={onInteractiveRebase}
+            onclick={() => onInteractiveRebase()}
             title={t("app.historySidebar.interactiveRebase")}
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

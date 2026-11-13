@@ -918,6 +918,7 @@
       "squashCommits": "Squash {count} Commit Teratas...",
       "createTag": "Buat Tag di Commit Ini...",
       "resetHere": "Reset Branch ke Commit Ini...",
+      "interactiveRebase": "Rebase Interaktif dari commit ini...",
       "copySha": "Salin SHA",
       "copyMessage": "Salin Pesan Commit",
       "viewOnGithub": "Buka di Web Hosting"
@@ -1115,5 +1116,26 @@
     "explainDiffTitle": "Jelaskan diff file ini menggunakan AI Kustom",
     "explainCommitBtn": "Jelaskan AI",
     "explainCommitTitle": "Jelaskan commit ini menggunakan AI Kustom"
+  },
+  "interactiveRebase": {
+    "title": "Interactive Rebase",
+    "subtitle": "Rebase commit ke commit dasar: {base}",
+    "loading": "Memuat daftar commit untuk rebase...",
+    "noCommits": "Tidak ada commit antara commit dasar dan HEAD.",
+    "moveUp": "Pindah ke atas",
+    "moveDown": "Pindah ke bawah",
+    "actionPick": "Pick",
+    "actionReword": "Reword",
+    "actionEdit": "Edit",
+    "actionSquash": "Squash",
+    "actionFixup": "Fixup",
+    "actionDrop": "Drop",
+    "rewordPlaceholder": "Pesan commit baru",
+    "commitsCount": "{count} commit",
+    "summary": "{pick} pick, {squash} squash, {fixup} fixup, {reword} reword, {drop} drop",
+    "startBtn": "Mulai Rebase",
+    "rebasing": "Menjalankan rebase...",
+    "cancelBtn": "Batal",
+    "success": "Interactive rebase berhasil diselesaikan."
   }
 }

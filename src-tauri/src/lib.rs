@@ -115,6 +115,7 @@ pub fn run() {
             commands::check_app_update,
             commands::install_app_update,
             commands::stage_hunk,
+            commands::get_rebase_commits,
             commands::interactive_rebase,
             commands::stage_lines,
             commands::get_file_blame,

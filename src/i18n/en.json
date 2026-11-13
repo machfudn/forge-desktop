@@ -918,6 +918,7 @@
       "squashCommits": "Squash Top {count} Commits...",
       "createTag": "Create Tag...",
       "resetHere": "Reset Branch to Here...",
+      "interactiveRebase": "Interactive Rebase from here...",
       "copySha": "Copy SHA",
       "copyMessage": "Copy Commit Message",
       "viewOnGithub": "View on Web Hosting"
@@ -1115,5 +1116,26 @@
     "explainDiffTitle": "Explain this file diff using Custom AI",
     "explainCommitBtn": "AI Explain",
     "explainCommitTitle": "Explain this commit using Custom AI"
+  },
+  "interactiveRebase": {
+    "title": "Interactive Rebase",
+    "subtitle": "Rebase commits onto base: {base}",
+    "loading": "Loading commits for rebase...",
+    "noCommits": "No commits found between base and HEAD.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "actionPick": "Pick",
+    "actionReword": "Reword",
+    "actionEdit": "Edit",
+    "actionSquash": "Squash",
+    "actionFixup": "Fixup",
+    "actionDrop": "Drop",
+    "rewordPlaceholder": "New commit message",
+    "commitsCount": "{count} commit(s)",
+    "summary": "{pick} pick, {squash} squash, {fixup} fixup, {reword} reword, {drop} drop",
+    "startBtn": "Start Rebase",
+    "rebasing": "Rebasing...",
+    "cancelBtn": "Cancel",
+    "success": "Interactive rebase completed successfully."
   }
 }

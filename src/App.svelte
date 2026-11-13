@@ -1748,7 +1748,31 @@
     activeModal = "squash";
   }
 
-  function openInteractiveRebase() {
+  async function openInteractiveRebase(baseSha?: string) {
+    if (!activeRepo) return;
+    if (baseSha) {
+      try {
+        const rebaseCommits = await gitService.getRebaseCommits(activeRepo, baseSha);
+        if (rebaseCommits.length === 0) {
+          setStatus(t("interactiveRebase.noCommits"), true);
+          return;
+        }
+        rebaseBaseSha = baseSha;
+        rebaseItems = rebaseCommits.map((c) => ({
+          sha: c.sha,
+          short_sha: c.short_sha,
+          summary: c.summary,
+          author: c.author,
+          action: "pick" as const,
+          message: c.summary,
+        }));
+        activeModal = "rebase";
+      } catch (err) {
+        setStatus(String(err), true);
+      }
+      return;
+    }
+
     if (commits.length < 2) {
       setStatus(t("app.status.rebaseMinCommits"), true);
       return;
@@ -1767,6 +1791,7 @@
       summary: c.summary,
       author: c.author,
       action: "pick" as const,
+      message: c.summary,
     }));
     activeModal = "rebase";
   }

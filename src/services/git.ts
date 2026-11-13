@@ -29,6 +29,7 @@ import type {
   ParsedHostingRepo,
   PublishRepoParams,
   PullRequestInfo,
+  RebaseCommitItem,
   RebaseStep,
   ReflogEntry,
   RemoteInfo,
@@ -682,6 +683,13 @@ export async function stageHunk(
   reverse: boolean
 ): Promise<void> {
   return invoke<void>("stage_hunk", { repo, patchText, reverse });
+}
+
+export async function getRebaseCommits(
+  repo: string,
+  baseSha: string
+): Promise<RebaseCommitItem[]> {
+  return invoke<RebaseCommitItem[]>("get_rebase_commits", { repo, baseSha });
 }
 
 export async function interactiveRebase(

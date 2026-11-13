@@ -7,7 +7,7 @@ use crate::git::{
     BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
     DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, GitHooksInfo, HostingProvider, ImageDiffData,
     IssueInfo, LocalSessionSource, ParsedGitHubRepo, ParsedHostingRepo, PublishRepoParams,
-    PullRequestInfo, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
+    PullRequestInfo, RebaseCommitItem, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
     SubmoduleInfo, WorktreeInfo, GITHUB_PUBLIC_HOST,
 };
 use crate::system;
@@ -895,6 +895,14 @@ pub async fn stage_hunk(
     reverse: bool,
 ) -> Result<(), String> {
     run_blocking(move || git::stage_hunk(&repo, &patch_text, reverse)).await
+}
+
+#[tauri::command]
+pub async fn get_rebase_commits(
+    repo: String,
+    base_sha: String,
+) -> Result<Vec<RebaseCommitItem>, String> {
+    run_blocking(move || git::get_rebase_commits(&repo, &base_sha)).await
 }
 
 #[tauri::command]
