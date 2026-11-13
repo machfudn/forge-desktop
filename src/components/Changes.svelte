@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { FileEntry, RepoStatus } from "../types/git";
+  import type { FileEntry, RepoStatus, GitHooksInfo } from "../types/git";
+  import { detectGitHooks } from "../services/git";
   import { t } from "../i18n/index.svelte";
   import { joinRepoPath } from "../utils/path";
   import {
@@ -148,6 +149,96 @@
   let coAuthorEmail = $state("");
   let isGeneratingAiCommit = $state(false);
 
+  let gitHooks = $state<GitHooksInfo | null>(null);
+  let showConventional = $state(false);
+  let convType = $state("feat");
+  let convScope = $state("");
+  let convBreaking = $state(false);
+  let convSummary = $state("");
+
+  const CONVENTIONAL_TYPES = [
+    { type: "feat", label: "feat", descKey: "changes.typeFeat" },
+    { type: "fix", label: "fix", descKey: "changes.typeFix" },
+    { type: "docs", label: "docs", descKey: "changes.typeDocs" },
+    { type: "style", label: "style", descKey: "changes.typeStyle" },
+    { type: "refactor", label: "refactor", descKey: "changes.typeRefactor" },
+    { type: "perf", label: "perf", descKey: "changes.typePerf" },
+    { type: "test", label: "test", descKey: "changes.typeTest" },
+    { type: "build", label: "build", descKey: "changes.typeBuild" },
+    { type: "ci", label: "ci", descKey: "changes.typeCi" },
+    { type: "chore", label: "chore", descKey: "changes.typeChore" },
+  ];
+
+  $effect(() => {
+    if (repoPath) {
+      detectGitHooks(repoPath)
+        .then((info) => {
+          gitHooks = info;
+        })
+        .catch(() => {
+          gitHooks = null;
+        });
+    } else {
+      gitHooks = null;
+    }
+  });
+
+  function buildConventionalString(): string {
+    const scopePart = convScope.trim() ? `(${convScope.trim()})` : "";
+    const breakingPart = convBreaking ? "!" : "";
+    const summaryPart = convSummary.trimStart();
+    return `${convType}${scopePart}${breakingPart}: ${summaryPart}`;
+  }
+
+  function updateConventionalSummary() {
+    commitSummary = buildConventionalString();
+  }
+
+  function selectConventionalType(type: string) {
+    convType = type;
+    updateConventionalSummary();
+  }
+
+  function toggleConventional() {
+    showConventional = !showConventional;
+    if (showConventional) {
+      const match = commitSummary.match(/^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.*)$/i);
+      if (match) {
+        const t = match[1].toLowerCase();
+        if (CONVENTIONAL_TYPES.some((ct) => ct.type === t)) {
+          convType = t;
+        }
+        convScope = match[2] || "";
+        convBreaking = Boolean(match[3]);
+        convSummary = match[4] || "";
+      } else {
+        convSummary = commitSummary.trim();
+        updateConventionalSummary();
+      }
+    }
+  }
+
+  let validationIssues = $derived.by<{ level: "warn" | "info"; msg: string }[]>(() => {
+    const issuesList: { level: "warn" | "info"; msg: string }[] = [];
+    const text = commitSummary.trim();
+    if (!text) return issuesList;
+
+    if (text.length > 72) {
+      issuesList.push({ level: "warn", msg: t("changes.validationOver72") });
+    }
+
+    const descMatch = text.match(/^[a-z]+(?:\([^)]+\))?!?: (.*)$/);
+    const descToCheck = descMatch ? descMatch[1] : text;
+    if (descToCheck && /^[A-Z]/.test(descToCheck)) {
+      issuesList.push({ level: "info", msg: t("changes.validationLowercase") });
+    }
+
+    if (text.endsWith(".")) {
+      issuesList.push({ level: "info", msg: t("changes.validationNoPeriod") });
+    }
+
+    return issuesList;
+  });
   let stagedCount = $derived(status.files.filter((f) => f.staged).length);
   let totalCount = $derived(status.files.length);
 
@@ -183,6 +274,9 @@
       isAmend = false;
       showDescription = false;
       showCoAuthors = false;
+      convSummary = "";
+      convScope = "";
+      convBreaking = false;
     }
   }
 
@@ -529,6 +623,47 @@
     </div>
   {/if}
 
+  {#if gitHooks && gitHooks.hook_names.length > 0}
+    <div class="commit-hooks-indicator" title={gitHooks.hook_names.join(", ")}>
+      <span class="hooks-pulse-dot"></span>
+      <span class="hooks-text">{t("changes.hooksActive", { hooks: gitHooks.hook_names.join(", ") })}</span>
+    </div>
+  {/if}
+
+  {#if showConventional}
+    <div class="conventional-builder-box">
+      <div class="conventional-types-chips">
+        {#each CONVENTIONAL_TYPES as ct}
+          <button
+            type="button"
+            class="conv-chip {convType === ct.type ? 'active' : ''}"
+            title={t(ct.descKey as any)}
+            onclick={() => selectConventionalType(ct.type)}
+          >
+            {ct.label}
+          </button>
+        {/each}
+      </div>
+      <div class="conventional-fields-row">
+        <input
+          type="text"
+          class="form-input conv-scope-input"
+          placeholder={t("changes.conventionalScopePlaceholder")}
+          bind:value={convScope}
+          oninput={updateConventionalSummary}
+        />
+        <label class="checkbox-label" style="font-size: 11px; white-space: nowrap;">
+          <input
+            type="checkbox"
+            bind:checked={convBreaking}
+            onchange={updateConventionalSummary}
+          />
+          <span>{t("changes.conventionalBreaking")}</span>
+        </label>
+      </div>
+    </div>
+  {/if}
+
   <div class="commit-summary-wrap">
     <input
       type="text"
@@ -537,7 +672,17 @@
       placeholder={t("changes.summaryPlaceholder")}
       maxlength="150"
       bind:value={commitSummary}
-      oninput={(e) => checkAutocomplete(e.currentTarget.value, "summary")}
+      oninput={(e) => {
+        checkAutocomplete(e.currentTarget.value, "summary");
+        if (showConventional) {
+          const match = e.currentTarget.value.match(/^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.*)$/i);
+          if (match) {
+            convSummary = match[4] || "";
+          } else {
+            convSummary = e.currentTarget.value;
+          }
+        }
+      }}
       onkeydown={handleKeydown}
     />
     <span
@@ -547,6 +692,16 @@
       {commitSummary.length}/72
     </span>
   </div>
+
+  {#if validationIssues.length > 0}
+    <div class="commit-validation-list">
+      {#each validationIssues as issue}
+        <span class="validation-badge badge-{issue.level}">
+          {issue.msg}
+        </span>
+      {/each}
+    </div>
+  {/if}
 
   {#if showDescription}
     <textarea
@@ -587,7 +742,14 @@
       <input type="checkbox" bind:checked={isAmend} disabled={!status.has_commits} />
       <span>{t("changes.amendLabel")}</span>
     </label>
-    <div style="display: flex; gap: 8px;">
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <button
+        type="button"
+        class="link-btn {showConventional ? 'is-active' : ''}"
+        onclick={toggleConventional}
+      >
+        {showConventional ? t("changes.conventionalHide") : t("changes.conventionalToggle")}
+      </button>
       <button
         type="button"
         class="link-btn"

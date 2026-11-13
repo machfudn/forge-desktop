@@ -5,7 +5,7 @@ use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, AccountHealth, AccountManager, AccountOverview, AccountProfile, AheadBehind,
     BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
-    DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, HostingProvider, ImageDiffData,
+    DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, GitHooksInfo, HostingProvider, ImageDiffData,
     IssueInfo, LocalSessionSource, ParsedGitHubRepo, ParsedHostingRepo, PublishRepoParams,
     PullRequestInfo, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
     SubmoduleInfo, WorktreeInfo, GITHUB_PUBLIC_HOST,
@@ -414,6 +414,11 @@ pub async fn set_repo_config(
     user_email: String,
 ) -> Result<(), String> {
     run_blocking(move || git::set_repo_config(&repo, &user_name, &user_email)).await
+}
+
+#[tauri::command]
+pub async fn detect_git_hooks(repo: String) -> Result<GitHooksInfo, String> {
+    run_blocking(move || git::detect_git_hooks(&repo)).await
 }
 
 #[tauri::command]

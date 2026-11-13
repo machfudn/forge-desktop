@@ -277,6 +277,54 @@ pub fn get_repo_path_state(path: &str) -> String {
     }
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GitHooksInfo {
+    pub has_pre_commit: bool,
+    pub has_commit_msg: bool,
+    pub has_husky: bool,
+    pub hook_names: Vec<String>,
+}
+
+pub fn detect_git_hooks(repo: &str) -> Result<GitHooksInfo, String> {
+    let p = Path::new(repo);
+    let mut names = Vec::new();
+    let has_husky = p.join(".husky").is_dir();
+    if has_husky {
+        names.push("husky".to_string());
+    }
+
+    let hooks_dir = p.join(".git").join("hooks");
+    let mut has_pre_commit = false;
+    let mut has_commit_msg = false;
+
+    if hooks_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&hooks_dir) {
+            for entry in entries.flatten() {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name.ends_with(".sample") {
+                    continue;
+                }
+                if file_name == "pre-commit" {
+                    has_pre_commit = true;
+                    names.push("pre-commit".to_string());
+                } else if file_name == "commit-msg" {
+                    has_commit_msg = true;
+                    names.push("commit-msg".to_string());
+                } else if !file_name.starts_with('.') {
+                    names.push(file_name);
+                }
+            }
+        }
+    }
+
+    Ok(GitHooksInfo {
+        has_pre_commit,
+        has_commit_msg,
+        has_husky,
+        hook_names: names,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,6 +422,27 @@ mod tests {
 
         let miss_sum = map.get(&paths[1]).unwrap();
         assert!(!miss_sum.exists && !miss_sum.is_git);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn detect_git_hooks_finds_husky_and_git_hooks() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-hooks-test-{nanos}"));
+        let dot_git_hooks = root.join(".git").join("hooks");
+        let dot_husky = root.join(".husky");
+        std::fs::create_dir_all(&dot_git_hooks).unwrap();
+        std::fs::create_dir_all(&dot_husky).unwrap();
+        std::fs::write(dot_git_hooks.join("pre-commit"), "#!/bin/sh\nexit 0").unwrap();
+        std::fs::write(dot_git_hooks.join("commit-msg.sample"), "#!/bin/sh\nexit 0").unwrap();
+
+        let info = detect_git_hooks(root.to_str().unwrap()).unwrap();
+        assert!(info.has_husky);
+        assert!(info.has_pre_commit);
+        assert!(!info.has_commit_msg);
+        assert!(info.hook_names.contains(&"husky".to_string()));
+        assert!(info.hook_names.contains(&"pre-commit".to_string()));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

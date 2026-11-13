@@ -67,6 +67,7 @@ pub fn run() {
             commands::clone_repository,
             commands::init_repository,
             commands::get_repo_config,
+            commands::detect_git_hooks,
             commands::set_repo_config,
             commands::github_start_device_flow,
             commands::list_github_accounts,

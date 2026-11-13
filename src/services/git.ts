@@ -20,6 +20,7 @@ import type {
   DeviceFlowInit,
   DeviceFlowPollOutcome,
   DiagnosticReport,
+  GitHooksInfo,
   HostingProvider,
   ImageDiffData,
   IssueInfo,
@@ -309,6 +310,10 @@ export async function initRepository(
 
 export async function getRepoConfig(repo: string): Promise<RepoConfig> {
   return invoke<RepoConfig>("get_repo_config", { repo });
+}
+
+export async function detectGitHooks(repo: string): Promise<GitHooksInfo> {
+  return invoke<GitHooksInfo>("detect_git_hooks", { repo });
 }
 
 export async function setRepoConfig(

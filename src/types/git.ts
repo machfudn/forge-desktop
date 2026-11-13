@@ -111,6 +111,13 @@ export interface RepoConfig {
   user_email: string;
 }
 
+export interface GitHooksInfo {
+  has_pre_commit: boolean;
+  has_commit_msg: boolean;
+  has_husky: boolean;
+  hook_names: string[];
+}
+
 export interface PullRequestInfo {
   id: number;
   number: number;
