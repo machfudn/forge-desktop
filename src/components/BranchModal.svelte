@@ -58,6 +58,17 @@
   let localBranches = $derived(branches.filter((b) => !b.is_remote));
   let remoteBranches = $derived(branches.filter((b) => Boolean(b.is_remote)));
 
+  let localBranchNames = $derived(new Set(localBranches.map((b) => b.name)));
+  let remoteOnlyBranches = $derived(
+    remoteBranches.filter((b) => {
+      const slashIdx = b.name.indexOf("/");
+      const targetName = slashIdx >= 0 ? b.name.slice(slashIdx + 1) : b.name;
+      return !localBranchNames.has(targetName);
+    })
+  );
+
+  let unifiedBranches = $derived([...localBranches, ...remoteOnlyBranches]);
+
   let filteredBranches = $derived.by(() => {
     const q = branchSearch.trim().toLowerCase();
     const pool =
@@ -65,7 +76,7 @@
         ? localBranches
         : branchFilterTab === "remote"
           ? remoteBranches
-          : branches;
+          : unifiedBranches;
     if (!q) return pool;
     return pool.filter((b) => b.name.toLowerCase().includes(q));
   });
@@ -340,7 +351,7 @@
               class="branch-tab {branchFilterTab === 'all' ? 'active' : ''}"
               onclick={() => (branchFilterTab = "all")}
             >
-              {t("branchModal.tabAll", { count: branches.length })}
+              {t("branchModal.tabAll", { count: unifiedBranches.length })}
             </button>
             <button
               type="button"
