@@ -284,7 +284,39 @@
   let selectedTag = $state<string | null>(null);
   let tagFilterOpen = $state(false);
   let tagSearchQuery = $state("");
+  let historySearchInputEl = $state<HTMLInputElement | null>(null);
+  let isSearchFocused = $state(false);
 
+  function highlightMatch(text: string, query: string): { text: string; match: boolean }[] {
+    const q = query.trim().toLowerCase();
+    if (!q || !text) return [{ text, match: false }];
+    const lower = text.toLowerCase();
+    const idx = lower.indexOf(q);
+    if (idx === -1) return [{ text, match: false }];
+    const parts: { text: string; match: boolean }[] = [];
+    let start = 0;
+    let pos = lower.indexOf(q, start);
+    while (pos !== -1) {
+      if (pos > start) parts.push({ text: text.slice(start, pos), match: false });
+      parts.push({ text: text.slice(pos, pos + q.length), match: true });
+      start = pos + q.length;
+      pos = lower.indexOf(q, start);
+    }
+    if (start < text.length) parts.push({ text: text.slice(start), match: false });
+    return parts;
+  }
+
+  function handleHistoryKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      const activeEl = document.activeElement;
+      const isInput = activeEl?.tagName === "INPUT" || activeEl?.tagName === "TEXTAREA";
+      if (!isInput || activeEl === historySearchInputEl) {
+        e.preventDefault();
+        historySearchInputEl?.focus();
+        historySearchInputEl?.select();
+      }
+    }
+  }
   let filteredTags = $derived.by(() => {
     const q = tagSearchQuery.trim().toLowerCase();
     if (!q) return tags;
@@ -1019,6 +1051,8 @@
   }
 </script>
 
+<svelte:window onkeydown={handleHistoryKeydown} />
+
 {#if commits.length === 0}
   <div class="empty-state">
     <span>{t("history.empty")}</span>
@@ -1098,7 +1132,9 @@
                   title="Clear search"
                   aria-label="Clear search"
                 >
-                  ✕
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+                  </svg>
                 </button>
               {/if}
             </div>
@@ -1254,12 +1290,29 @@
 
               {#if tags.length > 5}
                 <div class="tag-filter-search-box">
+                  <svg class="search-icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <line x1="10.5" y1="10.5" x2="14" y2="14" />
+                  </svg>
                   <input
                     type="text"
                     class="tag-filter-search-input"
                     placeholder="Cari tag..."
                     bind:value={tagSearchQuery}
                   />
+                  {#if tagSearchQuery}
+                    <button
+                      type="button"
+                      class="tag-search-clear"
+                      onclick={() => (tagSearchQuery = "")}
+                      title="Clear search"
+                      aria-label="Clear search"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+                      </svg>
+                    </button>
+                  {/if}
                 </div>
               {/if}
 
@@ -1320,31 +1373,53 @@
         </div>
 
         <!-- Search bar: Filter Riwayat -->
-        <div class="history-toolbar-search">
-          <svg class="search-icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <div
+          class="history-toolbar-search {isSearchFocused ? 'is-focused' : ''}"
+          title={t("app.historySidebar.filterLabel")}
+        >
+          <svg class="search-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="7" cy="7" r="4.5" />
             <line x1="10.5" y1="10.5" x2="14" y2="14" />
           </svg>
           <input
+            bind:this={historySearchInputEl}
             type="search"
             class="history-search-input"
             placeholder={t("app.historySidebar.filterPlaceholder")}
             bind:value={searchQuery}
+            onfocus={() => (isSearchFocused = true)}
+            onblur={() => (isSearchFocused = false)}
+            onkeydown={(e) => {
+              if (e.key === "Escape") {
+                searchQuery = "";
+                onSearchChange?.("");
+                historySearchInputEl?.blur();
+              }
+            }}
             oninput={(e) => onSearchChange?.((e.target as HTMLInputElement).value)}
+            aria-label={t("app.historySidebar.filterLabel")}
           />
           {#if searchQuery}
+            <span class="history-search-badge tabular-nums" title="{indexedCommits.length} matches">
+              {indexedCommits.length}
+            </span>
             <button
               type="button"
               class="history-search-clear-btn"
               onclick={() => {
                 searchQuery = "";
                 onSearchChange?.("");
+                historySearchInputEl?.focus();
               }}
-              title="Hapus filter"
-              aria-label="Hapus filter"
+              title="Clear search"
+              aria-label="Clear search"
             >
-              ✕
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+              </svg>
             </button>
+          {:else}
+            <kbd class="history-search-kbd" title="Shortcut: Ctrl+F">Ctrl+F</kbd>
           {/if}
         </div>
       </div>
@@ -1760,7 +1835,19 @@
                     {/each}
                   </span>
                 {/if}
-                <span class="commit-summary" title="{layout?.branchName ? `[${layout.branchName}] ` : ''}{commit.summary}">{commit.summary}</span>
+                <span class="commit-summary" title="{layout?.branchName ? `[${layout.branchName}] ` : ''}{commit.summary}">
+                  {#if searchQuery.trim()}
+                    {#each highlightMatch(commit.summary, searchQuery) as part}
+                      {#if part.match}
+                        <mark class="history-search-match">{part.text}</mark>
+                      {:else}
+                        {part.text}
+                      {/if}
+                    {/each}
+                  {:else}
+                    {commit.summary}
+                  {/if}
+                </span>
               </span>
              {:else if colId === "changes"}
               <span class="commit-changes-cell">
@@ -1783,7 +1870,19 @@
                 {/if}
               </span>
              {:else if colId === "author"}
-              <span class="commit-author" title={commit.author}>{commit.author}</span>
+              <span class="commit-author" title={commit.author}>
+                {#if searchQuery.trim() && commit.author.toLowerCase().includes(searchQuery.trim().toLowerCase())}
+                  {#each highlightMatch(commit.author, searchQuery) as part}
+                    {#if part.match}
+                      <mark class="history-search-match">{part.text}</mark>
+                    {:else}
+                      {part.text}
+                    {/if}
+                  {/each}
+                {:else}
+                  {commit.author}
+                {/if}
+              </span>
              {:else if colId === "date"}
               <span class="commit-date" title={commit.date}>{formatCommitDate(commit.date, dateFormat)}</span>
              {:else if colId === "sha"}
@@ -1822,7 +1921,19 @@
                     </svg>
                   </span>
                 {/if}
-                <span class="commit-sha-text">{commit.short_sha}</span>
+                <span class="commit-sha-text">
+                  {#if searchQuery.trim() && commit.short_sha.toLowerCase().includes(searchQuery.trim().toLowerCase())}
+                    {#each highlightMatch(commit.short_sha, searchQuery) as part}
+                      {#if part.match}
+                        <mark class="history-search-match">{part.text}</mark>
+                      {:else}
+                        {part.text}
+                      {/if}
+                    {/each}
+                  {:else}
+                    {commit.short_sha}
+                  {/if}
+                </span>
               </span>
             {/if}
           {/each}
