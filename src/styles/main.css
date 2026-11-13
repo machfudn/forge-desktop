@@ -9,6 +9,8 @@
 html,
 body {
   height: 100%;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -18,9 +20,11 @@ body {
   line-height: 1.5;
   font-size: 13px;
   user-select: none;
-  overflow: auto;
+  overflow: hidden;
   accent-color: var(--accent-blue-solid);
   caret-color: var(--accent-blue);
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 ::selection {
@@ -98,6 +102,8 @@ a {
   overflow: hidden;
   background-color: var(--bg-app);
   position: relative;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 /* Header */
@@ -2305,6 +2311,8 @@ select optgroup {
   padding: 16px;
   z-index: 100;
   animation: fade-in 0.08s ease-out;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 .modal-dialog {
@@ -2320,6 +2328,8 @@ select optgroup {
   gap: 12px;
   box-shadow: var(--shadow-modal);
   animation: modal-pop 0.1s cubic-bezier(0.16, 1, 0.3, 1);
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 @keyframes fade-in {
   from {
@@ -2364,6 +2374,8 @@ select optgroup {
   gap: 10px;
   overflow-y: auto;
   min-height: 0;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 .modal-actions {
@@ -2899,6 +2911,8 @@ select optgroup {
   border-radius: var(--radius-md);
   background: var(--bg-app);
   overflow: hidden;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 .settings-nav {
@@ -2909,6 +2923,8 @@ select optgroup {
   border-right: 1px solid var(--border-muted);
   background: var(--bg-subtle);
   overflow-y: auto;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 .settings-nav-item {
@@ -2956,6 +2972,17 @@ select optgroup {
   overflow-y: auto;
   min-width: 0;
   background: var(--bg-panel);
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+}
+
+.settings-available-packages {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 .settings-panel-header {
