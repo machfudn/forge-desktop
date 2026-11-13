@@ -194,16 +194,32 @@ pub fn parse_hosting_repo(remote_url: &str) -> Option<ParsedHostingRepo> {
     })
 }
 
-fn provider_http_get(url: &str, auth_header: Option<&str>) -> Result<(u16, String), String> {
+fn provider_http_request(
+    method: &str,
+    url: &str,
+    auth_header: Option<&str>,
+    json_body: Option<&str>,
+) -> Result<(u16, String), String> {
     let mut cmd = crate::system::command_no_window("curl");
-    cmd.args(["-s", "-i", "--max-time", "30", "-K", "-", url])
-        .stdin(Stdio::piped())
+    cmd.args(["-s", "-i", "--max-time", "30"]);
+    if method != "GET" {
+        cmd.args(["-X", method]);
+    }
+    if json_body.is_some() {
+        cmd.args(["-H", "Content-Type: application/json"]);
+    }
+    cmd.args(["-K", "-"]);
+    if let Some(body) = json_body {
+        cmd.args(["--data-binary", body]);
+    }
+    cmd.arg(url);
+    cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("Gagal menghubungi server provider Git: {e}"))?;
+        .map_err(|e| format!("Failed to spawn curl for Git provider: {e}"))?;
 
     if let Some(mut stdin) = child.stdin.take() {
         let mut cfg = format!(
@@ -215,16 +231,18 @@ fn provider_http_get(url: &str, auth_header: Option<&str>) -> Result<(u16, Strin
                 cfg.push_str(&format!("header = \"{auth}\"\n"));
             }
         }
-        let _ = stdin.write_all(cfg.as_bytes());
+        stdin
+            .write_all(cfg.as_bytes())
+            .map_err(|e| format!("Failed to write curl configuration: {e}"))?;
     }
 
     let output = child
         .wait_with_output()
-        .map_err(|e| format!("Gagal membaca respon server provider Git: {e}"))?;
+        .map_err(|e| format!("Failed to read Git provider response: {e}"))?;
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if err.is_empty() {
-            "Gagal terhubung ke provider Git".into()
+            "Failed to connect to Git provider".into()
         } else {
             err
         });
@@ -233,58 +251,13 @@ fn provider_http_get(url: &str, auth_header: Option<&str>) -> Result<(u16, Strin
     let parsed = parse_curl_http_response(&raw);
     Ok((parsed.status_code, parsed.body))
 }
+
+fn provider_http_get(url: &str, auth_header: Option<&str>) -> Result<(u16, String), String> {
+    provider_http_request("GET", url, auth_header, None)
+}
+
 fn provider_http_post(url: &str, auth_header: Option<&str>, json_body: &str) -> Result<(u16, String), String> {
-    let mut cmd = crate::system::command_no_window("curl");
-    cmd.args([
-        "-s",
-        "-i",
-        "--max-time",
-        "30",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
-        "-K",
-        "-",
-        "--data-binary",
-        json_body,
-        url,
-    ])
-    .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Gagal menghubungi server provider Git: {e}"))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        let mut cfg = format!(
-            "header = \"User-Agent: ForgeDesktop/{}\"\nheader = \"Accept: application/json\"\n",
-            env!("CARGO_PKG_VERSION")
-        );
-        if let Some(auth) = auth_header {
-            if !auth.contains(['\r', '\n', '"']) {
-                cfg.push_str(&format!("header = \"{auth}\"\n"));
-            }
-        }
-        let _ = stdin.write_all(cfg.as_bytes());
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Gagal membaca respon server provider Git: {e}"))?;
-    if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if err.is_empty() {
-            "Gagal terhubung ke provider Git".into()
-        } else {
-            err
-        });
-    }
-    let raw = String::from_utf8_lossy(&output.stdout);
-    let parsed = parse_curl_http_response(&raw);
-    Ok((parsed.status_code, parsed.body))
+    provider_http_request("POST", url, auth_header, Some(json_body))
 }
 
 pub fn detect_provider_from_host(host: &str) -> HostingProvider {
@@ -908,13 +881,11 @@ pub fn publish_repository(
     let target_host = host.unwrap_or(super::accounts::GITHUB_PUBLIC_HOST);
     let (profile, tok) = mgr
         .resolve_account(account_id, Some(repo_path), target_host)
-        .ok_or_else(|| {
-            "Tidak ada akun aktif untuk publikasi. Hubungkan akun terlebih dahulu.".to_string()
-        })?;
+        .ok_or_else(|| "No active account found for publishing. Connect an account first.".to_string())?;
 
     let name = params.name.trim();
     if name.is_empty() {
-        return Err("Nama repository tidak boleh kosong".into());
+        return Err("Repository name cannot be empty".into());
     }
 
     let provider = detect_provider_from_host(&profile.host);
@@ -945,11 +916,11 @@ pub fn publish_repository(
                 return Err(format!("GitLab Create Project API Error HTTP {status}: {body}"));
             }
             let v: serde_json::Value = serde_json::from_str(&body)
-                .map_err(|e| format!("Respon GitLab invalid: {e}"))?;
+                .map_err(|e| format!("Invalid GitLab response: {e}"))?;
             v.get("http_url_to_repo")
                 .and_then(|s| s.as_str())
                 .or_else(|| v.get("ssh_url_to_repo").and_then(|s| s.as_str()))
-                .ok_or_else(|| "Gagal mendapatkan clone URL dari proyek GitLab yang dibuat".to_string())?
+                .ok_or_else(|| "Failed to get clone URL from created GitLab project".to_string())?
                 .to_string()
         }
         HostingProvider::Bitbucket => {
@@ -969,7 +940,7 @@ pub fn publish_repository(
                 return Err(format!("Bitbucket Create Repo API Error HTTP {status}: {body}"));
             }
             let v: serde_json::Value = serde_json::from_str(&body)
-                .map_err(|e| format!("Respon Bitbucket invalid: {e}"))?;
+                .map_err(|e| format!("Invalid Bitbucket response: {e}"))?;
             let mut found_url = None;
             if let Some(links) = v.get("links").and_then(|l| l.get("clone")).and_then(|c| c.as_array()) {
                 for cl in links {
@@ -984,12 +955,39 @@ pub fn publish_repository(
             found_url.unwrap_or_else(|| format!("https://bitbucket.org/{}/{}.git", profile.login, slug))
         }
         HostingProvider::AzureDevops => {
-            let url = format!(
-                "https://{}/{}/_apis/git/repositories?api-version=7.0",
-                profile.host, profile.login
-            );
+            let trimmed_name = name.trim();
+            let segments: Vec<&str> = trimmed_name.split('/').filter(|s| !s.trim().is_empty()).collect();
+            let (org, project, repo_name) = match segments.len() {
+                3 => (segments[0], segments[1], segments[2]),
+                2 => {
+                    let org = if profile.host.ends_with(".visualstudio.com") {
+                        profile.host.strip_suffix(".visualstudio.com").unwrap_or(&profile.login)
+                    } else {
+                        profile.login.as_str()
+                    };
+                    (org, segments[0], segments[1])
+                }
+                _ => {
+                    let org = if profile.host.ends_with(".visualstudio.com") {
+                        profile.host.strip_suffix(".visualstudio.com").unwrap_or(&profile.login)
+                    } else {
+                        profile.login.as_str()
+                    };
+                    (org, trimmed_name, trimmed_name)
+                }
+            };
+
+            let base_url = if profile.host.ends_with(".visualstudio.com") {
+                format!("https://{}", profile.host)
+            } else {
+                format!("https://{}/{}", profile.host, org)
+            };
+            let url = format!("{base_url}/{project}/_apis/git/repositories?api-version=7.0");
             let payload = serde_json::json!({
-                "name": name
+                "name": repo_name,
+                "project": {
+                    "name": project
+                }
             });
             let auth = build_auth_header(HostingProvider::AzureDevops, &tok);
             let (status, body) = provider_http_post(&url, Some(&auth), &payload.to_string())?;
@@ -997,11 +995,11 @@ pub fn publish_repository(
                 return Err(format!("Azure DevOps Create Repo API Error HTTP {status}: {body}"));
             }
             let v: serde_json::Value = serde_json::from_str(&body)
-                .map_err(|e| format!("Respon Azure DevOps invalid: {e}"))?;
+                .map_err(|e| format!("Invalid Azure DevOps response: {e}"))?;
             v.get("remoteUrl")
                 .and_then(|s| s.as_str())
                 .or_else(|| v.get("webUrl").and_then(|s| s.as_str()))
-                .ok_or_else(|| "Gagal mendapatkan remote URL dari repositori Azure DevOps".to_string())?
+                .ok_or_else(|| "Failed to get remote URL from created Azure DevOps repository".to_string())?
                 .to_string()
         }
     };

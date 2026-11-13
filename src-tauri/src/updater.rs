@@ -485,6 +485,29 @@ pub fn resolve_package_kind(
     }
 }
 
+fn push_available_pkg(
+    list: &mut Vec<AvailablePackageInfo>,
+    asset: &GhReleaseAsset,
+    sums: &HashMap<String, String>,
+    kind: &str,
+    mode: &str,
+    can_self_update: bool,
+) {
+    let sha = sums
+        .get(&asset.name.to_ascii_lowercase())
+        .cloned()
+        .or_else(|| asset_sha256_from_digest(asset));
+    list.push(AvailablePackageInfo {
+        mode: mode.to_string(),
+        package_kind: kind.to_string(),
+        asset_name: asset.name.clone(),
+        asset_url: asset.browser_download_url.clone(),
+        asset_size: asset.size,
+        sha256: sha,
+        can_self_update,
+    });
+}
+
 pub fn list_available_packages(
     assets: &[GhReleaseAsset],
     arch: &str,
@@ -495,48 +518,12 @@ pub fn list_available_packages(
     match os {
         "windows" => {
             if let Some(asset) = select_best_asset(assets, arch, PackageKind::WindowsPortable) {
-                let sha = sums
-                    .get(&asset.name.to_ascii_lowercase())
-                    .cloned()
-                    .or_else(|| asset_sha256_from_digest(asset));
-                list.push(AvailablePackageInfo {
-                    mode: "portable".to_string(),
-                    package_kind: PackageKind::WindowsPortable.as_str().to_string(),
-                    asset_name: asset.name.clone(),
-                    asset_url: asset.browser_download_url.clone(),
-                    asset_size: asset.size,
-                    sha256: sha,
-                    can_self_update: true,
-                });
+                push_available_pkg(&mut list, asset, sums, PackageKind::WindowsPortable.as_str(), "portable", true);
             }
             if let Some(asset) = select_best_asset(assets, arch, PackageKind::WindowsNsis) {
-                let sha = sums
-                    .get(&asset.name.to_ascii_lowercase())
-                    .cloned()
-                    .or_else(|| asset_sha256_from_digest(asset));
-                list.push(AvailablePackageInfo {
-                    mode: "installer".to_string(),
-                    package_kind: PackageKind::WindowsNsis.as_str().to_string(),
-                    asset_name: asset.name.clone(),
-                    asset_url: asset.browser_download_url.clone(),
-                    asset_size: asset.size,
-                    sha256: sha,
-                    can_self_update: true,
-                });
+                push_available_pkg(&mut list, asset, sums, PackageKind::WindowsNsis.as_str(), "installer", true);
             } else if let Some(asset) = select_best_asset(assets, arch, PackageKind::WindowsMsi) {
-                let sha = sums
-                    .get(&asset.name.to_ascii_lowercase())
-                    .cloned()
-                    .or_else(|| asset_sha256_from_digest(asset));
-                list.push(AvailablePackageInfo {
-                    mode: "installer".to_string(),
-                    package_kind: PackageKind::WindowsMsi.as_str().to_string(),
-                    asset_name: asset.name.clone(),
-                    asset_url: asset.browser_download_url.clone(),
-                    asset_size: asset.size,
-                    sha256: sha,
-                    can_self_update: true,
-                });
+                push_available_pkg(&mut list, asset, sums, PackageKind::WindowsMsi.as_str(), "installer", true);
             }
         }
         "linux" => {
@@ -544,77 +531,31 @@ pub fn list_available_packages(
                 .or_else(|| select_best_asset(assets, arch, PackageKind::LinuxPortable))
             {
                 let is_appimage = asset.name.to_ascii_lowercase().ends_with(".appimage");
-                let sha = sums
-                    .get(&asset.name.to_ascii_lowercase())
-                    .cloned()
-                    .or_else(|| asset_sha256_from_digest(asset));
-                list.push(AvailablePackageInfo {
-                    mode: "portable".to_string(),
-                    package_kind: if is_appimage {
-                        PackageKind::LinuxAppImage.as_str().to_string()
-                    } else {
-                        PackageKind::LinuxPortable.as_str().to_string()
-                    },
-                    asset_name: asset.name.clone(),
-                    asset_url: asset.browser_download_url.clone(),
-                    asset_size: asset.size,
-                    sha256: sha,
-                    can_self_update: true,
-                });
+                let kind = if is_appimage {
+                    PackageKind::LinuxAppImage.as_str()
+                } else {
+                    PackageKind::LinuxPortable.as_str()
+                };
+                push_available_pkg(&mut list, asset, sums, kind, "portable", true);
             }
             if let Some(asset) = select_best_asset(assets, arch, PackageKind::LinuxDeb)
                 .or_else(|| select_best_asset(assets, arch, PackageKind::LinuxRpm))
             {
                 let is_deb = asset.name.to_ascii_lowercase().ends_with(".deb");
-                let sha = sums
-                    .get(&asset.name.to_ascii_lowercase())
-                    .cloned()
-                    .or_else(|| asset_sha256_from_digest(asset));
-                list.push(AvailablePackageInfo {
-                    mode: "installer".to_string(),
-                    package_kind: if is_deb {
-                        PackageKind::LinuxDeb.as_str().to_string()
-                    } else {
-                        PackageKind::LinuxRpm.as_str().to_string()
-                    },
-                    asset_name: asset.name.clone(),
-                    asset_url: asset.browser_download_url.clone(),
-                    asset_size: asset.size,
-                    sha256: sha,
-                    can_self_update: false,
-                });
+                let kind = if is_deb {
+                    PackageKind::LinuxDeb.as_str()
+                } else {
+                    PackageKind::LinuxRpm.as_str()
+                };
+                push_available_pkg(&mut list, asset, sums, kind, "installer", false);
             }
         }
         "macos" => {
             if let Some(asset) = select_best_asset(assets, arch, PackageKind::MacOsApp) {
-                let sha = sums
-                    .get(&asset.name.to_ascii_lowercase())
-                    .cloned()
-                    .or_else(|| asset_sha256_from_digest(asset));
-                list.push(AvailablePackageInfo {
-                    mode: "portable".to_string(),
-                    package_kind: PackageKind::MacOsApp.as_str().to_string(),
-                    asset_name: asset.name.clone(),
-                    asset_url: asset.browser_download_url.clone(),
-                    asset_size: asset.size,
-                    sha256: sha,
-                    can_self_update: true,
-                });
+                push_available_pkg(&mut list, asset, sums, PackageKind::MacOsApp.as_str(), "portable", true);
             }
             if let Some(asset) = select_best_asset(assets, arch, PackageKind::MacOsInstalled) {
-                let sha = sums
-                    .get(&asset.name.to_ascii_lowercase())
-                    .cloned()
-                    .or_else(|| asset_sha256_from_digest(asset));
-                list.push(AvailablePackageInfo {
-                    mode: "installer".to_string(),
-                    package_kind: PackageKind::MacOsInstalled.as_str().to_string(),
-                    asset_name: asset.name.clone(),
-                    asset_url: asset.browser_download_url.clone(),
-                    asset_size: asset.size,
-                    sha256: sha,
-                    can_self_update: true,
-                });
+                push_available_pkg(&mut list, asset, sums, PackageKind::MacOsInstalled.as_str(), "installer", true);
             }
         }
         _ => {}

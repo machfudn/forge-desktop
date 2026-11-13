@@ -174,7 +174,15 @@ fn resolve_avatar_url(author: &str, email: &str) -> String {
         }
     }
 
-    // Single-word author username (typical GitHub username)
+    // Standard Gravatar for any commit with an email (prevents leaking internal usernames to GitHub)
+    if !lower_email.is_empty() {
+        let mut hasher = Sha256::new();
+        hasher.update(lower_email.as_bytes());
+        let hash = hasher.finalize();
+        return format!("https://www.gravatar.com/avatar/{:x}?d=identicon&s=48", hash);
+    }
+
+    // Single-word author username fallback only when email is absent
     let author_trimmed = author.trim();
     if !author_trimmed.is_empty()
         && !author_trimmed.contains(' ')
@@ -184,15 +192,6 @@ fn resolve_avatar_url(author: &str, email: &str) -> String {
     {
         return format!("https://github.com/{author_trimmed}.png?size=48");
     }
-
-    // Fallback: Gravatar SHA-256
-    if !lower_email.is_empty() {
-        let mut hasher = Sha256::new();
-        hasher.update(lower_email.as_bytes());
-        let hash = hasher.finalize();
-        return format!("https://www.gravatar.com/avatar/{:x}?d=identicon&s=48", hash);
-    }
-
     String::new()
 }
 
@@ -294,12 +293,6 @@ pub fn parse_log_entry_with_status(
         insertions,
         deletions,
     })
-}
-pub fn parse_log_line_with_status(
-    line: &str,
-    unpushed: &HashSet<String>,
-) -> Option<CommitInfo> {
-    parse_log_entry_with_status(line, unpushed)
 }
 
 pub fn parse_log_line(line: &str) -> Option<CommitInfo> {
@@ -685,12 +678,12 @@ mod tests {
     #[test]
     fn parse_log_line_marks_unpushed_commit() {
         let unpushed = HashSet::from(["local999".to_string()]);
-        let local = parse_log_line_with_status(
+        let local = parse_log_entry_with_status(
             "local999\x1flocal9\x1fDev\x1f2026-11-10\x1flocal commit",
             &unpushed,
         )
         .unwrap();
-        let remote = parse_log_line_with_status(
+        let remote = parse_log_entry_with_status(
             "remote111\x1fremote1\x1fDev\x1f2026-11-09\x1fpushed commit",
             &unpushed,
         )
@@ -904,9 +897,11 @@ mod tests {
         assert!(resolve_avatar_url("Claude", "claude@anthropic.com")
             .contains("avatars.githubusercontent.com/u/1182507"));
         assert_eq!(
-            resolve_avatar_url("Machfudin", "machfudin22@gmail.com"),
+            resolve_avatar_url("Machfudin", ""),
             "https://github.com/Machfudin.png?size=48"
         );
+        assert!(resolve_avatar_url("Machfudin", "machfudin22@gmail.com")
+            .contains("gravatar.com/avatar/"));
     }
 
     #[test]
