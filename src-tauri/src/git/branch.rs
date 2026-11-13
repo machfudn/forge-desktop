@@ -69,7 +69,10 @@ pub fn list_branches(repo: &str) -> Result<Vec<BranchInfo>, String> {
         let oid = cols[3].trim();
 
         if refname.starts_with("refs/remotes/") {
-            if !short.is_empty() && !short.ends_with("/HEAD") {
+            if refname.ends_with("/HEAD") || short.ends_with("/HEAD") || !short.contains('/') {
+                continue;
+            }
+            if !short.is_empty() {
                 remote_refs.push((short.to_string(), oid.to_string()));
             }
             continue;
@@ -344,7 +347,7 @@ mod tests {
         assert!(main_b.is_pushed);
         assert_eq!(main_b.upstream.as_deref(), Some("origin/main"));
         assert!(!main_b.is_current);
-
+        assert!(branches.iter().all(|b| b.name != "origin" && !b.name.ends_with("/HEAD")));
         let feat_b = branches.iter().find(|b| b.name == "feat/unpushed").unwrap();
         assert!(!feat_b.is_pushed);
         assert!(feat_b.upstream.is_none());
