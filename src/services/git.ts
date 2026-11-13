@@ -162,9 +162,10 @@ export async function gitForcePush(
 export async function getCommitHistory(
   repo: string,
   limit?: number,
-  allBranches = true
+  allBranches = true,
+  branches?: string[]
 ): Promise<CommitInfo[]> {
-  return invoke<CommitInfo[]>("get_commit_history", { repo, limit, allBranches });
+  return invoke<CommitInfo[]>("get_commit_history", { repo, limit, allBranches, branches });
 }
 
 export async function getCommitDetail(repo: string, sha: string): Promise<CommitDetail> {

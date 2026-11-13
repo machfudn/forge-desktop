@@ -10,6 +10,7 @@ export interface GraphSegment {
 export interface GraphRowLayout {
   lane: number;
   colorIndex: number;
+  branchName?: string;
   maxLanes: number;
   incomingLanes: number[]; // lanes passing from top to node center
   outgoingLanes: number[]; // lanes passing from node center to bottom
@@ -32,10 +33,11 @@ export const GRAPH_COLORS = [
  * (topological/chronological newest-first).
  */
 export function computeCommitGraph(commits: CommitInfo[]): GraphRowLayout[] {
+  const commitShaSet = new Set(commits.map((c) => c.sha));
   const activeSlots: Array<string | null> = [];
   const laneColors: number[] = [];
+  const laneBranches: Array<string | null> = [];
   let nextColor = 0;
-
   const allocColor = () => {
     const c = nextColor % GRAPH_COLORS.length;
     nextColor++;
@@ -61,6 +63,11 @@ export function computeCommitGraph(commits: CommitInfo[]): GraphRowLayout[] {
       }
     }
 
+    const commitBranch = commit.refs?.find((r) => r.kind === "branch" || r.kind === "remote")?.name;
+    if (commitBranch) {
+      laneBranches[lane] = commitBranch;
+    }
+
     const nodeColor = laneColors[lane] ?? 0;
     const segments: GraphSegment[] = [];
 
@@ -74,15 +81,18 @@ export function computeCommitGraph(commits: CommitInfo[]): GraphRowLayout[] {
           kind: "branch-in",
         });
         activeSlots[i] = null;
+        laneBranches[i] = null;
       }
     }
 
     const parents = commit.parents ?? [];
-    if (parents.length === 0) {
+    const validParents = parents.filter((p) => commitShaSet.has(p));
+    if (validParents.length === 0) {
       activeSlots[lane] = null;
+      laneBranches[lane] = null;
     } else {
       // First parent continues on the same lane
-      activeSlots[lane] = parents[0];
+      activeSlots[lane] = validParents[0];
       segments.push({
         fromLane: lane,
         toLane: lane,
@@ -91,8 +101,8 @@ export function computeCommitGraph(commits: CommitInfo[]): GraphRowLayout[] {
       });
 
       // Additional parents (merge commit) either connect to existing slot or allocate new lane
-      for (let pIdx = 1; pIdx < parents.length; pIdx++) {
-        const parentSha = parents[pIdx];
+      for (let pIdx = 1; pIdx < validParents.length; pIdx++) {
+        const parentSha = validParents[pIdx];
         let pLane = activeSlots.indexOf(parentSha);
         if (pLane === -1) {
           pLane = activeSlots.indexOf(null);
@@ -103,6 +113,12 @@ export function computeCommitGraph(commits: CommitInfo[]): GraphRowLayout[] {
             activeSlots[pLane] = parentSha;
           }
           laneColors[pLane] = allocColor();
+        }
+        const mergeMatch =
+          commit.summary.match(/Merge (?:branch|remote-tracking branch) '([^']+)'/i) ||
+          commit.summary.match(/Merge pull request #\d+ from ([^\s]+)/i);
+        if (mergeMatch && !laneBranches[pLane]) {
+          laneBranches[pLane] = mergeMatch[1].replace(/^refs\/heads\//, "");
         }
         segments.push({
           fromLane: lane,
@@ -144,6 +160,7 @@ export function computeCommitGraph(commits: CommitInfo[]): GraphRowLayout[] {
     return {
       lane,
       colorIndex: nodeColor,
+      branchName: laneBranches[lane] || undefined,
       maxLanes,
       incomingLanes,
       outgoingLanes,

@@ -27,12 +27,17 @@ export interface CommitInfo {
   sha: string;
   short_sha: string;
   author: string;
+  author_email?: string;
+  avatar_url?: string;
   date: string;
   summary: string;
   is_pushed: boolean;
   tags?: string[];
   parents?: string[];
   refs?: CommitRef[];
+  files_changed?: number | null;
+  insertions?: number | null;
+  deletions?: number | null;
 }
 
 export interface CommitChangedFile {
