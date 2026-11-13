@@ -262,6 +262,8 @@
   let squashInitialSummary = $state("");
   let rebaseBaseSha = $state("");
   let rebaseItems = $state<RebaseItem[]>([]);
+  let rewordTargetCommit = $state<CommitInfo | null>(null);
+  let rewordTargetIndex = $state(0);
 
   // GitHub multi-account & repo context
   let accountOverview = $state<AccountOverview>({
@@ -1796,6 +1798,12 @@
     squashInitialSummary = selectedCommits[count - 1]?.summary || t("app.status.squashDefaultSummary");
     activeModal = "squash";
   }
+  function handleOpenRewordModal(commit: CommitInfo, index: number) {
+    rewordTargetCommit = commit;
+    rewordTargetIndex = index;
+    activeModal = "reword";
+  }
+
 
   async function openInteractiveRebase(baseSha?: string) {
     if (!activeRepo) return;
@@ -2143,6 +2151,7 @@
     activeModal === "tag" ||
       activeModal === "squash" ||
       activeModal === "rebase" ||
+      activeModal === "reword" ||
       activeModal === "pr" ||
       activeModal === "confirm"
       ? activeModal
@@ -3029,6 +3038,7 @@
             onDeleteTag={handleDeleteTag}
             onReset={handleReset}
             onSquash={(idx) => handleOpenSquash(idx)}
+            onEditCommitMessage={handleOpenRewordModal}
             onMergeBranch={handleMergeBranchFromGraph}
             onRebaseBranch={handleRebaseBranchFromGraph}
             onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })}
@@ -3176,6 +3186,10 @@
     {squashInitialSummary}
     {rebaseBaseSha}
     bind:rebaseItems
+    {rewordTargetCommit}
+    {rewordTargetIndex}
+    {commits}
+    status={currentStatus}
     {confirmTitle}
     {confirmMessage}
     {confirmDanger}

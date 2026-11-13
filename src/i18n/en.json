@@ -921,6 +921,7 @@
     },
     "history": {
       "cherryPick": "Cherry-pick Commit...",
+      "editCommitMessage": "Edit Commit Message...",
       "revertCommit": "Revert Changes in Commit...",
       "squashCommits": "Squash Top {count} Commits...",
       "createTag": "Create Tag...",
@@ -1144,6 +1145,18 @@
     "rebasing": "Rebasing...",
     "cancelBtn": "Cancel",
     "success": "Interactive rebase completed successfully."
+  },
+  "rewordModal": {
+    "title": "Edit Commit Message",
+    "subtitle": "Reword commit {sha} and replay subsequent commits",
+    "summaryLabel": "Commit Summary",
+    "summaryPlaceholder": "Enter new commit summary...",
+    "descLabel": "Description (Optional)",
+    "descPlaceholder": "Optional extended description...",
+    "saveBtn": "Update Message",
+    "updatingStatus": "Updating commit message...",
+    "updatedStatus": "Commit message updated successfully",
+    "dirtyWarning": "Working tree has uncommitted changes. Please stash or commit them before editing past commit messages."
   },
   "bisect": {
     "title": "Git Bisect Wizard",

@@ -32,6 +32,7 @@
     onTagContextMenu?: (e: MouseEvent, tagName: string) => void;
     checkRunsMap?: Record<string, { status: string; conclusion?: string }>;
     onCherryPick?: (sha: string) => void;
+    onEditCommitMessage?: (commit: CommitInfo, index: number) => void;
     onRevert?: (sha: string) => void;
     onTag?: (sha: string) => void;
     onDeleteTag?: (tagName: string) => void;
@@ -66,6 +67,7 @@
     onTagContextMenu,
     checkRunsMap = {},
     onCherryPick,
+    onEditCommitMessage,
     onRevert,
     onTag,
     onDeleteTag,
@@ -933,6 +935,12 @@
       items.push({
         label: t("ctx.history.cherryPick"),
         onSelect: () => onCherryPick(commit.sha),
+      });
+    }
+    if (onEditCommitMessage && index >= 0) {
+      items.push({
+        label: t("ctx.history.editCommitMessage"),
+        onSelect: () => onEditCommitMessage(commit, index),
       });
     }
     if (onRevert) {

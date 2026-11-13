@@ -921,6 +921,7 @@
     },
     "history": {
       "cherryPick": "Cherry-pick Commit...",
+      "editCommitMessage": "Edit Pesan Commit...",
       "revertCommit": "Revert Perubahan Commit...",
       "squashCommits": "Squash {count} Commit Teratas...",
       "createTag": "Buat Tag di Commit Ini...",
@@ -1144,6 +1145,18 @@
     "rebasing": "Menjalankan rebase...",
     "cancelBtn": "Batal",
     "success": "Interactive rebase berhasil diselesaikan."
+  },
+  "rewordModal": {
+    "title": "Edit Pesan Commit",
+    "subtitle": "Perbarui pesan commit {sha} dan terapkan commit setelahnya",
+    "summaryLabel": "Ringkasan Commit",
+    "summaryPlaceholder": "Masukkan ringkasan commit baru...",
+    "descLabel": "Deskripsi (Opsional)",
+    "descPlaceholder": "Deskripsi tambahan (opsional)...",
+    "saveBtn": "Perbarui Pesan",
+    "updatingStatus": "Memperbarui pesan commit...",
+    "updatedStatus": "Pesan commit berhasil diperbarui",
+    "dirtyWarning": "Working tree memiliki perubahan yang belum di-commit. Harap simpan ke Stash terlebih dahulu sebelum mengedit pesan commit lama."
   },
   "bisect": {
     "title": "Wizard Git Bisect",

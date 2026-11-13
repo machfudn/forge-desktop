@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { IssueInfo, ParsedGitHubRepo, ParsedHostingRepo, PullRequestInfo, RebaseAction } from "../types/git";
+  import type { CommitInfo, IssueInfo, ParsedGitHubRepo, ParsedHostingRepo, PullRequestInfo, RebaseAction, RebaseStep, RepoStatus } from "../types/git";
   import * as gitService from "../services/git";
   import { openExternalUrl } from "../utils/path";
   import { t } from "../i18n/index.svelte";
@@ -8,6 +8,7 @@
     | "tag"
     | "squash"
     | "rebase"
+    | "reword"
     | "pr"
     | "confirm";
 
@@ -38,6 +39,10 @@
     squashInitialSummary: string;
     rebaseBaseSha: string;
     rebaseItems: RebaseItem[];
+    rewordTargetCommit?: CommitInfo | null;
+    rewordTargetIndex?: number;
+    commits?: CommitInfo[];
+    status?: RepoStatus | null;
     confirmTitle: string;
     confirmMessage: string;
     confirmDanger: boolean;
@@ -69,6 +74,10 @@
     squashInitialSummary,
     rebaseBaseSha,
     rebaseItems = $bindable(),
+    rewordTargetCommit = null,
+    rewordTargetIndex = 0,
+    commits = [],
+    status = null,
     confirmTitle,
     confirmMessage,
     confirmDanger,
@@ -86,6 +95,9 @@
   let tagNameInput = $state("");
   let squashSummary = $state("");
   let squashDescription = $state("");
+  let rewordSummary = $state("");
+  let rewordDescription = $state("");
+  let isRewording = $state(false);
 
   $effect(() => {
     inlineError = "";
@@ -94,6 +106,19 @@
     } else if (modal === "squash") {
       squashSummary = squashInitialSummary;
       squashDescription = "";
+    } else if (modal === "reword") {
+      rewordSummary = rewordTargetCommit?.summary ?? "";
+      rewordDescription = "";
+      if (rewordTargetCommit && activeRepo) {
+        gitService
+          .getCommitDetail(activeRepo, rewordTargetCommit.sha)
+          .then((d) => {
+            if (modal === "reword" && d.description) {
+              rewordDescription = d.description;
+            }
+          })
+          .catch(() => {});
+      }
     }
   });
 
@@ -212,6 +237,69 @@
       inlineError = String(err);
     }
   }
+  async function executeRewordSubmit() {
+    if (!rewordSummary.trim() || !activeRepo || !rewordTargetCommit) return;
+
+    try {
+      const currentRepoStatus = await gitService.inspectRepository(activeRepo);
+      if (currentRepoStatus.files.length > 0) {
+        inlineError = t("rewordModal.dirtyWarning");
+        return;
+      }
+    } catch {
+      if (status && status.files.length > 0) {
+        inlineError = t("rewordModal.dirtyWarning");
+        return;
+      }
+    }
+
+    isRewording = true;
+    inlineError = "";
+    onStatus(t("rewordModal.updatingStatus"));
+
+    try {
+      const summary = rewordSummary.trim();
+      const desc = rewordDescription.trim();
+      const fullMessage = desc ? `${summary}\n\n${desc}` : summary;
+
+      const targetIdx = commits.findIndex((c) => c.sha === rewordTargetCommit.sha);
+      const effectiveIndex = targetIdx >= 0 ? targetIdx : rewordTargetIndex;
+
+      if (effectiveIndex === 0) {
+        await gitService.commitChanges(
+          activeRepo,
+          summary,
+          desc || undefined,
+          true
+        );
+      } else {
+        const baseSha = commits[effectiveIndex + 1]?.sha ?? rewordTargetCommit.parents?.[0];
+        if (!baseSha) {
+          throw new Error("Cannot find base commit to reword");
+        }
+
+        const commitsToReplay = commits.slice(0, effectiveIndex + 1).reverse();
+        const steps: RebaseStep[] = commitsToReplay.map((c) => ({
+          sha: c.sha,
+          action: (c.sha === rewordTargetCommit.sha ? "reword" : "pick") as RebaseAction,
+          message: c.sha === rewordTargetCommit.sha ? fullMessage : undefined,
+        }));
+
+        await gitService.interactiveRebase(activeRepo, baseSha, steps);
+      }
+
+      onClose();
+      onStatus(t("rewordModal.updatedStatus"));
+      await onReloadRepo();
+      await onReloadHistory();
+    } catch (err) {
+      inlineError = String(err);
+      onStatus(String(err), true);
+    } finally {
+      isRewording = false;
+    }
+  }
+
 
   function handleCreatePR() {
     if (!currentBranch || currentBranch === "HEAD terlepas") return;
@@ -239,6 +327,7 @@
       case "tag": return t("hgModal.titleTag");
       case "squash": return t("hgModal.titleSquash", { count: squashCount });
       case "rebase": return t("hgModal.titleRebase");
+      case "reword": return t("rewordModal.title");
       case "pr": {
         const label = hostingRepoInfo
           ? `${hostingRepoInfo.namespace}/${hostingRepoInfo.repo}`
@@ -252,7 +341,7 @@
   });
 
   const modalWidth = $derived(
-    modal === "rebase" ? "680px" : modal === "pr" ? "560px" : modal === "squash" ? "440px" : "420px"
+    modal === "rebase" ? "680px" : modal === "pr" ? "560px" : modal === "squash" || modal === "reword" ? "480px" : "420px"
   );
 </script>
 
@@ -334,6 +423,34 @@
           <label class="form-label" for="squash-desc">{t("hgModal.squashDescLabel")}</label>
           <textarea id="squash-desc" class="form-input" placeholder={t("hgModal.squashDescPlaceholder")} rows="3" bind:value={squashDescription} style="resize: vertical;"></textarea>
         </div>
+      {:else if modal === "reword"}
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+          {t("rewordModal.subtitle", { sha: rewordTargetCommit?.short_sha || "" })}
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="reword-summary">{t("rewordModal.summaryLabel")}</label>
+          <input
+            id="reword-summary"
+            type="text"
+            class="form-input"
+            placeholder={t("rewordModal.summaryPlaceholder")}
+            bind:value={rewordSummary}
+            disabled={isRewording}
+          />
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="reword-desc">{t("rewordModal.descLabel")}</label>
+          <textarea
+            id="reword-desc"
+            class="form-input"
+            placeholder={t("rewordModal.descPlaceholder")}
+            rows="3"
+            bind:value={rewordDescription}
+            disabled={isRewording}
+            style="resize: vertical;"
+          ></textarea>
+        </div>
+
 
       {:else if modal === "rebase"}
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -544,6 +661,16 @@
         <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
         <button type="button" class="btn-primary" onclick={handleSquashSubmit} disabled={!squashSummary.trim()}>
           {t("hgModal.confirmSquashBtn")}
+        </button>
+      {:else if modal === "reword"}
+        <button type="button" class="btn-secondary" onclick={onClose} disabled={isRewording}>{t("common.cancel")}</button>
+        <button
+          type="button"
+          class="btn-primary"
+          onclick={executeRewordSubmit}
+          disabled={!rewordSummary.trim() || isRewording}
+        >
+          {isRewording ? t("rewordModal.updatingStatus") : t("rewordModal.saveBtn")}
         </button>
       {:else if modal === "rebase"}
         <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
