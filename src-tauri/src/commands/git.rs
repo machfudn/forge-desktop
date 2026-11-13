@@ -825,18 +825,21 @@ pub async fn get_app_runtime_info() -> Result<AppRuntimeInfo, String> {
 #[tauri::command]
 pub async fn check_app_update(
     channel: Option<String>,
+    target_mode: Option<String>,
     accounts: State<'_, AccountManager>,
 ) -> Result<AppUpdateInfo, String> {
     let token = accounts
         .resolve_account_for_repo(None, GITHUB_PUBLIC_HOST)
         .map(|(_, t)| t);
     let ch = UpdateChannel::parse(channel.as_deref());
-    run_blocking(move || updater::check_app_update(ch, token.as_deref())).await
+    let target = updater::TargetPackageMode::parse(target_mode.as_deref());
+    run_blocking(move || updater::check_app_update(ch, target, token.as_deref())).await
 }
 
 #[tauri::command]
 pub async fn install_app_update(
     channel: Option<String>,
+    target_mode: Option<String>,
     app: tauri::AppHandle,
     accounts: State<'_, AccountManager>,
 ) -> Result<UpdateApplyResult, String> {
@@ -844,8 +847,8 @@ pub async fn install_app_update(
         .resolve_account_for_repo(None, GITHUB_PUBLIC_HOST)
         .map(|(_, t)| t);
     let ch = UpdateChannel::parse(channel.as_deref());
-    let res = run_blocking(move || updater::download_and_install_update(ch, token.as_deref())).await?;
-
+    let target = updater::TargetPackageMode::parse(target_mode.as_deref());
+    let res = run_blocking(move || updater::download_and_install_update(ch, target, token.as_deref())).await?;
     if res.restart_pending {
         let handle = app.clone();
         std::thread::spawn(move || {

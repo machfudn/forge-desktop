@@ -41,6 +41,43 @@ impl UpdateChannel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetPackageMode {
+    Auto,
+    Portable,
+    Installer,
+}
+
+impl TargetPackageMode {
+    pub fn parse(raw: Option<&str>) -> Self {
+        match raw.map(str::trim).unwrap_or("auto").to_ascii_lowercase().as_str() {
+            "portable" => Self::Portable,
+            "installer" | "installed" | "setup" => Self::Installer,
+            _ => Self::Auto,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Portable => "portable",
+            Self::Installer => "installer",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AvailablePackageInfo {
+    pub mode: String,
+    pub package_kind: String,
+    pub asset_name: String,
+    pub asset_url: String,
+    pub asset_size: Option<u64>,
+    pub sha256: Option<String>,
+    pub can_self_update: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageKind {
     WindowsPortable,
@@ -93,6 +130,7 @@ pub struct AppUpdateInfo {
     pub is_prerelease: bool,
     pub install_mode: String,
     pub package_kind: String,
+    pub target_mode: String,
     pub can_self_update: bool,
     pub asset_name: Option<String>,
     pub asset_url: Option<String>,
@@ -100,6 +138,8 @@ pub struct AppUpdateInfo {
     pub sha256: Option<String>,
     pub release_notes: Option<String>,
     pub html_url: Option<String>,
+    #[serde(default)]
+    pub available_packages: Vec<AvailablePackageInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -405,6 +445,183 @@ pub fn select_best_asset<'a>(
     }
 }
 
+pub fn resolve_package_kind(
+    os: &str,
+    target_mode: TargetPackageMode,
+    detected_kind: PackageKind,
+) -> PackageKind {
+    match target_mode {
+        TargetPackageMode::Auto => detected_kind,
+        TargetPackageMode::Portable => match os {
+            "windows" => PackageKind::WindowsPortable,
+            "linux" => {
+                if detected_kind == PackageKind::LinuxPortable {
+                    PackageKind::LinuxPortable
+                } else {
+                    PackageKind::LinuxAppImage
+                }
+            }
+            "macos" => PackageKind::MacOsApp,
+            _ => detected_kind,
+        },
+        TargetPackageMode::Installer => match os {
+            "windows" => {
+                if detected_kind == PackageKind::WindowsMsi {
+                    PackageKind::WindowsMsi
+                } else {
+                    PackageKind::WindowsNsis
+                }
+            }
+            "linux" => {
+                if detected_kind == PackageKind::LinuxRpm {
+                    PackageKind::LinuxRpm
+                } else {
+                    PackageKind::LinuxDeb
+                }
+            }
+            "macos" => PackageKind::MacOsInstalled,
+            _ => detected_kind,
+        },
+    }
+}
+
+pub fn list_available_packages(
+    assets: &[GhReleaseAsset],
+    arch: &str,
+    os: &str,
+    sums: &HashMap<String, String>,
+) -> Vec<AvailablePackageInfo> {
+    let mut list = Vec::new();
+    match os {
+        "windows" => {
+            if let Some(asset) = select_best_asset(assets, arch, PackageKind::WindowsPortable) {
+                let sha = sums
+                    .get(&asset.name.to_ascii_lowercase())
+                    .cloned()
+                    .or_else(|| asset_sha256_from_digest(asset));
+                list.push(AvailablePackageInfo {
+                    mode: "portable".to_string(),
+                    package_kind: PackageKind::WindowsPortable.as_str().to_string(),
+                    asset_name: asset.name.clone(),
+                    asset_url: asset.browser_download_url.clone(),
+                    asset_size: asset.size,
+                    sha256: sha,
+                    can_self_update: true,
+                });
+            }
+            if let Some(asset) = select_best_asset(assets, arch, PackageKind::WindowsNsis) {
+                let sha = sums
+                    .get(&asset.name.to_ascii_lowercase())
+                    .cloned()
+                    .or_else(|| asset_sha256_from_digest(asset));
+                list.push(AvailablePackageInfo {
+                    mode: "installer".to_string(),
+                    package_kind: PackageKind::WindowsNsis.as_str().to_string(),
+                    asset_name: asset.name.clone(),
+                    asset_url: asset.browser_download_url.clone(),
+                    asset_size: asset.size,
+                    sha256: sha,
+                    can_self_update: true,
+                });
+            } else if let Some(asset) = select_best_asset(assets, arch, PackageKind::WindowsMsi) {
+                let sha = sums
+                    .get(&asset.name.to_ascii_lowercase())
+                    .cloned()
+                    .or_else(|| asset_sha256_from_digest(asset));
+                list.push(AvailablePackageInfo {
+                    mode: "installer".to_string(),
+                    package_kind: PackageKind::WindowsMsi.as_str().to_string(),
+                    asset_name: asset.name.clone(),
+                    asset_url: asset.browser_download_url.clone(),
+                    asset_size: asset.size,
+                    sha256: sha,
+                    can_self_update: true,
+                });
+            }
+        }
+        "linux" => {
+            if let Some(asset) = select_best_asset(assets, arch, PackageKind::LinuxAppImage)
+                .or_else(|| select_best_asset(assets, arch, PackageKind::LinuxPortable))
+            {
+                let is_appimage = asset.name.to_ascii_lowercase().ends_with(".appimage");
+                let sha = sums
+                    .get(&asset.name.to_ascii_lowercase())
+                    .cloned()
+                    .or_else(|| asset_sha256_from_digest(asset));
+                list.push(AvailablePackageInfo {
+                    mode: "portable".to_string(),
+                    package_kind: if is_appimage {
+                        PackageKind::LinuxAppImage.as_str().to_string()
+                    } else {
+                        PackageKind::LinuxPortable.as_str().to_string()
+                    },
+                    asset_name: asset.name.clone(),
+                    asset_url: asset.browser_download_url.clone(),
+                    asset_size: asset.size,
+                    sha256: sha,
+                    can_self_update: true,
+                });
+            }
+            if let Some(asset) = select_best_asset(assets, arch, PackageKind::LinuxDeb)
+                .or_else(|| select_best_asset(assets, arch, PackageKind::LinuxRpm))
+            {
+                let is_deb = asset.name.to_ascii_lowercase().ends_with(".deb");
+                let sha = sums
+                    .get(&asset.name.to_ascii_lowercase())
+                    .cloned()
+                    .or_else(|| asset_sha256_from_digest(asset));
+                list.push(AvailablePackageInfo {
+                    mode: "installer".to_string(),
+                    package_kind: if is_deb {
+                        PackageKind::LinuxDeb.as_str().to_string()
+                    } else {
+                        PackageKind::LinuxRpm.as_str().to_string()
+                    },
+                    asset_name: asset.name.clone(),
+                    asset_url: asset.browser_download_url.clone(),
+                    asset_size: asset.size,
+                    sha256: sha,
+                    can_self_update: false,
+                });
+            }
+        }
+        "macos" => {
+            if let Some(asset) = select_best_asset(assets, arch, PackageKind::MacOsApp) {
+                let sha = sums
+                    .get(&asset.name.to_ascii_lowercase())
+                    .cloned()
+                    .or_else(|| asset_sha256_from_digest(asset));
+                list.push(AvailablePackageInfo {
+                    mode: "portable".to_string(),
+                    package_kind: PackageKind::MacOsApp.as_str().to_string(),
+                    asset_name: asset.name.clone(),
+                    asset_url: asset.browser_download_url.clone(),
+                    asset_size: asset.size,
+                    sha256: sha,
+                    can_self_update: true,
+                });
+            }
+            if let Some(asset) = select_best_asset(assets, arch, PackageKind::MacOsInstalled) {
+                let sha = sums
+                    .get(&asset.name.to_ascii_lowercase())
+                    .cloned()
+                    .or_else(|| asset_sha256_from_digest(asset));
+                list.push(AvailablePackageInfo {
+                    mode: "installer".to_string(),
+                    package_kind: PackageKind::MacOsInstalled.as_str().to_string(),
+                    asset_name: asset.name.clone(),
+                    asset_url: asset.browser_download_url.clone(),
+                    asset_size: asset.size,
+                    sha256: sha,
+                    can_self_update: true,
+                });
+            }
+        }
+        _ => {}
+    }
+    list
+}
+
 pub fn pick_target_release<'a>(
     releases: &'a [GhRelease],
     resolved_channel: &str,
@@ -610,12 +827,15 @@ struct ResolvedCandidate {
     release: Option<GhRelease>,
     asset: Option<GhReleaseAsset>,
     sha256: Option<String>,
+    package_kind: PackageKind,
+    available_packages: Vec<AvailablePackageInfo>,
 }
 
 fn resolve_release_candidate(
     channel: UpdateChannel,
+    target_mode: TargetPackageMode,
     token: Option<&str>,
-    package_kind: PackageKind,
+    detected_kind: PackageKind,
 ) -> Result<ResolvedCandidate, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let resolved_channel = channel.resolve(&current).to_string();
@@ -623,12 +843,15 @@ fn resolve_release_candidate(
         "https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases?per_page=20"
     );
     let stdout = crate::git::github::github_api_request("GET", &url, None, token)?;
+    let package_kind = resolve_package_kind(std::env::consts::OS, target_mode, detected_kind);
     if stdout.trim().is_empty() {
         return Ok(ResolvedCandidate {
             channel: resolved_channel,
             release: None,
             asset: None,
             sha256: None,
+            package_kind,
+            available_packages: Vec::new(),
         });
     }
     let releases: Vec<GhRelease> = serde_json::from_str(&stdout)
@@ -639,11 +862,16 @@ fn resolve_release_candidate(
             release: None,
             asset: None,
             sha256: None,
+            package_kind,
+            available_packages: Vec::new(),
         });
     };
-    let asset = select_best_asset(&target.assets, current_arch(), package_kind).cloned();
-    let sha = if let Some(ref a) = asset {
-        let sums = fetch_sha256sums(&target, token);
+    let sums = fetch_sha256sums(&target, token);
+    let available_packages = list_available_packages(&target.assets, current_arch(), std::env::consts::OS, &sums);
+    let asset = select_best_asset(&target.assets, current_arch(), package_kind)
+        .or_else(|| select_best_asset(&target.assets, current_arch(), detected_kind))
+        .cloned();
+    let sha = if let Some(a) = &asset {
         sums.get(&a.name.to_ascii_lowercase())
             .cloned()
             .or_else(|| asset_sha256_from_digest(a))
@@ -655,21 +883,26 @@ fn resolve_release_candidate(
         release: Some(target),
         asset,
         sha256: sha,
+        package_kind,
+        available_packages,
     })
 }
 
 pub fn check_app_update(
     channel: UpdateChannel,
+    target_mode: TargetPackageMode,
     token: Option<&str>,
 ) -> Result<AppUpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let package_kind = detect_package_kind();
+    let detected_kind = detect_package_kind();
     let ResolvedCandidate {
         channel: resolved_channel,
         release: release_opt,
         asset: asset_opt,
         sha256: sha_opt,
-    } = resolve_release_candidate(channel, token, package_kind)?;
+        package_kind,
+        available_packages,
+    } = resolve_release_candidate(channel, target_mode, token, detected_kind)?;
     let Some(release) = release_opt else {
         return Ok(AppUpdateInfo {
             current_version: current.clone(),
@@ -679,6 +912,7 @@ pub fn check_app_update(
             is_prerelease: false,
             install_mode: package_kind.install_mode().to_string(),
             package_kind: package_kind.as_str().to_string(),
+            target_mode: target_mode.as_str().to_string(),
             can_self_update: false,
             asset_name: None,
             asset_url: None,
@@ -686,6 +920,7 @@ pub fn check_app_update(
             sha256: None,
             release_notes: None,
             html_url: None,
+            available_packages: Vec::new(),
         });
     };
 
@@ -701,6 +936,7 @@ pub fn check_app_update(
         is_prerelease: release.prerelease,
         install_mode: package_kind.install_mode().to_string(),
         package_kind: package_kind.as_str().to_string(),
+        target_mode: target_mode.as_str().to_string(),
         can_self_update,
         asset_name: asset_opt.as_ref().map(|a| a.name.clone()),
         asset_url: asset_opt.as_ref().map(|a| a.browser_download_url.clone()),
@@ -708,6 +944,7 @@ pub fn check_app_update(
         sha256: sha_opt,
         release_notes: release.body,
         html_url: release.html_url,
+        available_packages,
     })
 }
 
@@ -1219,16 +1456,18 @@ rm -rf "$STAGE_DIR"
 
 pub fn download_and_install_update(
     channel: UpdateChannel,
+    target_mode: TargetPackageMode,
     token: Option<&str>,
 ) -> Result<UpdateApplyResult, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let package_kind = detect_package_kind();
+    let detected_kind = detect_package_kind();
     let ResolvedCandidate {
         release: release_opt,
         asset: asset_opt,
         sha256: expected_sha_opt,
+        package_kind,
         ..
-    } = resolve_release_candidate(channel, token, package_kind)?;
+    } = resolve_release_candidate(channel, target_mode, token, detected_kind)?;
 
     let release = release_opt.ok_or_else(|| "Belum ada rilis tersedia di GitHub Releases.".to_string())?;
     let latest_clean = release.tag_name.trim_start_matches(['v', 'V']).to_string();
@@ -1469,5 +1708,80 @@ mod tests {
         assert!(is_trusted_github_url("https://objects.githubusercontent.com/github-production-release-asset/123"));
         assert!(!is_trusted_github_url("http://github.com/a/b"));
         assert!(!is_trusted_github_url("https://evil.example.com/a.exe"));
+    }
+
+    #[test]
+    fn target_package_mode_resolves_and_parses() {
+        assert_eq!(TargetPackageMode::parse(None), TargetPackageMode::Auto);
+        assert_eq!(TargetPackageMode::parse(Some("auto")), TargetPackageMode::Auto);
+        assert_eq!(TargetPackageMode::parse(Some("portable")), TargetPackageMode::Portable);
+        assert_eq!(TargetPackageMode::parse(Some("installer")), TargetPackageMode::Installer);
+        assert_eq!(TargetPackageMode::parse(Some("setup")), TargetPackageMode::Installer);
+
+        assert_eq!(
+            resolve_package_kind("windows", TargetPackageMode::Auto, PackageKind::WindowsNsis),
+            PackageKind::WindowsNsis
+        );
+        assert_eq!(
+            resolve_package_kind("windows", TargetPackageMode::Portable, PackageKind::WindowsNsis),
+            PackageKind::WindowsPortable
+        );
+        assert_eq!(
+            resolve_package_kind("windows", TargetPackageMode::Installer, PackageKind::WindowsPortable),
+            PackageKind::WindowsNsis
+        );
+        assert_eq!(
+            resolve_package_kind("windows", TargetPackageMode::Installer, PackageKind::WindowsMsi),
+            PackageKind::WindowsMsi
+        );
+        assert_eq!(
+            resolve_package_kind("linux", TargetPackageMode::Portable, PackageKind::LinuxDeb),
+            PackageKind::LinuxAppImage
+        );
+        assert_eq!(
+            resolve_package_kind("linux", TargetPackageMode::Installer, PackageKind::LinuxAppImage),
+            PackageKind::LinuxDeb
+        );
+        assert_eq!(
+            resolve_package_kind("macos", TargetPackageMode::Portable, PackageKind::MacOsInstalled),
+            PackageKind::MacOsApp
+        );
+        assert_eq!(
+            resolve_package_kind("macos", TargetPackageMode::Installer, PackageKind::MacOsApp),
+            PackageKind::MacOsInstalled
+        );
+    }
+
+    #[test]
+    fn list_available_packages_detects_portable_and_installer() {
+        let assets = vec![
+            mk_asset("Forge.Desktop_1.2.0_x64-setup.exe"),
+            mk_asset("Forge-Desktop_1.2.0_windows_x64-portable.exe"),
+            mk_asset("Forge.Desktop_1.2.0_amd64.deb"),
+            mk_asset("Forge.Desktop_1.2.0_amd64.AppImage"),
+            mk_asset("Forge.Desktop_1.2.0_universal.dmg"),
+            mk_asset("Forge.Desktop_1.2.0_universal.app.tar.gz"),
+        ];
+        let mut sums = HashMap::new();
+        sums.insert(
+            "forge-desktop_1.2.0_windows_x64-portable.exe".to_string(),
+            "abcd".to_string(),
+        );
+
+        let win_pkgs = list_available_packages(&assets, "x86_64", "windows", &sums);
+        assert_eq!(win_pkgs.len(), 2);
+        assert_eq!(win_pkgs[0].mode, "portable");
+        assert_eq!(win_pkgs[0].sha256.as_deref(), Some("abcd"));
+        assert_eq!(win_pkgs[1].mode, "installer");
+
+        let linux_pkgs = list_available_packages(&assets, "x86_64", "linux", &sums);
+        assert_eq!(linux_pkgs.len(), 2);
+        assert_eq!(linux_pkgs[0].mode, "portable");
+        assert_eq!(linux_pkgs[1].mode, "installer");
+
+        let mac_pkgs = list_available_packages(&assets, "x86_64", "macos", &sums);
+        assert_eq!(mac_pkgs.len(), 2);
+        assert_eq!(mac_pkgs[0].mode, "portable");
+        assert_eq!(mac_pkgs[1].mode, "installer");
     }
 }
