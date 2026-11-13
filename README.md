@@ -1,154 +1,146 @@
 <div align="center">
-  <img src="src-tauri/icons/128x128.png" alt="Forge Desktop Logo" width="96" height="96" />
-  <h1>Forge Desktop</h1>
-  <p><strong>A high-performance native Git desktop client built with Rust, Tauri 2, and Svelte 5.</strong></p>
-  <p>100% feature parity with GitHub Desktop, designed with minimal resource overhead, instant startup, and complete local privacy.</p>
+  <img src="src-tauri/icons/128x128.png" width="96" height="96" alt="Forge Desktop logo" />
+
+  # Forge Desktop
+  *Fast native Git desktop client built with Rust and Svelte 5*
+
+  [![Latest Release](https://img.shields.io/github/v/release/machfudin/forge-desktop?style=flat-square&color=2563eb)](https://github.com/machfudin/forge-desktop/releases/latest)
+  [![Rust](https://img.shields.io/badge/Rust-2024%20edition-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
+  [![Tauri](https://img.shields.io/badge/Tauri-v2-24c8db?style=flat-square&logo=tauri)](https://tauri.app/)
+  [![Svelte](https://img.shields.io/badge/Svelte-v5-ff3e00?style=flat-square&logo=svelte)](https://svelte.dev/)
+  [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-gray?style=flat-square)](https://github.com/machfudin/forge-desktop/releases/latest)
+  [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue?style=flat-square)](LICENSE)
+
+  [Download](#download) • [Features](#features) • [Installation](#installation) • [CLI Shortcut](#cli-shortcut) • [Author](#author)
+
 </div>
 
----
-
-## Overview
-
-Forge Desktop is a cross-platform desktop Git client engineered to replace heavy web-wrapper Git applications with a lean, compiled native architecture. By combining a Rust core for deterministic Git execution and a reactive Svelte 5 frontend using custom CSS design tokens, Forge Desktop provides instant responsiveness, low memory footprint, and full compatibility with Git workflows.
+Forge Desktop is a compiled Git client engineered for fast startup, low memory usage, and full local privacy. It connects directly with GitHub, GitLab, Bitbucket, and Azure DevOps while executing Git commands locally through system binaries.
 
 > [!NOTE]
-> Forge Desktop achieves full feature parity with GitHub Desktop (v3.4.9), supporting complex workflows including partial hunk staging, visual interactive rebase, multi-mode image diffing, and GitHub Actions CI status checks.
+> Forge Desktop runs as a standalone desktop application with zero background telemetry. All repository credentials stay protected inside your operating system keyring.
 
----
+## Download
+
+Get precompiled releases for your operating system from the [Latest GitHub Release](https://github.com/machfudin/forge-desktop/releases/latest):
+
+| Operating System | Recommended Download | Alternative Formats |
+| :--- | :--- | :--- |
+| **Windows** (x64) | `forge-desktop-portable.exe` (run directly, no install required) | `forge-desktop-setup.exe`, `.msi` |
+| **Linux** (x64) | `forge-desktop.AppImage` (universal executable) | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), `.tar.gz` |
+| **macOS** (Apple Silicon / Intel) | `forge-desktop.dmg` (drag to Applications) | `forge-desktop.app.tar.gz` |
 
 ## Features
 
-### Repository Management
-- **Repository Operations**: Open existing local repositories, clone via HTTPS or SSH, and initialize new repositories with customizable `.gitignore` templates and licenses.
-- **GitHub Publishing**: Publish local repositories directly to GitHub with public or private visibility settings.
-- **Repository Tracking**: Automatic tracking of recent repositories, path relocation for moved folders, and custom repository aliases.
+### Multi-Provider Git Hosting
+- **Supported Hosts**: GitHub, GitLab, Bitbucket, and Azure DevOps (both cloud and self-hosted Enterprise instances).
+- **Direct Publishing**: Publish local Git repositories directly to your remote account with public or private visibility.
+- **Pull Requests and Issues**: Inspect active pull requests, merge requests, and issues without opening a browser.
+- **CI Pipeline Indicators**: Visual status dots next to commit SHAs show continuous integration status (green for passed, red for failed, yellow for pending).
 
-### Changes and Staging
-- **Real-Time Working Tree**: Instant detection of modified, added, deleted, renamed, and untracked files.
-- **Granular Staging**: File-level staging checkboxes, batch stage/unstage actions, and **partial hunk staging** directly within diff views.
-- **Safety and Discard**: Selective discard of individual file changes or full working tree discard with configurable confirmation dialogs.
+### Dynamic History Table
+- **Customizable Columns**: Reorder columns (`Graph`, `Commit`, `Changes`, `Author`, `Date`, `SHA`) using pointer drag or keyboard controls (`ArrowLeft` / `ArrowRight`).
+- **Visibility Control**: Toggle individual columns and choose between Comfortable, Compact, or Dense row spacing.
+- **Branch Graph**: Visual Git branch graph with color-coded lanes and clear head indicators.
+- **Interactive Rebase**: Visual modal to reorder commits, drop revisions, and squash intermediate changes.
 
-### Diff Viewers
-- **Unified and Split Modes**: Switch between unified and side-by-side split diff layouts with line-level addition and deletion indicators.
-- **Syntax Highlighting**: Built-in syntax highlighting across major programming languages (Rust, TypeScript, JavaScript, Python, CSS, JSON, TOML).
-- **Image Diff Inspection**: Compare image changes using three specialized modes:
-  - **2-Up**: Side-by-side comparison of baseline and modified graphics.
-  - **Swipe Bar**: Interactive horizontal slider divider revealing changes dynamically.
-  - **Onion Skin**: Adjustable opacity overlay (0-100%) to spot subtle graphic revisions.
-- **Rendered Markdown Diff**: Native rendering of Markdown diffs with styled headings, task lists, code blocks, and change markers.
-- **Whitespace Control**: Toggle whitespace changes (`--ignore-all-space`) to focus on substantive code modifications.
+### Granular Staging and Visual Diffs
+- **Partial Hunk Staging**: Stage specific lines or hunks directly inside unified or split diff views.
+- **Image Diff Inspection**: Compare graphics using three specialized visual inspection modes:
+  - **2-Up**: Side-by-side comparison of old and new images.
+  - **Swipe Bar**: Interactive divider slider revealing changes dynamically.
+  - **Onion Skin**: Adjustable transparency overlay from 0% to 100%.
+- **Rendered Markdown Diff**: Preview rendered Markdown diffs with headings, lists, and formatted code blocks.
+- **Whitespace Toggle**: Ignore whitespace changes with `--ignore-all-space` to review substantive edits quickly.
 
-### Commit Workflows
-- **Rich Commit Authoring**: Commit summaries, multi-line descriptions, and co-author attribution via `Co-authored-by:` trailers.
-- **Productivity Accelerators**: One-click conventional commit prefixes (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`), inline emoji autocompletion (`:`), and GitHub issue autocompletion (`#`).
-- **History Mutations**: Undo recent commits (`git reset --soft HEAD~1`) and amend the latest commit safely.
+### Productivity Accelerators
+- **Conventional Commits**: One-click prefixes (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`).
+- **Emoji Autocomplete**: Type `:` in commit messages to search and insert Git commit emojis.
+- **History Mutations**: Safe one-click commit undo (`git reset --soft HEAD~1`) without losing working tree changes.
+- **Conflict Management**: Visual conflict indicators with direct actions to abort or open external editors.
+- **In-App Updates**: Built-in update detector with one-click download and installation.
 
-### Commit History and Advanced Git Operations
-- **History Timeline**: Searchable commit history displaying SHAs, authors, dates, and verification status.
-- **Visual Interactive Rebase**: Interactive rebase modal to reorder commits using vertical controls or drop unwanted commits before applying changes.
-- **Branch Divergence**: Live ahead and behind commit indicators comparing the current branch against upstream or target references.
-- **Advanced Operations**: Cherry-pick commits, revert commits (`git revert`), squash multiple commits into one, and manage Git tags (create and delete).
+## Installation
 
-### Branches, Remotes, and Collaboration
-- **Branch Management**: Filter, create, rename, delete, and merge branches with conflict detection.
-- **Remote Synchronization**: Fetch, pull, push with `--force-with-lease`, sync forks directly against upstream remotes, and automated periodic background fetch.
-- **Merge Conflict Recovery**: Visual indicators for merge conflicts, one-click merge abort, and direct shortcuts to resolve conflicts in external editors.
-- **GitHub Integration**: GitHub OAuth device flow authentication, pull requests and issues browser, branch checkout from pull requests, and real-time GitHub Actions CI status indicators.
+### Windows
+1. Download `forge-desktop-portable.exe` or `forge-desktop-setup.exe`.
+2. Double-click the file to start.
+3. If Windows SmartScreen displays an unrecognized application prompt on first launch, select **More info** and click **Run anyway**.
 
----
+### Linux
+1. Download `forge-desktop.AppImage`.
+2. Mark the file as executable and launch:
+   ```bash
+   chmod +x forge-desktop.AppImage
+   ./forge-desktop.AppImage
+   ```
+3. To install via Debian package on Ubuntu/Debian:
+   ```bash
+   sudo dpkg -i forge-desktop_*_amd64.deb
+   ```
 
-## Architecture
+### macOS
+1. Download `forge-desktop.dmg`.
+2. Open the disk image and drag **Forge Desktop** into your **Applications** folder.
+3. If macOS Gatekeeper blocks opening on first launch, right-click the application icon, choose **Open**, and confirm the dialog.
 
-Forge Desktop is architected with a strict separation between low-level system operations and reactive presentation.
+## CLI Shortcut
 
-```
-+-------------------------------------------------------------+
-|                      Svelte 5 Frontend                      |
-|  - Custom CSS Design Tokens (Dark / Light / System)         |
-|  - Reactive State Management (Runes: $state, $derived)      |
-|  - Diff Parsers (Unified, Split, Image, Markdown)           |
-+-------------------------------------------------------------+
-                              |
-                     Tauri 2 IPC Bridge
-                              |
-+-------------------------------------------------------------+
-|                      Rust Core Engine                       |
-|  - Safe Git CLI Subprocess Execution                        |
-|  - Native Base64 Image Processing                           |
-|  - GitHub REST API Client (Device Flow, Releases, Checks)   |
-|  - System Diagnostics with Credential Redaction             |
-+-------------------------------------------------------------+
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-- **Node.js**: Version 18.0.0 or higher
-- **npm** or **pnpm**
-- **Rust and Cargo**: Version 1.80.0 or higher
-- **Git**: Version 2.30.0 or higher installed in system PATH
-
-### Installation
-Clone the repository and install dependencies:
+Launch Forge Desktop directly into any local repository folder from your terminal:
 
 ```bash
-git clone https://github.com/machfudin/github-desktop.git
-cd github-desktop
-npm install
-```
+# Open repository in current directory
+forge .
 
-### Development
-Launch the development server with live reload and Tauri desktop runtime:
-
-```bash
-npm run tauri dev
-```
-
-Run frontend type checking and linter:
-
-```bash
-npm run build
-```
-
-Run backend unit and integration tests:
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
----
-
-## CLI Launcher
-
-Forge Desktop includes a standalone CLI launcher located at `scripts/forge`. You can launch repositories directly from your terminal:
-
-```bash
-# Open current working directory
-./scripts/forge .
-
-# Open a specific repository path
-./scripts/forge /path/to/my-project
+# Open repository at specific path
+forge ~/projects/my-app
 ```
 
 > [!TIP]
-> Symlink `scripts/forge` into your `$PATH` (e.g. `/usr/local/bin/forge`) to launch Forge Desktop globally from any terminal directory.
+> To enable the `forge` command from anywhere:
+> - **Linux & macOS**: Create a symbolic link to the executable:
+>   ```bash
+>   sudo ln -sf /path/to/forge /usr/local/bin/forge
+>   ```
+> - **Windows**: Add the directory containing `forge-desktop.exe` to your user `PATH` environment variable.
 
----
+## Security & Privacy
 
-## Packaging and Release Signing
+- **Local Execution**: All Git operations run locally through your installed Git CLI.
+- **Encrypted Credentials**: Tokens and credentials are saved in your operating system credential vault (Windows Credential Manager, macOS Keychain, Linux Secret Service).
+- **No Data Harvesting**: Forge Desktop does not transmit analytics, logs, or repository contents to any tracking endpoint.
 
-Forge Desktop supports multi-OS release builds with native signing infrastructure:
+<details>
+<summary><strong>Building from Source</strong></summary>
 
-- **Linux**: `.deb`, `.rpm`, and `.AppImage` packages.
-- **Windows**: `.msi` and `.exe` installers.
-- **macOS**: `.dmg` and `.app` bundles.
+### Prerequisites
+- Node.js 20 or higher
+- Rust 1.80 or higher
+- Git 2.30 or higher
 
-Artifacts can be built locally using:
-
+### Build Steps
 ```bash
+# Clone the repository
+git clone https://github.com/machfudin/forge-desktop.git
+cd forge-desktop
+
+# Install frontend dependencies
+npm install
+
+# Run application in development mode
+npm run tauri dev
+
+# Run unit tests
+cargo test --manifest-path src-tauri/Cargo.toml
+
+# Compile release package
 npm run tauri build
 ```
+</details>
 
-Release signing is handled via GPG for Linux artifacts (`scripts/sign-linux-artifacts.sh`) and Tauri updater key verification (`tauri.conf.json`).
+## Author
+
+**Machfudin** (Software Engineer)
+
+- GitHub: [@machfudin](https://github.com/machfudin)
+- Project: [github.com/machfudin/forge-desktop](https://github.com/machfudin/forge-desktop)
