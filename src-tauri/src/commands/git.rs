@@ -137,10 +137,11 @@ pub async fn get_commit_history(
     repo: String,
     limit: Option<usize>,
     all_branches: Option<bool>,
+    branches: Option<Vec<String>>,
 ) -> Result<Vec<CommitInfo>, String> {
     let lim = limit.unwrap_or(100);
     let all = all_branches.unwrap_or(true);
-    run_blocking(move || git::get_history_with_options(&repo, lim, all)).await
+    run_blocking(move || git::get_history_with_options(&repo, lim, all, branches)).await
 }
 
 #[tauri::command]
@@ -711,12 +712,16 @@ pub async fn get_commit_check_runs(
     accounts: State<'_, AccountManager>,
 ) -> Result<Vec<CheckRunInfo>, String> {
     let mgr = accounts.inner().clone();
+    let target_host = host.unwrap_or_else(|| GITHUB_PUBLIC_HOST.to_string());
     run_blocking(move || {
-        let target_host = host.as_deref().unwrap_or(GITHUB_PUBLIC_HOST);
-        let token = mgr
-            .resolve_account_for_repo(repo_path.as_deref(), target_host)
-            .map(|(_, t)| t);
-        git::get_commit_check_runs(target_host, &owner, &repo, &commit_sha, token.as_deref())
+        git::get_provider_commit_check_runs(
+            &mgr,
+            &target_host,
+            &owner,
+            &repo,
+            &commit_sha,
+            repo_path.as_deref(),
+        )
     })
     .await
 }
@@ -780,7 +785,7 @@ pub async fn publish_repository_to_github(
 ) -> Result<String, String> {
     let mgr = accounts.inner().clone();
     run_blocking(move || {
-        git::publish_repository_to_github(
+        git::publish_repository(
             &mgr,
             &repo,
             params,

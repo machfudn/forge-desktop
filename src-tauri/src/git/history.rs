@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use super::cli;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -14,12 +15,17 @@ pub struct CommitInfo {
     pub sha: String,
     pub short_sha: String,
     pub author: String,
+    pub author_email: String,
+    pub avatar_url: String,
     pub date: String,
     pub summary: String,
     pub is_pushed: bool,
     pub tags: Vec<String>,
     pub parents: Vec<String>,
     pub refs: Vec<CommitRef>,
+    pub files_changed: Option<usize>,
+    pub insertions: Option<usize>,
+    pub deletions: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -57,11 +63,21 @@ fn parse_refs_from_decorate(dec: &str) -> (Vec<String>, Vec<CommitRef>) {
     let mut tags = Vec::new();
     let mut refs = Vec::new();
     for raw_item in dec.split(", ") {
-        let item = raw_item.trim();
+        let item = raw_item.trim().trim_matches(|c| c == '(' || c == ')').trim();
         if item.is_empty() {
             continue;
         }
-        if let Some(tag) = item.strip_prefix("tag: refs/tags/") {
+        let tag_candidate = if let Some(t) = item.strip_prefix("tag: refs/tags/") {
+            Some(t)
+        } else if let Some(t) = item.strip_prefix("tag: ") {
+            Some(t)
+        } else if let Some(t) = item.strip_prefix("refs/tags/") {
+            Some(t)
+        } else {
+            None
+        };
+
+        if let Some(tag) = tag_candidate {
             let t = tag.trim();
             if !t.is_empty() {
                 tags.push(t.to_string());
@@ -71,12 +87,19 @@ fn parse_refs_from_decorate(dec: &str) -> (Vec<String>, Vec<CommitRef>) {
                     is_current: false,
                 });
             }
-        } else if let Some(target) = item.strip_prefix("HEAD -> refs/heads/") {
-            let name = target.trim();
-            if !name.is_empty() {
+            continue;
+        }
+
+        if let Some(target) = item.strip_prefix("HEAD -> ") {
+            let clean = target
+                .strip_prefix("refs/heads/")
+                .or_else(|| target.strip_prefix("refs/remotes/"))
+                .unwrap_or(target)
+                .trim();
+            if !clean.is_empty() {
                 refs.push(CommitRef {
                     kind: "branch".into(),
-                    name: name.to_string(),
+                    name: clean.to_string(),
                     is_current: true,
                 });
             }
@@ -109,22 +132,135 @@ fn parse_refs_from_decorate(dec: &str) -> (Vec<String>, Vec<CommitRef>) {
     (tags, refs)
 }
 
-pub fn parse_log_line_with_status(
-    line: &str,
+fn resolve_avatar_url(author: &str, email: &str) -> String {
+    let lower_author = author.trim().to_ascii_lowercase();
+    let lower_email = email.trim().to_ascii_lowercase();
+
+    // Known bots & AI assistants
+    if lower_author.contains("dependabot") || lower_email.contains("dependabot") {
+        return "https://avatars.githubusercontent.com/in/29110?v=4".into();
+    }
+    if lower_author.contains("github-actions") || lower_email.contains("github-actions") {
+        return "https://avatars.githubusercontent.com/in/15368?v=4".into();
+    }
+    if lower_author.contains("copilot") || lower_email.contains("copilot") {
+        return "https://avatars.githubusercontent.com/in/148412619?v=4".into();
+    }
+    if lower_author.contains("claude")
+        || lower_email.contains("claude")
+        || lower_author.contains("anthropic")
+        || lower_email.contains("anthropic")
+    {
+        return "https://avatars.githubusercontent.com/u/1182507?v=4".into();
+    }
+    if lower_author.contains("renovate") || lower_email.contains("renovate") {
+        return "https://avatars.githubusercontent.com/u/25149447?v=4".into();
+    }
+    if lower_author.contains("coderabbit") || lower_email.contains("coderabbit") {
+        return "https://avatars.githubusercontent.com/in/347564?v=4".into();
+    }
+    if lower_author.contains("snyk") || lower_email.contains("snyk") {
+        return "https://avatars.githubusercontent.com/u/20054746?v=4".into();
+    }
+
+    // GitHub noreply email: e.g. 12345+username@users.noreply.github.com
+    if lower_email.ends_with("@users.noreply.github.com") {
+        if let Some(user_part) = lower_email.strip_suffix("@users.noreply.github.com") {
+            let handle = user_part.split('+').last().unwrap_or(user_part);
+            let clean_handle = handle.strip_suffix("[bot]").unwrap_or(handle).trim();
+            if !clean_handle.is_empty() {
+                return format!("https://github.com/{clean_handle}.png?size=48");
+            }
+        }
+    }
+
+    // Single-word author username (typical GitHub username)
+    let author_trimmed = author.trim();
+    if !author_trimmed.is_empty()
+        && !author_trimmed.contains(' ')
+        && author_trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return format!("https://github.com/{author_trimmed}.png?size=48");
+    }
+
+    // Fallback: Gravatar SHA-256
+    if !lower_email.is_empty() {
+        let mut hasher = Sha256::new();
+        hasher.update(lower_email.as_bytes());
+        let hash = hasher.finalize();
+        return format!("https://www.gravatar.com/avatar/{:x}?d=identicon&s=48", hash);
+    }
+
+    String::new()
+}
+
+fn parse_shortstat(stat: &str) -> (Option<usize>, Option<usize>, Option<usize>) {
+    let mut files = None;
+    let mut ins = None;
+    let mut del = None;
+    for part in stat.split(',') {
+        let trimmed = part.trim();
+        if trimmed.contains("file") {
+            files = trimmed.split_whitespace().next().and_then(|n| n.parse().ok());
+        } else if trimmed.contains("insertion") {
+            ins = trimmed.split_whitespace().next().and_then(|n| n.parse().ok());
+        } else if trimmed.contains("deletion") {
+            del = trimmed.split_whitespace().next().and_then(|n| n.parse().ok());
+        }
+    }
+    (files, ins, del)
+}
+
+pub fn parse_log_entry_with_status(
+    entry: &str,
     unpushed: &HashSet<String>,
 ) -> Option<CommitInfo> {
-    let parts: Vec<&str> = line.split('\x1f').collect();
+    let clean_entry = entry.trim_start_matches('\x1e').trim();
+    if clean_entry.is_empty() {
+        return None;
+    }
+    let (meta_line, stat_text) = match clean_entry.split_once('\n') {
+        Some((m, s)) => (m.trim(), s.trim()),
+        None => (clean_entry, ""),
+    };
+    let parts: Vec<&str> = meta_line.split('\x1f').collect();
     if parts.len() < 5 {
         return None;
     }
+
     let sha = parts[0].to_string();
+    let short_sha = parts[1].to_string();
     let is_pushed = !unpushed.contains(&sha);
+
+    let (author, author_email, date, summary, dec_idx, parents_idx) = if parts.len() >= 8 {
+        (
+            parts[2].to_string(),
+            parts[3].to_string(),
+            parts[4].to_string(),
+            parts[5].to_string(),
+            6,
+            7,
+        )
+    } else {
+        (
+            parts[2].to_string(),
+            String::new(),
+            parts[3].to_string(),
+            parts[4].to_string(),
+            5,
+            6,
+        )
+    };
+
     let (tags, refs) = parts
-        .get(5)
+        .get(dec_idx)
         .map(|dec| parse_refs_from_decorate(dec))
         .unwrap_or_default();
+
     let parents = parts
-        .get(6)
+        .get(parents_idx)
         .map(|p| {
             p.split_whitespace()
                 .map(str::trim)
@@ -133,27 +269,48 @@ pub fn parse_log_line_with_status(
                 .collect()
         })
         .unwrap_or_default();
+
+    let (files_changed, insertions, deletions) = if !stat_text.is_empty() {
+        parse_shortstat(stat_text)
+    } else {
+        (None, None, None)
+    };
+
+    let avatar_url = resolve_avatar_url(&author, &author_email);
+
     Some(CommitInfo {
         sha,
-        short_sha: parts[1].to_string(),
-        author: parts[2].to_string(),
-        date: parts[3].to_string(),
-        summary: parts[4].to_string(),
+        short_sha,
+        author,
+        author_email,
+        avatar_url,
+        date,
+        summary,
         is_pushed,
         tags,
         parents,
         refs,
+        files_changed,
+        insertions,
+        deletions,
     })
+}
+pub fn parse_log_line_with_status(
+    line: &str,
+    unpushed: &HashSet<String>,
+) -> Option<CommitInfo> {
+    parse_log_entry_with_status(line, unpushed)
 }
 
 pub fn parse_log_line(line: &str) -> Option<CommitInfo> {
-    parse_log_line_with_status(line, &HashSet::new())
+    parse_log_entry_with_status(line, &HashSet::new())
 }
 
 fn get_unpushed_shas(repo: &str, limit: usize) -> HashSet<String> {
     let limit_str = limit.max(1).saturating_mul(2).to_string();
-    let out = cli::run(repo, &["rev-list", "-n", &limit_str, "@{u}..HEAD"])
-        .or_else(|_| cli::run(repo, &["rev-list", "-n", &limit_str, "HEAD", "--not", "--remotes"]));
+    let out = cli::run(repo, &["rev-list", "-n", &limit_str, "--branches", "--not", "--remotes"])
+        .or_else(|_| cli::run(repo, &["rev-list", "-n", &limit_str, "HEAD", "--not", "--remotes"]))
+        .or_else(|_| cli::run(repo, &["rev-list", "-n", &limit_str, "@{u}..HEAD"]));
     match out {
         Ok(text) => text
             .lines()
@@ -169,6 +326,7 @@ pub fn get_history_with_options(
     repo: &str,
     limit: usize,
     all_branches: bool,
+    branches: Option<Vec<String>>,
 ) -> Result<Vec<CommitInfo>, String> {
     let limit_str = limit.to_string();
     let (log_res, unpushed) = std::thread::scope(|s| {
@@ -178,11 +336,23 @@ pub fn get_history_with_options(
                 "-n",
                 &limit_str,
                 "--topo-order",
+                "--shortstat",
                 "--decorate=full",
-                "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D%x1f%P",
-                "--date=short",
+                "--pretty=format:%x1e%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%D%x1f%P",
+                "--date=format:%Y-%m-%d %H:%M",
             ];
-            if all_branches {
+            if let Some(ref branch_list) = branches {
+                let valid_branches: Vec<&str> = branch_list
+                    .iter()
+                    .map(|b| b.trim())
+                    .filter(|b| !b.is_empty() && !b.starts_with('-') && !b.contains(".."))
+                    .collect();
+                if !valid_branches.is_empty() {
+                    args.extend(valid_branches);
+                } else if all_branches {
+                    args.push("--all");
+                }
+            } else if all_branches {
                 args.push("--all");
             }
             cli::run(repo, &args)
@@ -208,14 +378,19 @@ pub fn get_history_with_options(
         return Ok(Vec::new());
     }
 
-    Ok(out
-        .lines()
-        .filter_map(|line| parse_log_line_with_status(line, &unpushed))
+    let entries: Vec<&str> = if out.contains('\x1e') {
+        out.split('\x1e').collect()
+    } else {
+        out.lines().collect()
+    };
+    Ok(entries
+        .into_iter()
+        .filter_map(|entry| parse_log_entry_with_status(entry, &unpushed))
         .collect())
 }
 
 pub fn get_history(repo: &str, limit: usize) -> Result<Vec<CommitInfo>, String> {
-    get_history_with_options(repo, limit, false)
+    get_history_with_options(repo, limit, false, None)
 }
 
 fn validate_commit_sha(sha: &str) -> Result<&str, String> {
@@ -360,9 +535,10 @@ pub fn get_file_history(
             "-n",
             &limit_str,
             "--follow",
+            "--shortstat",
             "--decorate=full",
-            "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D%x1f%P",
-            "--date=short",
+            "--pretty=format:%x1e%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%D%x1f%P",
+            "--date=format:%Y-%m-%d %H:%M",
             "--",
             valid_path,
         ],
@@ -370,7 +546,12 @@ pub fn get_file_history(
     if out.is_empty() {
         return Ok(Vec::new());
     }
-    Ok(out.lines().filter_map(parse_log_line).collect())
+    let entries: Vec<&str> = if out.contains('\x1e') {
+        out.split('\x1e').collect()
+    } else {
+        out.lines().collect()
+    };
+    Ok(entries.into_iter().filter_map(parse_log_line).collect())
 }
 
 fn format_unix_date(secs: i64) -> String {
@@ -696,6 +877,36 @@ mod tests {
         assert_eq!(commit.tags, vec!["v2.0"]);
         assert!(commit.refs.iter().any(|r| r.kind == "branch" && r.name == "main" && r.is_current));
         assert!(commit.refs.iter().any(|r| r.kind == "remote" && r.name == "origin/main"));
+    }
+
+    #[test]
+    fn parse_log_entry_with_email_and_shortstat() {
+        let entry = "\x1e60851e80870012f4e83bb8337d81be80ec2831b4\x1f60851e8\x1fMachfudin\x1fmachfudin22@gmail.com\x1f2026-11-13 08:48\x1ffix(ui): deduplicate tracked remote branches\x1fHEAD -> refs/heads/main\x1f3b870f69f1c1c2b020d7d68a8ffaad60a6c63dcc\n 2 files changed, 13 insertions(+), 2 deletions(-)\n";
+        let commit = parse_log_line(entry).unwrap();
+        assert_eq!(commit.short_sha, "60851e8");
+        assert_eq!(commit.author, "Machfudin");
+        assert_eq!(commit.author_email, "machfudin22@gmail.com");
+        assert_eq!(commit.date, "2026-11-13 08:48");
+        assert_eq!(commit.summary, "fix(ui): deduplicate tracked remote branches");
+        assert_eq!(commit.files_changed, Some(2));
+        assert_eq!(commit.insertions, Some(13));
+        assert_eq!(commit.deletions, Some(2));
+    }
+
+    #[test]
+    fn test_resolve_avatar_url_bots_and_users() {
+        assert!(resolve_avatar_url("dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com")
+            .contains("avatars.githubusercontent.com/in/29110"));
+        assert!(resolve_avatar_url("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com")
+            .contains("avatars.githubusercontent.com/in/15368"));
+        assert!(resolve_avatar_url("GitHub Copilot", "copilot@github.com")
+            .contains("avatars.githubusercontent.com/in/148412619"));
+        assert!(resolve_avatar_url("Claude", "claude@anthropic.com")
+            .contains("avatars.githubusercontent.com/u/1182507"));
+        assert_eq!(
+            resolve_avatar_url("Machfudin", "machfudin22@gmail.com"),
+            "https://github.com/Machfudin.png?size=48"
+        );
     }
 
     #[test]

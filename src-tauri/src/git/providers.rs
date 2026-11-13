@@ -233,6 +233,72 @@ fn provider_http_get(url: &str, auth_header: Option<&str>) -> Result<(u16, Strin
     let parsed = parse_curl_http_response(&raw);
     Ok((parsed.status_code, parsed.body))
 }
+fn provider_http_post(url: &str, auth_header: Option<&str>, json_body: &str) -> Result<(u16, String), String> {
+    let mut cmd = crate::system::command_no_window("curl");
+    cmd.args([
+        "-s",
+        "-i",
+        "--max-time",
+        "30",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "-K",
+        "-",
+        "--data-binary",
+        json_body,
+        url,
+    ])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Gagal menghubungi server provider Git: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let mut cfg = format!(
+            "header = \"User-Agent: ForgeDesktop/{}\"\nheader = \"Accept: application/json\"\n",
+            env!("CARGO_PKG_VERSION")
+        );
+        if let Some(auth) = auth_header {
+            if !auth.contains(['\r', '\n', '"']) {
+                cfg.push_str(&format!("header = \"{auth}\"\n"));
+            }
+        }
+        let _ = stdin.write_all(cfg.as_bytes());
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Gagal membaca respon server provider Git: {e}"))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "Gagal terhubung ke provider Git".into()
+        } else {
+            err
+        });
+    }
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let parsed = parse_curl_http_response(&raw);
+    Ok((parsed.status_code, parsed.body))
+}
+
+pub fn detect_provider_from_host(host: &str) -> HostingProvider {
+    let h = host.to_ascii_lowercase();
+    if h == "gitlab.com" || h.contains("gitlab") {
+        HostingProvider::Gitlab
+    } else if h == "bitbucket.org" || h.contains("bitbucket") {
+        HostingProvider::Bitbucket
+    } else if h == "dev.azure.com" || h.contains("visualstudio.com") || h == "ssh.dev.azure.com" {
+        HostingProvider::AzureDevops
+    } else {
+        HostingProvider::Github
+    }
+}
 
 fn build_auth_header(provider: HostingProvider, token: &str) -> String {
     let t = token.trim();
@@ -712,6 +778,267 @@ pub fn checkout_provider_pull_request(
             )?;
             Ok(local_branch)
         }
+    }
+}
+
+pub fn get_provider_commit_check_runs(
+    accounts: &AccountManager,
+    host: &str,
+    namespace: &str,
+    repo: &str,
+    commit_sha: &str,
+    repo_path: Option<&str>,
+) -> Result<Vec<super::github::CheckRunInfo>, String> {
+    let token = accounts
+        .resolve_account_for_repo(repo_path, host)
+        .map(|(_, t)| t);
+    let provider = detect_provider_from_host(host);
+
+    match provider {
+        HostingProvider::Github => {
+            super::github::get_commit_check_runs(host, namespace, repo, commit_sha, token.as_deref())
+        }
+        HostingProvider::Gitlab => {
+            let project_path = url_encode_component(&format!("{namespace}/{repo}"));
+            let url = format!(
+                "https://{host}/api/v4/projects/{project_path}/repository/commits/{commit_sha}/statuses"
+            );
+            let auth = token.as_deref().map(|t| build_auth_header(HostingProvider::Gitlab, t));
+            let (status, body) = provider_http_get(&url, auth.as_deref())?;
+            if status >= 400 || status == 0 {
+                return Ok(Vec::new());
+            }
+            let arr: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap_or_default();
+            Ok(arr
+                .into_iter()
+                .filter_map(|it| {
+                    let id = it.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let st = it.get("status").and_then(|s| s.as_str()).unwrap_or("");
+                    let (status, conclusion) = match st {
+                        "running" | "pending" => ("in_progress".to_string(), None),
+                        "success" => ("completed".to_string(), Some("success".to_string())),
+                        "failed" => ("completed".to_string(), Some("failure".to_string())),
+                        "canceled" => ("completed".to_string(), Some("cancelled".to_string())),
+                        _ => ("completed".to_string(), Some("neutral".to_string())),
+                    };
+                    Some(super::github::CheckRunInfo {
+                        id,
+                        name: it.get("name").and_then(|s| s.as_str()).unwrap_or("GitLab CI").to_string(),
+                        status,
+                        conclusion,
+                        html_url: it.get("target_url").and_then(|s| s.as_str()).map(ToString::to_string),
+                    })
+                })
+                .collect())
+        }
+        HostingProvider::Bitbucket => {
+            let url = format!(
+                "https://api.bitbucket.org/2.0/repositories/{namespace}/{repo}/commit/{commit_sha}/statuses"
+            );
+            let auth = token.as_deref().map(|t| build_auth_header(HostingProvider::Bitbucket, t));
+            let (status, body) = provider_http_get(&url, auth.as_deref())?;
+            if status >= 400 || status == 0 {
+                return Ok(Vec::new());
+            }
+            let root: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+            let vals = root.get("values").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            Ok(vals
+                .into_iter()
+                .filter_map(|it| {
+                    let st = it.get("state").and_then(|s| s.as_str()).unwrap_or("");
+                    let (status, conclusion) = match st {
+                        "INPROGRESS" => ("in_progress".to_string(), None),
+                        "SUCCESSFUL" => ("completed".to_string(), Some("success".to_string())),
+                        "FAILED" => ("completed".to_string(), Some("failure".to_string())),
+                        "STOPPED" => ("completed".to_string(), Some("cancelled".to_string())),
+                        _ => ("completed".to_string(), Some("neutral".to_string())),
+                    };
+                    Some(super::github::CheckRunInfo {
+                        id: 0,
+                        name: it.get("name").or_else(|| it.get("key")).and_then(|s| s.as_str()).unwrap_or("Bitbucket CI").to_string(),
+                        status,
+                        conclusion,
+                        html_url: it.get("url").and_then(|s| s.as_str()).map(ToString::to_string),
+                    })
+                })
+                .collect())
+        }
+        HostingProvider::AzureDevops => {
+            let url = format!(
+                "https://{host}/{namespace}/_apis/git/repositories/{repo}/commits/{commit_sha}/statuses?api-version=7.0"
+            );
+            let auth = token.as_deref().map(|t| build_auth_header(HostingProvider::AzureDevops, t));
+            let (status, body) = provider_http_get(&url, auth.as_deref())?;
+            if status >= 400 || status == 0 {
+                return Ok(Vec::new());
+            }
+            let root: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+            let vals = root.get("value").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            Ok(vals
+                .into_iter()
+                .filter_map(|it| {
+                    let id = it.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let st = it.get("state").and_then(|s| s.as_str()).unwrap_or("");
+                    let (status, conclusion) = match st {
+                        "pending" => ("in_progress".to_string(), None),
+                        "succeeded" => ("completed".to_string(), Some("success".to_string())),
+                        "failed" | "error" => ("completed".to_string(), Some("failure".to_string())),
+                        _ => ("completed".to_string(), Some("neutral".to_string())),
+                    };
+                    Some(super::github::CheckRunInfo {
+                        id,
+                        name: it.get("description").and_then(|s| s.as_str()).unwrap_or("Azure Pipeline").to_string(),
+                        status,
+                        conclusion,
+                        html_url: it.get("targetUrl").and_then(|s| s.as_str()).map(ToString::to_string),
+                    })
+                })
+                .collect())
+        }
+    }
+}
+
+pub fn publish_repository(
+    mgr: &AccountManager,
+    repo_path: &str,
+    params: super::github::PublishRepoParams,
+    account_id: Option<&str>,
+    host: Option<&str>,
+) -> Result<String, String> {
+    let target_host = host.unwrap_or(super::accounts::GITHUB_PUBLIC_HOST);
+    let (profile, tok) = mgr
+        .resolve_account(account_id, Some(repo_path), target_host)
+        .ok_or_else(|| {
+            "Tidak ada akun aktif untuk publikasi. Hubungkan akun terlebih dahulu.".to_string()
+        })?;
+
+    let name = params.name.trim();
+    if name.is_empty() {
+        return Err("Nama repository tidak boleh kosong".into());
+    }
+
+    let provider = detect_provider_from_host(&profile.host);
+    let desc = params.description.as_deref().unwrap_or("");
+    let is_private = params.private;
+
+    let clone_url = match provider {
+        HostingProvider::Github => {
+            return super::github::publish_repository_to_github(
+                mgr,
+                repo_path,
+                params,
+                account_id,
+                Some(&profile.host),
+            );
+        }
+        HostingProvider::Gitlab => {
+            let url = format!("https://{}/api/v4/projects", profile.host);
+            let payload = serde_json::json!({
+                "name": name,
+                "description": desc,
+                "visibility": if is_private { "private" } else { "public" },
+                "initialize_with_readme": false
+            });
+            let auth = build_auth_header(HostingProvider::Gitlab, &tok);
+            let (status, body) = provider_http_post(&url, Some(&auth), &payload.to_string())?;
+            if status >= 400 || status == 0 {
+                return Err(format!("GitLab Create Project API Error HTTP {status}: {body}"));
+            }
+            let v: serde_json::Value = serde_json::from_str(&body)
+                .map_err(|e| format!("Respon GitLab invalid: {e}"))?;
+            v.get("http_url_to_repo")
+                .and_then(|s| s.as_str())
+                .or_else(|| v.get("ssh_url_to_repo").and_then(|s| s.as_str()))
+                .ok_or_else(|| "Gagal mendapatkan clone URL dari proyek GitLab yang dibuat".to_string())?
+                .to_string()
+        }
+        HostingProvider::Bitbucket => {
+            let slug = name.to_ascii_lowercase().replace(' ', "-");
+            let url = format!(
+                "https://api.bitbucket.org/2.0/repositories/{}/{}",
+                profile.login, slug
+            );
+            let payload = serde_json::json!({
+                "scm": "git",
+                "is_private": is_private,
+                "description": desc
+            });
+            let auth = build_auth_header(HostingProvider::Bitbucket, &tok);
+            let (status, body) = provider_http_post(&url, Some(&auth), &payload.to_string())?;
+            if status >= 400 || status == 0 {
+                return Err(format!("Bitbucket Create Repo API Error HTTP {status}: {body}"));
+            }
+            let v: serde_json::Value = serde_json::from_str(&body)
+                .map_err(|e| format!("Respon Bitbucket invalid: {e}"))?;
+            let mut found_url = None;
+            if let Some(links) = v.get("links").and_then(|l| l.get("clone")).and_then(|c| c.as_array()) {
+                for cl in links {
+                    if let Some(href) = cl.get("href").and_then(|h| h.as_str()) {
+                        if href.starts_with("https://") {
+                            found_url = Some(href.to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+            found_url.unwrap_or_else(|| format!("https://bitbucket.org/{}/{}.git", profile.login, slug))
+        }
+        HostingProvider::AzureDevops => {
+            let url = format!(
+                "https://{}/{}/_apis/git/repositories?api-version=7.0",
+                profile.host, profile.login
+            );
+            let payload = serde_json::json!({
+                "name": name
+            });
+            let auth = build_auth_header(HostingProvider::AzureDevops, &tok);
+            let (status, body) = provider_http_post(&url, Some(&auth), &payload.to_string())?;
+            if status >= 400 || status == 0 {
+                return Err(format!("Azure DevOps Create Repo API Error HTTP {status}: {body}"));
+            }
+            let v: serde_json::Value = serde_json::from_str(&body)
+                .map_err(|e| format!("Respon Azure DevOps invalid: {e}"))?;
+            v.get("remoteUrl")
+                .and_then(|s| s.as_str())
+                .or_else(|| v.get("webUrl").and_then(|s| s.as_str()))
+                .ok_or_else(|| "Gagal mendapatkan remote URL dari repositori Azure DevOps".to_string())?
+                .to_string()
+        }
+    };
+
+    let has_remote_origin = cli::run(repo_path, &["remote", "get-url", "origin"]).is_ok();
+    if has_remote_origin {
+        cli::run(repo_path, &["remote", "set-url", "origin", &clone_url])?;
+    } else {
+        cli::run(repo_path, &["remote", "add", "origin", &clone_url])?;
+    }
+
+    let current_branch_raw = cli::run(repo_path, &["branch", "--show-current"])
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| cli::run(repo_path, &["symbolic-ref", "--short", "HEAD"]).ok())
+        .unwrap_or_default();
+    let branch = current_branch_raw.trim();
+    let branch_name = if branch.is_empty() { "main" } else { branch };
+
+    let has_commits = cli::run(repo_path, &["rev-parse", "--verify", "HEAD"]).is_ok();
+    if has_commits {
+        let creds_user = match provider {
+            HostingProvider::Bitbucket => "x-token-auth",
+            _ => profile.login.as_str(),
+        };
+        cli::run_with_credentials(
+            repo_path,
+            &["push", "-u", "origin", branch_name],
+            Some((creds_user, &tok)),
+        )?;
+        let _ = mgr.bind_repo(repo_path, &profile.id);
+        Ok(clone_url)
+    } else {
+        let _ = mgr.bind_repo(repo_path, &profile.id);
+        Ok(format!(
+            "{clone_url} (remote ditautkan; buat komit pertama lalu push)"
+        ))
     }
 }
 
