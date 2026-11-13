@@ -126,6 +126,8 @@ pub fn run() {
             commands::add_worktree,
             commands::remove_worktree,
             commands::prune_worktrees,
+            commands::lock_worktree,
+            commands::unlock_worktree,
             commands::parse_hosting_repository,
             commands::connect_provider_pat,
             commands::list_provider_pull_requests,

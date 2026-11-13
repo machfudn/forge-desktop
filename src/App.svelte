@@ -38,6 +38,7 @@
   import FileInspectModal from "./components/FileInspectModal.svelte";
   import WorkspaceToolsModal from "./components/WorkspaceToolsModal.svelte";
   import TerminalDrawer from "./components/TerminalDrawer.svelte";
+  import WorktreeModal from "./components/WorktreeModal.svelte";
   import AiAssistantModal from "./components/AiAssistantModal.svelte";
   import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
   import ProviderIcon from "./components/ProviderIcon.svelte";
@@ -58,7 +59,7 @@
   } from "./i18n/index.svelte";
   import { getAppErrorLogs, logAppError } from "./utils/appLog.svelte";
 
-  type ModalType = "branch" | WorkspaceModalType | HistoryGithubModalType | null;
+  type ModalType = "branch" | "worktree" | WorkspaceModalType | HistoryGithubModalType | null;
 
   let activeRepo = $state("");
   let activeView = $state<"changes" | "history">("changes");
@@ -2089,7 +2090,7 @@
         { id: "toggle-terminal", category: "Tools", label: t("terminal.toggleCommand"), shortcut: "Ctrl+`", action: () => { terminalOpen = !terminalOpen; } },
         { id: "open-reflog", category: "Tools", label: t("wsTools.tabReflog"), action: () => { workspaceToolsTab = "reflog"; } },
         { id: "open-submodules", category: "Tools", label: t("wsTools.tabSubmodules"), action: () => { workspaceToolsTab = "submodules"; } },
-        { id: "open-worktrees", category: "Tools", label: t("wsTools.tabWorktrees"), action: () => { workspaceToolsTab = "worktrees"; } },
+        { id: "open-worktrees", category: "Tools", label: t("tools.worktreeTitle"), action: () => { activeModal = "worktree"; } },
         { id: "open-branches", category: "Git", label: t("ctx.branch.manage"), action: openBranchModal },
         { id: "open-stash", category: "Git", label: t("app.manageStash"), action: () => { activeModal = "stash"; } },
         { id: "ai-review", category: "AI", label: t("palette.aiReview"), action: () => { aiModalState = { task: "review_changes", prompt: "Review staged & unstaged changes", context: "" }; } },
@@ -2543,6 +2544,17 @@
                 class="popover-item"
                 onclick={() => {
                   toolsMenuOpen = false;
+                  activeModal = "worktree";
+                }}
+              >
+                <span>{t("tools.worktreeTitle")}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                onclick={() => {
+                  toolsMenuOpen = false;
                   aiModalState = { task: "custom_ask", prompt: "", context: "" };
                 }}
               >
@@ -2976,6 +2988,16 @@
     onReloadRepo={() => loadRepo(activeRepo)}
     onStatus={setStatus}
     onRequestConfirm={requestConfirmation}
+  />
+{/if}
+
+{#if activeModal === "worktree" && activeRepo}
+  <WorktreeModal
+    repoPath={activeRepo}
+    onClose={() => (activeModal = null)}
+    onRefreshRepo={() => loadRepo(activeRepo)}
+    onOpenWorktreeRepo={loadRepo}
+    onStatus={setStatus}
   />
 {/if}
 

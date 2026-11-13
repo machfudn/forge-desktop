@@ -314,7 +314,9 @@ export interface WorktreeInfo {
   is_bare: boolean;
   is_detached: boolean;
   is_locked: boolean;
+  lock_reason?: string | null;
   is_prunable: boolean;
+  prunable_reason?: string | null;
   is_main: boolean;
 }
 

@@ -764,6 +764,21 @@ export async function pruneWorktrees(repo: string): Promise<string> {
   return invoke<string>("prune_worktrees", { repo });
 }
 
+export async function lockWorktree(
+  repo: string,
+  path: string,
+  reason?: string
+): Promise<string> {
+  return invoke<string>("lock_worktree", { repo, path, reason: reason || null });
+}
+
+export async function unlockWorktree(
+  repo: string,
+  path: string
+): Promise<string> {
+  return invoke<string>("unlock_worktree", { repo, path });
+}
+
 export async function parseHostingRepository(
   remoteUrl: string
 ): Promise<ParsedHostingRepo | null> {

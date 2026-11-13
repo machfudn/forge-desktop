@@ -29,7 +29,9 @@ pub struct WorktreeInfo {
     pub is_bare: bool,
     pub is_detached: bool,
     pub is_locked: bool,
+    pub lock_reason: Option<String>,
     pub is_prunable: bool,
+    pub prunable_reason: Option<String>,
     pub is_main: bool,
 }
 
@@ -185,7 +187,9 @@ pub fn parse_worktree_porcelain(raw: &str) -> Vec<WorktreeInfo> {
         let mut is_bare = false;
         let mut is_detached = false;
         let mut is_locked = false;
+        let mut lock_reason = None;
         let mut is_prunable = false;
+        let mut prunable_reason = None;
 
         for line in trimmed.lines() {
             if let Some(p) = line.strip_prefix("worktree ") {
@@ -204,10 +208,20 @@ pub fn parse_worktree_porcelain(raw: &str) -> Vec<WorktreeInfo> {
                 is_bare = true;
             } else if line == "detached" {
                 is_detached = true;
-            } else if line == "locked" || line.starts_with("locked ") {
+            } else if line == "locked" {
                 is_locked = true;
-            } else if line == "prunable" || line.starts_with("prunable ") {
+                lock_reason = None;
+            } else if let Some(reason) = line.strip_prefix("locked ") {
+                is_locked = true;
+                let r = reason.trim().to_string();
+                lock_reason = if r.is_empty() { None } else { Some(r) };
+            } else if line == "prunable" {
                 is_prunable = true;
+                prunable_reason = None;
+            } else if let Some(reason) = line.strip_prefix("prunable ") {
+                is_prunable = true;
+                let r = reason.trim().to_string();
+                prunable_reason = if r.is_empty() { None } else { Some(r) };
             }
         }
         if !path.is_empty() {
@@ -218,7 +232,9 @@ pub fn parse_worktree_porcelain(raw: &str) -> Vec<WorktreeInfo> {
                 is_bare,
                 is_detached,
                 is_locked,
+                lock_reason,
                 is_prunable,
+                prunable_reason,
                 is_main: idx == 0,
             });
         }
@@ -272,6 +288,29 @@ pub fn prune_worktrees(repo: &str) -> Result<String, String> {
     cli::run(repo, &["worktree", "prune"])
 }
 
+pub fn lock_worktree(repo: &str, path: &str, reason: Option<&str>) -> Result<String, String> {
+    let p = path.trim();
+    if p.is_empty() || p.starts_with('-') {
+        return Err("Path worktree tidak valid".into());
+    }
+    let mut args = vec!["worktree", "lock"];
+    let r_trimmed = reason.map(|r| r.trim()).filter(|r| !r.is_empty());
+    if let Some(r) = r_trimmed {
+        args.push("--reason");
+        args.push(r);
+    }
+    args.push(p);
+    cli::run(repo, &args)
+}
+
+pub fn unlock_worktree(repo: &str, path: &str) -> Result<String, String> {
+    let p = path.trim();
+    if p.is_empty() || p.starts_with('-') {
+        return Err("Path worktree tidak valid".into());
+    }
+    cli::run(repo, &["worktree", "unlock", p])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,15 +323,15 @@ mod tests {
         assert_eq!(entries[0].selector, "HEAD@{0}");
         assert_eq!(entries[0].action, "checkout: moving from main to feat");
 
-        let wt_raw = "worktree C:/repo\nHEAD 1111111\nbranch refs/heads/main\n\nworktree C:/repo-wt\nHEAD 2222222\nbranch refs/heads/feat\nlocked\n";
+        let wt_raw = "worktree C:/repo\nHEAD 1111111\nbranch refs/heads/main\n\nworktree C:/repo-wt\nHEAD 2222222\nbranch refs/heads/feat\nlocked maintenance in progress\n";
         let wts = parse_worktree_porcelain(wt_raw);
         assert_eq!(wts.len(), 2);
         assert!(wts[0].is_main);
         assert_eq!(wts[0].branch.as_deref(), Some("main"));
         assert!(!wts[1].is_main);
         assert!(wts[1].is_locked);
+        assert_eq!(wts[1].lock_reason.as_deref(), Some("maintenance in progress"));
         assert_eq!(wts[1].branch.as_deref(), Some("feat"));
-
         let sub = parse_submodule_status_line("+abcdef1234567890 libs/core (v1.2.0)").unwrap();
         assert_eq!(sub.status, "modified");
         assert_eq!(sub.path, "libs/core");

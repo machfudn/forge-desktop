@@ -5764,3 +5764,258 @@ select optgroup {
   background-color: var(--bg-selected);
   color: var(--text-accent);
 }
+
+/* Git Worktree Manager */
+.worktree-modal {
+  width: min(720px, 94vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.worktree-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.worktree-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.worktree-title-icon {
+  color: var(--text-accent);
+  flex-shrink: 0;
+}
+
+.worktree-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  border-radius: 999px;
+  background: var(--accent-blue-subtle, rgba(56, 139, 253, 0.15));
+  color: var(--text-accent, #58a6ff);
+  border: 1px solid rgba(56, 139, 253, 0.3);
+}
+
+.worktree-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.worktree-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.worktree-modal-body {
+  padding: 14px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.worktree-add-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.add-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.add-card-header h4 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.add-card-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.input-browse-wrap {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.input-browse-wrap .form-input {
+  flex: 1;
+}
+
+.add-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.worktree-empty-state {
+  padding: 32px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.worktree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.worktree-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.worktree-card:hover {
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+
+.worktree-card.is-active-workspace {
+  border-color: var(--text-accent);
+  background: rgba(56, 139, 253, 0.04);
+}
+
+.worktree-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.worktree-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.worktree-branch-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.worktree-branch-name .branch-icon {
+  color: var(--text-accent);
+}
+
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  line-height: 1.3;
+}
+
+.badge-active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.badge-main {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+
+.badge-locked {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.worktree-sha {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.worktree-path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.worktree-path-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.btn-icon-copy {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-copy:hover {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+}
+
+.worktree-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.modal-sub-overlay {
+  z-index: 1100;
+}

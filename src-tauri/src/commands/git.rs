@@ -990,6 +990,20 @@ pub async fn prune_worktrees(repo: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub async fn lock_worktree(
+    repo: String,
+    path: String,
+    reason: Option<String>,
+) -> Result<String, String> {
+    run_blocking(move || git::lock_worktree(&repo, &path, reason.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn unlock_worktree(repo: String, path: String) -> Result<String, String> {
+    run_blocking(move || git::unlock_worktree(&repo, &path)).await
+}
+
+#[tauri::command]
 pub async fn parse_hosting_repository(remote_url: String) -> Result<Option<ParsedHostingRepo>, String> {
     run_blocking(move || Ok(git::parse_hosting_repo(&remote_url))).await
 }
