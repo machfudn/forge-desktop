@@ -1182,7 +1182,8 @@
           repo: githubRepoInfo.repo,
           web_url: `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}`
         } : null);
-        if (activeInfo && activeRepoAccount && !githubRateLimited && commits.length > 0) {
+        const isProviderRateLimited = activeInfo?.provider === "github" && githubRateLimited;
+        if (activeInfo && !isProviderRateLimited && commits.length > 0) {
           const pushedCommits = commits.filter((c) => c.is_pushed).slice(0, 12);
           const checkPromises = pushedCommits.map(async (c) => {
             try {
@@ -1219,7 +1220,7 @@
                 }
               }
             } catch (err) {
-              if (isGithubRateLimitError(err)) {
+              if (activeInfo.provider === "github" && isGithubRateLimitError(err)) {
                 githubRateLimited = true;
               }
             }
@@ -2906,7 +2907,7 @@
           <History
             repoPath={activeRepo}
             {externalEditorLabel}
-            githubRepoUrl={hostingRepoInfo?.web_url || (githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null)}
+            remoteWebUrl={hostingRepoInfo?.web_url || (githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null)}
             accounts={accountOverview.accounts}
             {commits}
             searchQuery={historySearch}
