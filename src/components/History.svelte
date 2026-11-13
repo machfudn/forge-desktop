@@ -1810,8 +1810,8 @@
                     aria-label="GitHub Actions: {ci.conclusion || ci.status}"
                   >
                     <svg
-                      width="10"
-                      height="10"
+                      width="12"
+                      height="12"
                       viewBox="0 0 16 16"
                       fill="currentColor"
                       aria-hidden="true"
