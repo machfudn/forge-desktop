@@ -1465,7 +1465,7 @@
               <option value="">{t("wsModal.clone.accountAuto")}</option>
               {#each accountOverview.accounts as acc (acc.id)}
                 <option value={acc.id}>
-                  @{acc.login} ({acc.host}){acc.label ? ` — ${acc.label}` : ""}
+                  @{acc.login} ({acc.host}){acc.label ? ` - ${acc.label}` : ""}
                 </option>
               {/each}
             </select>
@@ -1486,7 +1486,7 @@
             <select id="publish-account" class="form-select" bind:value={publishAccountId}>
               {#each accountOverview.accounts as acc (acc.id)}
                 <option value={acc.id}>
-                  @{acc.login} ({acc.host}){acc.label ? ` — ${acc.label}` : ""}
+                  @{acc.login} ({acc.host}){acc.label ? ` - ${acc.label}` : ""}
                 </option>
               {/each}
             </select>
