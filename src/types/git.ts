@@ -153,6 +153,22 @@ export interface CreateReviewCommentParams {
   in_reply_to?: number;
 }
 
+export interface BisectCommitInfo {
+  sha: string;
+  short_sha: string;
+  author: string;
+  summary: string;
+  date: string;
+}
+
+export interface BisectState {
+  is_active: boolean;
+  current_commit?: BisectCommitInfo | null;
+  remaining_steps_hint?: string | null;
+  first_bad_commit?: BisectCommitInfo | null;
+  message: string;
+}
+
 export interface IssueInfo {
   id: number;
   number: number;

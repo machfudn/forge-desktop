@@ -10,6 +10,7 @@ import type {
   AiTestResult,
   AppRuntimeInfo,
   AppUpdateInfo,
+  BisectState,
   BlameLine,
   BranchInfo,
   CheckRunInfo,
@@ -952,4 +953,27 @@ export async function killTerminalCommand(sessionId: string): Promise<boolean> {
 
 export async function getTerminalCwd(sessionId: string, repo: string): Promise<string> {
   return invoke<string>("get_terminal_cwd", { sessionId, repo });
+}
+
+export async function gitBisectStart(
+  repo: string,
+  badSha: string,
+  goodSha: string
+): Promise<BisectState> {
+  return invoke<BisectState>("git_bisect_start", { repo, badSha, goodSha });
+}
+
+export async function gitBisectStep(
+  repo: string,
+  action: "good" | "bad" | "skip"
+): Promise<BisectState> {
+  return invoke<BisectState>("git_bisect_step", { repo, action });
+}
+
+export async function gitBisectReset(repo: string): Promise<void> {
+  return invoke<void>("git_bisect_reset", { repo });
+}
+
+export async function gitBisectStatus(repo: string): Promise<BisectState> {
+  return invoke<BisectState>("git_bisect_status", { repo });
 }

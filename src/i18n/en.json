@@ -1144,5 +1144,30 @@
     "rebasing": "Rebasing...",
     "cancelBtn": "Cancel",
     "success": "Interactive rebase completed successfully."
+  },
+  "bisect": {
+    "title": "Git Bisect Wizard",
+    "setupSubtitle": "Find the regression commit using binary search",
+    "activeSubtitle": "Test the current commit and mark it good, bad, or skip",
+    "culpritSubtitle": "First bad commit identified",
+    "badCommitLabel": "Bad Commit (Contains Bug)",
+    "badCommitPlaceholder": "HEAD or commit SHA / branch",
+    "goodCommitLabel": "Good Commit (Bug Not Present)",
+    "goodCommitPlaceholder": "Select a known good commit or tag",
+    "startBtn": "Start Bisect",
+    "markGoodBtn": "Mark as Good",
+    "markBadBtn": "Mark as Bad",
+    "skipBtn": "Skip Commit",
+    "abortBtn": "Abort & Reset",
+    "finishBtn": "Finish & Reset Bisect",
+    "inspectCommitBtn": "Inspect Commit",
+    "currentTesting": "Currently Testing Commit",
+    "culpritFound": "Culprit Commit Found",
+    "testingHint": "Check your application state, tests, or build at this commit.",
+    "startedStatus": "Git bisect started",
+    "stepStatus": "Bisect step recorded",
+    "resetStatus": "Git bisect reset to original HEAD",
+    "selectBothCommits": "Please select both a good and bad commit.",
+    "toolsMenu": "Git Bisect Wizard..."
   }
 }

@@ -1144,5 +1144,30 @@
     "rebasing": "Menjalankan rebase...",
     "cancelBtn": "Batal",
     "success": "Interactive rebase berhasil diselesaikan."
+  },
+  "bisect": {
+    "title": "Wizard Git Bisect",
+    "setupSubtitle": "Cari commit penyebab bug menggunakan pencarian biner",
+    "activeSubtitle": "Uji commit saat ini dan tandai good, bad, atau skip",
+    "culpritSubtitle": "Commit pertama penyebab bug ditemukan",
+    "badCommitLabel": "Commit Bermasalah (Mengandung Bug)",
+    "badCommitPlaceholder": "HEAD atau SHA commit / branch",
+    "goodCommitLabel": "Commit Normal (Bebas Bug)",
+    "goodCommitPlaceholder": "Pilih commit atau tag yang diketahui normal",
+    "startBtn": "Mulai Bisect",
+    "markGoodBtn": "Tandai Good",
+    "markBadBtn": "Tandai Bad",
+    "skipBtn": "Lewati (Skip)",
+    "abortBtn": "Batalkan & Reset",
+    "finishBtn": "Selesai & Reset Bisect",
+    "inspectCommitBtn": "Lihat Commit",
+    "currentTesting": "Commit yang Sedang Diuji",
+    "culpritFound": "Commit Penyebab Ditemukan",
+    "testingHint": "Uji aplikasi, unit test, atau build Anda pada commit ini.",
+    "startedStatus": "Git bisect berhasil dimulai",
+    "stepStatus": "Langkah bisect dicatat",
+    "resetStatus": "Git bisect direset ke HEAD awal",
+    "selectBothCommits": "Pilih commit good dan bad terlebih dahulu.",
+    "toolsMenu": "Wizard Git Bisect..."
   }
 }

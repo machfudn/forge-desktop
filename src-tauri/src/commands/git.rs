@@ -4,7 +4,7 @@ use crate::ai::{AiConfigPublic, AiManager, AiTaskResult, AiTestResult, SaveAiCon
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, AccountHealth, AccountManager, AccountOverview, AccountProfile, AheadBehind,
-    BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
+    BisectState, BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
     DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, GitHooksInfo, HostingProvider, ImageDiffData,
     IssueInfo, LocalSessionSource, ParsedGitHubRepo, ParsedHostingRepo, PublishRepoParams,
     CreateReviewCommentParams, PullRequestInfo, PullRequestReviewComment, RebaseCommitItem, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
@@ -1218,6 +1218,33 @@ pub async fn get_terminal_cwd(
         Ok(p.to_string_lossy().to_string())
     })
     .await
+}
+
+#[tauri::command]
+pub async fn git_bisect_start(
+    repo: String,
+    bad_sha: String,
+    good_sha: String,
+) -> Result<BisectState, String> {
+    run_blocking(move || git::bisect_start(&repo, &bad_sha, &good_sha)).await
+}
+
+#[tauri::command]
+pub async fn git_bisect_step(
+    repo: String,
+    action: String,
+) -> Result<BisectState, String> {
+    run_blocking(move || git::bisect_step(&repo, &action)).await
+}
+
+#[tauri::command]
+pub async fn git_bisect_reset(repo: String) -> Result<(), String> {
+    run_blocking(move || git::bisect_reset(&repo)).await
+}
+
+#[tauri::command]
+pub async fn git_bisect_status(repo: String) -> Result<BisectState, String> {
+    run_blocking(move || git::bisect_status(&repo)).await
 }
 
 #[cfg(test)]

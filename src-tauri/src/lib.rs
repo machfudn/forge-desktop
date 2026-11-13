@@ -147,6 +147,10 @@ pub fn run() {
             commands::run_terminal_command,
             commands::kill_terminal_command,
             commands::get_terminal_cwd,
+            commands::git_bisect_start,
+            commands::git_bisect_step,
+            commands::git_bisect_reset,
+            commands::git_bisect_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

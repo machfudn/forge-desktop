@@ -40,6 +40,7 @@
   import WorkspaceToolsModal from "./components/WorkspaceToolsModal.svelte";
   import TerminalDrawer from "./components/TerminalDrawer.svelte";
   import WorktreeModal from "./components/WorktreeModal.svelte";
+  import BisectWizardModal from "./components/BisectWizardModal.svelte";
   import AiAssistantModal from "./components/AiAssistantModal.svelte";
   import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
   import ProviderIcon from "./components/ProviderIcon.svelte";
@@ -60,7 +61,7 @@
   } from "./i18n/index.svelte";
   import { getAppErrorLogs, logAppError } from "./utils/appLog.svelte";
 
-  type ModalType = "branch" | "worktree" | WorkspaceModalType | HistoryGithubModalType | null;
+  type ModalType = "branch" | "worktree" | "bisect" | WorkspaceModalType | HistoryGithubModalType | null;
 
   let activeRepo = $state("");
   let activeView = $state<"changes" | "history">("changes");
@@ -2165,6 +2166,7 @@
         { id: "open-submodules", category: "Tools", label: t("wsTools.tabSubmodules"), action: () => { workspaceToolsTab = "submodules"; } },
         { id: "open-worktrees", category: "Tools", label: t("tools.worktreeTitle"), action: () => { activeModal = "worktree"; } },
         { id: "open-branches", category: "Git", label: t("ctx.branch.manage"), action: openBranchModal },
+        { id: "open-bisect", category: "Git", label: t("bisect.toolsMenu"), action: () => { activeModal = "bisect"; } },
         { id: "open-stash", category: "Git", label: t("app.manageStash"), action: () => { activeModal = "stash"; } },
         { id: "ai-review", category: "AI", label: t("palette.aiReview"), action: () => { aiModalState = { task: "review_changes", prompt: "Review staged & unstaged changes", context: "" }; } },
         { id: "ai-commit", category: "AI", label: t("palette.aiGenerateCommit"), action: () => void handleAiGenerateCommit() },
@@ -2628,6 +2630,17 @@
                 class="popover-item"
                 onclick={() => {
                   toolsMenuOpen = false;
+                  activeModal = "bisect";
+                }}
+              >
+                <span>{t("bisect.toolsMenu")}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                onclick={() => {
+                  toolsMenuOpen = false;
                   aiModalState = { task: "custom_ask", prompt: "", context: "" };
                 }}
               >
@@ -3074,6 +3087,21 @@
     onRefreshRepo={() => loadRepo(activeRepo)}
     onOpenWorktreeRepo={loadRepo}
     onStatus={setStatus}
+  />
+{/if}
+
+{#if activeModal === "bisect" && activeRepo}
+  <BisectWizardModal
+    repoPath={activeRepo}
+    {commits}
+    onClose={() => (activeModal = null)}
+    onStatus={setStatus}
+    onReloadRepo={() => loadRepo(activeRepo)}
+    onInspectCommit={(sha) => {
+      activeModal = null;
+      activeView = "history";
+      historySearch = sha;
+    }}
   />
 {/if}
 

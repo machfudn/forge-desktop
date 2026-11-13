@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod auth;
+pub mod bisect;
 pub mod branch;
 pub mod cli;
 pub mod conflict;
@@ -16,6 +17,7 @@ pub mod workspace;
 
 pub use accounts::*;
 pub use auth::*;
+pub use bisect::*;
 pub use branch::*;
 pub use conflict::*;
 pub use diff::*;
