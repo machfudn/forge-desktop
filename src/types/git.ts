@@ -318,6 +318,8 @@ export interface WorktreeInfo {
   is_main: boolean;
 }
 
+export type HistoryColumnId = "graph" | "commit" | "changes" | "author" | "date" | "sha";
+
 export type HostingProvider = "github" | "gitlab" | "bitbucket" | "azure_devops";
 
 export interface ParsedHostingRepo {

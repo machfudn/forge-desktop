@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AccountProfile, BranchInfo, CommitChangedFile, CommitDetail, CommitInfo } from "../types/git";
+  import type { AccountProfile, BranchInfo, CommitChangedFile, CommitDetail, CommitInfo, HistoryColumnId } from "../types/git";
   import * as gitService from "../services/git";
   import Diff from "./Diff.svelte";
   import { getLocale, t } from "../i18n/index.svelte";
@@ -14,6 +14,8 @@
   interface Props {
     repoPath?: string;
     externalEditorLabel?: string;
+    remoteWebUrl?: string | null;
+    /** @deprecated use remoteWebUrl */
     githubRepoUrl?: string | null;
     accounts?: AccountProfile[];
     commits: CommitInfo[];
@@ -47,6 +49,7 @@
   let {
     repoPath = "",
     externalEditorLabel = "Editor",
+    remoteWebUrl = null,
     githubRepoUrl = null,
     accounts = [],
     commits,
@@ -314,7 +317,6 @@
   let failedAvatars = $state<Record<string, boolean>>({});
 
   const LANE_W = 16;
-  export type HistoryColumnId = "graph" | "commit" | "changes" | "author" | "date" | "sha";
 
   interface ColumnDef {
     id: HistoryColumnId;
@@ -443,18 +445,22 @@
   }
 
   function moveColumn(colId: HistoryColumnId, delta: -1 | 1) {
-    const curIdx = columnOrder.indexOf(colId);
-    if (curIdx < 0) return;
-    const newIdx = curIdx + delta;
-    if (newIdx < 0 || newIdx >= columnOrder.length) return;
+    const visibleIndex = visibleColumns.indexOf(colId);
+    if (visibleIndex < 0) return;
+    const targetVisibleIndex = visibleIndex + delta;
+    if (targetVisibleIndex < 0 || targetVisibleIndex >= visibleColumns.length) return;
+    const targetColId = visibleColumns[targetVisibleIndex];
     const next = [...columnOrder];
-    const [item] = next.splice(curIdx, 1);
-    next.splice(newIdx, 0, item);
+    const fromIdx = next.indexOf(colId);
+    next.splice(fromIdx, 1);
+    next.splice(next.indexOf(targetColId), 0, colId);
     saveColumnOrder(next);
   }
 
   function handleHeaderPointerDown(e: PointerEvent, colId: HistoryColumnId) {
     if (e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
     const startX = e.clientX;
     draggedColId = colId;
     isDraggingCol = false;
@@ -462,23 +468,16 @@
     function onPointerMove(moveEvent: PointerEvent) {
       if (!draggedColId) return;
       const deltaX = Math.abs(moveEvent.clientX - startX);
-      if (!isDraggingCol && deltaX > 3) {
-        isDraggingCol = true;
-      }
+      if (!isDraggingCol && deltaX > 3) isDraggingCol = true;
       if (!isDraggingCol) return;
-
       const cols = visibleColumns;
       if (cols.length === 0) return;
-
       let foundCol: HistoryColumnId | null = null;
       let foundPos: "before" | "after" = "before";
-
       const firstEl = headerElements[cols[0]];
       const lastEl = headerElements[cols[cols.length - 1]];
-
       if (firstEl && moveEvent.clientX < firstEl.getBoundingClientRect().left) {
         foundCol = cols[0];
-        foundPos = "before";
       } else if (lastEl && moveEvent.clientX > lastEl.getBoundingClientRect().right) {
         foundCol = cols[cols.length - 1];
         foundPos = "after";
@@ -494,41 +493,31 @@
           }
         }
       }
-
-      if (foundCol && foundCol !== draggedColId) {
-        dragOverColId = foundCol;
-        dropPosition = foundPos;
-      } else {
-        dragOverColId = null;
-      }
+      dragOverColId = foundCol && foundCol !== draggedColId ? foundCol : null;
+      dropPosition = foundPos;
     }
 
     function onPointerUp() {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
-
       if (isDraggingCol && draggedColId && dragOverColId && draggedColId !== dragOverColId) {
-        const oldOrder = [...columnOrder];
-        const fromIdx = oldOrder.indexOf(draggedColId);
-        if (fromIdx >= 0) {
-          oldOrder.splice(fromIdx, 1);
-          const toIdx = oldOrder.indexOf(dragOverColId);
-          const insertIdx = dropPosition === "before" ? toIdx : toIdx + 1;
-          oldOrder.splice(insertIdx, 0, draggedColId);
-          saveColumnOrder(oldOrder);
-        }
+        const next = [...columnOrder];
+        const fromIdx = next.indexOf(draggedColId);
+        next.splice(fromIdx, 1);
+        const toIdx = next.indexOf(dragOverColId);
+        next.splice(dropPosition === "before" ? toIdx : toIdx + 1, 0, draggedColId);
+        saveColumnOrder(next);
       }
-
       draggedColId = null;
       dragOverColId = null;
       isDraggingCol = false;
     }
-
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
   }
+
 
   function handleHeaderKeyDown(e: KeyboardEvent, colId: HistoryColumnId) {
     if (e.key === "ArrowLeft") {
@@ -574,6 +563,13 @@
 
   $effect(() => {
     if (!isColumnSettingsOpen) return;
+    requestAnimationFrame(() => {
+      const firstFocusable = columnSettingsEl?.querySelector<HTMLElement>(
+        '.history-col-settings-menu input:not([disabled]), .history-col-settings-menu button:not([disabled])'
+      );
+      firstFocusable?.focus();
+    });
+
     function handleDown(e: MouseEvent) {
       if (columnSettingsEl && !columnSettingsEl.contains(e.target as Node)) {
         isColumnSettingsOpen = false;
@@ -582,6 +578,41 @@
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         isColumnSettingsOpen = false;
+        const toggleBtn = columnSettingsEl?.querySelector<HTMLButtonElement>(".history-col-settings-btn");
+        toggleBtn?.focus();
+        return;
+      }
+
+      if (!columnSettingsEl) return;
+      const focusables = Array.from(
+        columnSettingsEl.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [tabindex="0"]'
+        )
+      ).filter((el) => !el.classList.contains("history-col-settings-btn"));
+
+      if (focusables.length === 0) return;
+      const activeIdx = focusables.indexOf(document.activeElement as HTMLElement);
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const nextIdx = activeIdx < 0 || activeIdx >= focusables.length - 1 ? 0 : activeIdx + 1;
+        focusables[nextIdx]?.focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prevIdx = activeIdx <= 0 ? focusables.length - 1 : activeIdx - 1;
+        focusables[prevIdx]?.focus();
+      } else if (e.key === "Tab") {
+        if (e.shiftKey) {
+          if (activeIdx <= 0) {
+            e.preventDefault();
+            focusables[focusables.length - 1]?.focus();
+          }
+        } else {
+          if (activeIdx >= focusables.length - 1) {
+            e.preventDefault();
+            focusables[0]?.focus();
+          }
+        }
       }
     }
     window.addEventListener("mousedown", handleDown);
@@ -915,12 +946,13 @@
         void copyTextToClipboard(commit.summary, onStatus, t("ctx.status.copiedCommitMsg"));
       },
     });
-    if (githubRepoUrl) {
-      let commitUrl = `${githubRepoUrl}/commit/${commit.sha}`;
-      if (githubRepoUrl.includes("gitlab")) {
-        commitUrl = `${githubRepoUrl}/-/commit/${commit.sha}`;
-      } else if (githubRepoUrl.includes("bitbucket")) {
-        commitUrl = `${githubRepoUrl}/commits/${commit.sha}`;
+    const effectiveWebUrl = remoteWebUrl || githubRepoUrl;
+    if (effectiveWebUrl) {
+      let commitUrl = `${effectiveWebUrl}/commit/${commit.sha}`;
+      if (effectiveWebUrl.includes("gitlab")) {
+        commitUrl = `${effectiveWebUrl}/-/commit/${commit.sha}`;
+      } else if (effectiveWebUrl.includes("bitbucket")) {
+        commitUrl = `${effectiveWebUrl}/commits/${commit.sha}`;
       }
       items.push({
         label: t("ctx.history.viewOnGithub"),
