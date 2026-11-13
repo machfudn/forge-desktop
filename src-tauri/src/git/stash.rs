@@ -85,6 +85,20 @@ pub fn stash_drop(repo: &str, stash_ref: Option<&str>) -> Result<String, String>
     cli::run(repo, &["stash", "drop", target])
 }
 
+pub fn stash_apply_file(repo: &str, stash_ref: Option<&str>, file_path: &str) -> Result<String, String> {
+    let target = validate_stash_ref(stash_ref)?;
+    let trimmed = file_path.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') {
+        return Err("Path file tidak valid".into());
+    }
+    cli::run(repo, &["checkout", target, "--", trimmed])
+}
+
+pub fn stash_apply(repo: &str, stash_ref: Option<&str>) -> Result<String, String> {
+    let target = validate_stash_ref(stash_ref)?;
+    cli::run(repo, &["stash", "apply", target])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

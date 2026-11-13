@@ -173,6 +173,44 @@ pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), Str
     Ok(())
 }
 
+pub fn apply_patch_to_worktree(repo: &str, patch_text: &str) -> Result<(), String> {
+    if !Path::new(repo).join(".git").exists() {
+        return Err("Folder bukan repository Git".into());
+    }
+    if patch_text.trim().is_empty() {
+        return Err("Patch text tidak boleh kosong".into());
+    }
+    let args = vec!["-C", repo, "apply", "--whitespace=nowarn", "-"];
+
+    let mut child = crate::system::command_no_window("git")
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Gagal menjalankan git apply: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(patch_text.as_bytes())
+            .map_err(|e| format!("Gagal menulis patch ke stdin: {e}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Gagal menyelesaikan git apply: {e}"))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(if err.is_empty() {
+            "Gagal melakukan apply hunk ke working tree".into()
+        } else {
+            err
+        });
+    }
+    Ok(())
+}
+
 fn parse_hunk_starts(header: &str) -> Option<(usize, usize)> {
     // @@ -oldStart[,oldCount] +newStart[,newCount] @@...
     let rest = header.strip_prefix("@@ -")?;

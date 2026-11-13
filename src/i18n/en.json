@@ -637,7 +637,15 @@
       "deleteMsg": "Are you sure you want to drop {ref}? Changes in this stash will be permanently lost.",
       "deletedStatus": "Stash {ref} dropped",
       "savedStatus": "Changes saved to Stash",
-      "poppedStatus": "Top stash applied to working tree"
+      "poppedStatus": "Top stash applied to working tree",
+      "applyStashBtn": "Apply Stash",
+      "appliedStatus": "Stash {ref} applied to working tree",
+      "applyFileBtn": "Apply File",
+      "fileAppliedStatus": "File {path} restored from stash",
+      "hunkAppliedStatus": "Hunk patch applied from stash",
+      "filesTitle": "Files ({count})",
+      "allFiles": "All Files",
+      "noFiles": "No files in this stash"
     },
     "diag": {
       "collecting": "Collecting system diagnostic information...",

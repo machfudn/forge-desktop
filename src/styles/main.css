@@ -6019,3 +6019,121 @@ select optgroup {
 .modal-sub-overlay {
   z-index: 1100;
 }
+
+/* Stash Inspector */
+.stash-inspector-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 280px) 1fr;
+  gap: 12px;
+  height: 520px;
+  max-height: 65vh;
+  overflow: hidden;
+}
+
+.stash-sidebar-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stash-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.stash-entry-list {
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.stash-file-list {
+  max-height: none;
+}
+
+.stash-file-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.stash-file-badge.status-modified {
+  background: rgba(234, 179, 8, 0.2);
+  color: #eab308;
+}
+
+.stash-file-badge.status-added {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.stash-file-badge.status-deleted {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.stash-diff-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+
+.stash-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  gap: 8px;
+}
+
+.stash-active-file-path {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stash-diff-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.stash-diff-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 24px;
+}
+
+.stash-raw-diff {
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  user-select: text;
+  margin: 0;
+  overflow: auto;
+  flex: 1;
+}

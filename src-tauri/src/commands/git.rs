@@ -594,6 +594,25 @@ pub async fn git_stash_drop(repo: String, stash_ref: Option<String>) -> Result<S
 }
 
 #[tauri::command]
+pub async fn git_stash_apply(repo: String, stash_ref: Option<String>) -> Result<String, String> {
+    run_blocking(move || git::stash_apply(&repo, stash_ref.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn git_stash_apply_file(
+    repo: String,
+    stash_ref: Option<String>,
+    file_path: String,
+) -> Result<String, String> {
+    run_blocking(move || git::stash_apply_file(&repo, stash_ref.as_deref(), &file_path)).await
+}
+
+#[tauri::command]
+pub async fn apply_patch_to_worktree(repo: String, patch_text: String) -> Result<(), String> {
+    run_blocking(move || git::apply_patch_to_worktree(&repo, &patch_text)).await
+}
+
+#[tauri::command]
 pub async fn check_repo_exists(path: String) -> Result<bool, String> {
     run_blocking(move || Ok(git::check_repo_exists(&path))).await
 }

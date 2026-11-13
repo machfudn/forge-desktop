@@ -637,7 +637,15 @@
       "deleteMsg": "Apakah Anda yakin ingin menghapus {ref}? Perubahan di stash ini akan hilang secara permanen.",
       "deletedStatus": "Stash {ref} berhasil dihapus",
       "savedStatus": "Perubahan berhasil disimpan ke Stash",
-      "poppedStatus": "Stash teratas diterapkan ke working tree"
+      "poppedStatus": "Stash teratas diterapkan ke working tree",
+      "applyStashBtn": "Terapkan Stash",
+      "appliedStatus": "Stash {ref} berhasil diterapkan ke working tree",
+      "applyFileBtn": "Terapkan File",
+      "fileAppliedStatus": "File {path} berhasil dipulihkan dari stash",
+      "hunkAppliedStatus": "Patch hunk berhasil diterapkan dari stash",
+      "filesTitle": "File ({count})",
+      "allFiles": "Semua File",
+      "noFiles": "Tidak ada file di stash ini"
     },
     "diag": {
       "collecting": "Mengumpulkan informasi diagnostik sistem...",

@@ -459,6 +459,28 @@ export async function gitStashDrop(
   return invoke<string>("git_stash_drop", { repo, stashRef });
 }
 
+export async function gitStashApply(
+  repo: string,
+  stashRef?: string
+): Promise<string> {
+  return invoke<string>("git_stash_apply", { repo, stashRef });
+}
+
+export async function gitStashApplyFile(
+  repo: string,
+  filePath: string,
+  stashRef?: string
+): Promise<string> {
+  return invoke<string>("git_stash_apply_file", { repo, stashRef, filePath });
+}
+
+export async function applyPatchToWorktree(
+  repo: string,
+  patchText: string
+): Promise<void> {
+  return invoke("apply_patch_to_worktree", { repo, patchText });
+}
+
 export async function checkRepoExists(path: string): Promise<boolean> {
   return invoke<boolean>("check_repo_exists", { path });
 }

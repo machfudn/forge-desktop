@@ -36,6 +36,8 @@
   } from "../utils/appLog.svelte";
   import { renderMarkdownHtml } from "../utils/markdown";
   import ProviderIcon from "./ProviderIcon.svelte";
+  import Diff from "./Diff.svelte";
+  import { splitMultiFileDiff, type StashFileItem } from "../lib/stashDiff";
 
   export type WorkspaceModalType =
     | "open"
@@ -204,6 +206,8 @@
   let selectedStash = $state<string | null>(null);
   let stashDiff = $state("");
   let isLoadingStashDiff = $state(false);
+  let stashFiles = $state<StashFileItem[]>([]);
+  let selectedStashFile = $state<StashFileItem | null>(null);
 
   type SettingsTabId = "git" | "appearance" | "safety" | "updates" | "ai";
   let settingsTab = $state<SettingsTabId>("git");
@@ -521,10 +525,47 @@
     isLoadingStashDiff = true;
     try {
       stashDiff = await gitService.gitStashShow(activeRepo, ref);
+      stashFiles = splitMultiFileDiff(stashDiff);
+      selectedStashFile = stashFiles.length > 0 ? stashFiles[0] : null;
     } catch (err) {
       stashDiff = t("wsModal.stash.loadDiffFailed", { err: String(err) });
+      stashFiles = [];
+      selectedStashFile = null;
     } finally {
       isLoadingStashDiff = false;
+    }
+  }
+
+  async function handleApplyEntireStash(stashLine: string) {
+    const ref = extractStashRef(stashLine);
+    try {
+      await gitService.gitStashApply(activeRepo, ref);
+      onStatus(t("wsModal.stash.appliedStatus", { ref: ref || stashLine }));
+      await onLoadRepo(activeRepo);
+    } catch (err) {
+      onStatus(String(err), true);
+    }
+  }
+
+  async function handleApplyStashFile(filePath: string) {
+    if (!selectedStash) return;
+    const ref = extractStashRef(selectedStash);
+    try {
+      await gitService.gitStashApplyFile(activeRepo, filePath, ref);
+      onStatus(t("wsModal.stash.fileAppliedStatus", { path: filePath }));
+      await onLoadRepo(activeRepo);
+    } catch (err) {
+      onStatus(String(err), true);
+    }
+  }
+
+  async function handleApplyStashHunk(patchText: string) {
+    try {
+      await gitService.applyPatchToWorktree(activeRepo, patchText);
+      onStatus(t("wsModal.stash.hunkAppliedStatus"));
+      await onLoadRepo(activeRepo);
+    } catch (err) {
+      onStatus(String(err), true);
     }
   }
 
@@ -1086,8 +1127,10 @@
   const modalWidth = $derived(
     modal === "settings"
       ? "760px"
-      : modal === "stash" || modal === "logs"
-        ? "720px"
+      : modal === "stash"
+        ? "880px"
+        : modal === "logs"
+          ? "720px"
         : modal === "open" || modal === "diag" || modal === "auth" || modal === "remote"
           ? "540px"
           : "480px"
@@ -1656,59 +1699,146 @@
           <button type="button" onclick={handleStashSave} class="btn-primary">{t("wsModal.stash.saveBtn")}</button>
         </div>
 
-        <div class="stash-layout">
-          <div style="display: flex; flex-direction: column; gap: 6px; min-height: 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span class="form-label tabular-nums">{t("wsModal.stash.listTitle", { count: stashList.length })}</span>
-              <button
-                type="button"
-                onclick={handleStashPop}
-                class="btn-secondary btn-xs"
-                disabled={stashList.length === 0}
-              >
-                {t("wsModal.stash.popTopBtn")}
-              </button>
-            </div>
-            <div class="list-box" style="flex: 1; max-height: none;">
-              {#if stashList.length === 0}
-                <div style="color: var(--text-muted); text-align: center; padding: 24px 12px; font-size: 11px;">
-                  {t("wsModal.stash.emptyList")}
-                </div>
-              {:else}
-                {#each stashList as s (s)}
-                  <div class="list-row {selectedStash === s ? 'is-active' : ''}" style="padding: 5px 8px;">
-                    <button
-                      type="button"
-                      onclick={() => selectStash(s)}
-                      title={s}
-                      style="flex: 1; min-width: 0; text-align: left; font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
-                    >
-                      {s}
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-secondary btn-xs btn-danger"
-                      title={t("wsModal.stash.dropTitle")}
-                      onclick={() => handleDropStash(s)}
-                    >
-                      {t("wsModal.stash.dropBtn")}
-                    </button>
+        <div class="stash-inspector-layout">
+          <div class="stash-sidebar-col">
+            <div class="stash-sidebar-section">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span class="form-label tabular-nums">{t("wsModal.stash.listTitle", { count: stashList.length })}</span>
+                <button
+                  type="button"
+                  onclick={handleStashPop}
+                  class="btn-secondary btn-xs"
+                  disabled={stashList.length === 0}
+                >
+                  {t("wsModal.stash.popTopBtn")}
+                </button>
+              </div>
+              <div class="list-box stash-entry-list">
+                {#if stashList.length === 0}
+                  <div style="color: var(--text-muted); text-align: center; padding: 18px 8px; font-size: 11px;">
+                    {t("wsModal.stash.emptyList")}
                   </div>
-                {/each}
-              {/if}
+                {:else}
+                  {#each stashList as s (s)}
+                    <div class="list-row {selectedStash === s ? 'is-active' : ''}" style="padding: 4px 6px;">
+                      <button
+                        type="button"
+                        onclick={() => selectStash(s)}
+                        title={s}
+                        style="flex: 1; min-width: 0; text-align: left; font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                      >
+                        {s}
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-secondary btn-xs btn-danger"
+                        title={t("wsModal.stash.dropTitle")}
+                        onclick={() => handleDropStash(s)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  {/each}
+                {/if}
+              </div>
             </div>
+
+            {#if selectedStash}
+              <div class="stash-sidebar-section" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+                <span class="form-label tabular-nums" style="margin-bottom: 4px;">
+                  {t("wsModal.stash.filesTitle", { count: stashFiles.length })}
+                </span>
+                <div class="list-box stash-file-list" style="flex: 1; overflow-y: auto;">
+                  {#if stashFiles.length === 0 && !isLoadingStashDiff}
+                    <div style="color: var(--text-muted); text-align: center; padding: 14px 6px; font-size: 11px;">
+                      {t("wsModal.stash.noFiles")}
+                    </div>
+                  {:else}
+                    {#each stashFiles as sf (sf.path)}
+                      <div class="list-row {selectedStashFile?.path === sf.path ? 'is-active' : ''}" style="padding: 4px 6px; gap: 6px;">
+                        <button
+                          type="button"
+                          onclick={() => (selectedStashFile = sf)}
+                          title={sf.path}
+                          style="flex: 1; min-width: 0; text-align: left; font-size: 11px; display: flex; align-items: center; gap: 5px; overflow: hidden;"
+                        >
+                          <span class="stash-file-badge status-{sf.status}">{sf.status[0].toUpperCase()}</span>
+                          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{pathBaseName(sf.path)}</span>
+                        </button>
+                        <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                          {#if sf.additions > 0}
+                            <span class="stat-pill stat-add">+{sf.additions}</span>
+                          {/if}
+                          {#if sf.deletions > 0}
+                            <span class="stat-pill stat-del">-{sf.deletions}</span>
+                          {/if}
+                          <button
+                            type="button"
+                            class="btn-secondary btn-xs"
+                            title={t("wsModal.stash.applyFileBtn")}
+                            onclick={() => handleApplyStashFile(sf.path)}
+                          >
+                            {t("wsModal.stash.applyFileBtn")}
+                          </button>
+                        </div>
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+              </div>
+            {/if}
           </div>
 
-          <div style="display: flex; flex-direction: column; min-height: 0;">
-            <span class="form-label" style="margin-bottom: 6px;">{t("wsModal.stash.previewLabel")}</span>
-            <div style="flex: 1; overflow: auto; background: var(--bg-canvas); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 8px; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; user-select: text;">
+          <div class="stash-diff-col">
+            <div class="stash-diff-header">
+              <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
+                <span class="form-label">{t("wsModal.stash.previewLabel")}</span>
+                {#if selectedStashFile}
+                  <span class="stash-active-file-path" title={selectedStashFile.path}>
+                    {selectedStashFile.path}
+                  </span>
+                {/if}
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                {#if selectedStashFile}
+                  <button
+                    type="button"
+                    class="btn-secondary btn-xs"
+                    onclick={() => handleApplyStashFile(selectedStashFile!.path)}
+                  >
+                    {t("wsModal.stash.applyFileBtn")}
+                  </button>
+                {/if}
+                {#if selectedStash}
+                  <button
+                    type="button"
+                    class="btn-primary btn-xs"
+                    onclick={() => handleApplyEntireStash(selectedStash!)}
+                  >
+                    {t("wsModal.stash.applyStashBtn")}
+                  </button>
+                {/if}
+              </div>
+            </div>
+
+            <div class="stash-diff-container">
               {#if isLoadingStashDiff}
-                <div style="color: var(--text-muted); text-align: center; padding: 24px;">{t("wsModal.stash.loadingDiff")}</div>
+                <div class="stash-diff-empty">
+                  <span>{t("wsModal.stash.loadingDiff")}</span>
+                </div>
+              {:else if selectedStashFile}
+                <Diff
+                  repoPath={activeRepo}
+                  filePath={selectedStashFile.path}
+                  diffText={selectedStashFile.diffText}
+                  onStageHunk={(patch) => handleApplyStashHunk(patch)}
+                  onStatus={onStatus}
+                />
               {:else if stashDiff}
-                {stashDiff}
+                <pre class="stash-raw-diff">{stashDiff}</pre>
               {:else}
-                <div style="color: var(--text-muted); text-align: center; padding: 24px;">
-                  {t("wsModal.stash.selectPrompt")}
+                <div class="stash-diff-empty">
+                  <span>{t("wsModal.stash.selectPrompt")}</span>
                 </div>
               {/if}
             </div>
