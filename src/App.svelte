@@ -17,6 +17,7 @@
     IssueInfo,
     ParsedGitHubRepo,
     PullRequestInfo,
+    PullRequestReviewComment,
     RemoteInfo,
     RepoConfig,
     RepoQuickSummary,
@@ -278,6 +279,53 @@
   let githubError = $state("");
   let githubRateLimited = $state(false);
   let checkRunsMap = $state<Record<string, { status: string; conclusion?: string }>>({});
+  let prReviewComments = $state<PullRequestReviewComment[]>([]);
+  let activePrReviewNumber = $derived.by<number | null>(() => {
+    if (!currentStatus?.branch) return null;
+    const m = currentStatus.branch.match(/^pr-([0-9]+)$/);
+    if (m) return parseInt(m[1], 10);
+    const pr = pullRequests.find((p) => p.head_branch === currentStatus?.branch);
+    return pr ? pr.number : null;
+  });
+
+  $effect(() => {
+    if (githubRepoInfo && activePrReviewNumber && activeRepo) {
+      gitService
+        .listPrComments(githubRepoInfo.owner, githubRepoInfo.repo, activePrReviewNumber, githubRepoInfo.host, activeRepo)
+        .then((comments) => {
+          prReviewComments = comments;
+        })
+        .catch(() => {
+          prReviewComments = [];
+        });
+    } else {
+      prReviewComments = [];
+    }
+  });
+
+  async function handleCreatePrComment(line: number, body: string, inReplyTo?: number) {
+    if (!githubRepoInfo || !activePrReviewNumber || !selectedFile || !activeRepo) return;
+    try {
+      const newComment = await gitService.createPrComment(
+        githubRepoInfo.owner,
+        githubRepoInfo.repo,
+        activePrReviewNumber,
+        {
+          body,
+          commit_id: currentStatus?.branch || "HEAD",
+          path: selectedFile.path,
+          line,
+          in_reply_to: inReplyTo,
+        },
+        githubRepoInfo.host,
+        activeRepo
+      );
+      prReviewComments = [...prReviewComments, newComment];
+      setStatus(t("diff.prCommentBtn"));
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
   const activeRepoAccount = $derived.by<AccountProfile | null>(() => {
     const list = accountOverview.accounts;
     if (list.length === 0) return null;
@@ -2888,6 +2936,9 @@
               onRevealFile={openInFileManagerTarget}
               onOpenInEditor={openInEditorFile}
               onStatus={setStatus}
+              prComments={prReviewComments}
+              activePrNumber={activePrReviewNumber}
+              onCreatePrComment={handleCreatePrComment}
             />
           {:else}
             <div class="empty-state">

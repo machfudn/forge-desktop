@@ -55,6 +55,32 @@ pub struct PublishRepoParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PullRequestReviewComment {
+    pub id: u64,
+    pub path: String,
+    pub line: Option<u64>,
+    pub original_line: Option<u64>,
+    pub commit_id: String,
+    pub user: String,
+    pub user_avatar: Option<String>,
+    pub body: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub html_url: String,
+    pub in_reply_to_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateReviewCommentParams {
+    pub body: String,
+    pub commit_id: String,
+    pub path: String,
+    pub line: u64,
+    pub side: Option<String>,
+    pub in_reply_to: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceFlowPollOutcome {
     pub status: String,
     pub profile: Option<AccountProfile>,
@@ -662,6 +688,143 @@ pub fn checkout_pull_request(
 
     cli::run_with_credentials(repo_path, &["fetch", rem, &refspec], creds)?;
     cli::run(repo_path, &["checkout", &target_branch])
+}
+
+pub fn list_pr_comments(
+    host: &str,
+    owner: &str,
+    repo: &str,
+    pull_number: u64,
+    token: Option<&str>,
+) -> Result<Vec<PullRequestReviewComment>, String> {
+    let o = validate_github_ident(owner, "Owner")?;
+    let r = validate_github_ident(repo, "Nama repository")?;
+    let api_base = github_api_base(host)?;
+
+    let url = format!("{api_base}/repos/{o}/{r}/pulls/{pull_number}/comments?per_page=100");
+    let stdout = github_api_request("GET", &url, None, token)?;
+    if stdout.trim().is_empty() {
+        return Ok(vec![]);
+    }
+
+    #[derive(Deserialize)]
+    struct RawUser {
+        login: Option<String>,
+        avatar_url: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct RawComment {
+        id: Option<u64>,
+        path: Option<String>,
+        line: Option<u64>,
+        original_line: Option<u64>,
+        commit_id: Option<String>,
+        user: Option<RawUser>,
+        body: Option<String>,
+        created_at: Option<String>,
+        updated_at: Option<String>,
+        html_url: Option<String>,
+        in_reply_to_id: Option<u64>,
+    }
+
+    let parsed: Vec<RawComment> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Respon GitHub API tidak valid: {e}"))?;
+
+    Ok(parsed
+        .into_iter()
+        .filter_map(|c| {
+            Some(PullRequestReviewComment {
+                id: c.id?,
+                path: c.path.unwrap_or_default(),
+                line: c.line.or(c.original_line),
+                original_line: c.original_line,
+                commit_id: c.commit_id.unwrap_or_default(),
+                user: c.user.as_ref().and_then(|u| u.login.clone()).unwrap_or_else(|| "unknown".into()),
+                user_avatar: c.user.and_then(|u| u.avatar_url),
+                body: c.body.unwrap_or_default(),
+                created_at: c.created_at.unwrap_or_default(),
+                updated_at: c.updated_at.unwrap_or_default(),
+                html_url: c.html_url.unwrap_or_default(),
+                in_reply_to_id: c.in_reply_to_id,
+            })
+        })
+        .collect())
+}
+
+pub fn create_pr_comment(
+    host: &str,
+    owner: &str,
+    repo: &str,
+    pull_number: u64,
+    params: CreateReviewCommentParams,
+    token: Option<&str>,
+) -> Result<PullRequestReviewComment, String> {
+    let o = validate_github_ident(owner, "Owner")?;
+    let r = validate_github_ident(repo, "Nama repository")?;
+    let api_base = github_api_base(host)?;
+
+    let url = if let Some(reply_id) = params.in_reply_to {
+        format!("{api_base}/repos/{o}/{r}/pulls/{pull_number}/comments/{reply_id}/replies")
+    } else {
+        format!("{api_base}/repos/{o}/{r}/pulls/{pull_number}/comments")
+    };
+
+    let payload = if params.in_reply_to.is_some() {
+        serde_json::json!({
+            "body": params.body,
+        })
+    } else {
+        serde_json::json!({
+            "body": params.body,
+            "commit_id": params.commit_id,
+            "path": params.path,
+            "line": params.line,
+            "side": params.side.unwrap_or_else(|| "RIGHT".into()),
+        })
+    };
+
+    let body_str = payload.to_string();
+    let stdout = github_api_request("POST", &url, Some(&body_str), token)?;
+
+    #[derive(Deserialize)]
+    struct RawUser {
+        login: Option<String>,
+        avatar_url: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct RawComment {
+        id: Option<u64>,
+        path: Option<String>,
+        line: Option<u64>,
+        original_line: Option<u64>,
+        commit_id: Option<String>,
+        user: Option<RawUser>,
+        body: Option<String>,
+        created_at: Option<String>,
+        updated_at: Option<String>,
+        html_url: Option<String>,
+        in_reply_to_id: Option<u64>,
+    }
+
+    let c: RawComment = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Gagal memproses respon pembuatan komentar: {e}"))?;
+
+    Ok(PullRequestReviewComment {
+        id: c.id.ok_or_else(|| "Komentar dibuat tanpa ID".to_string())?,
+        path: c.path.unwrap_or_else(|| params.path.clone()),
+        line: c.line.or(c.original_line).or(Some(params.line)),
+        original_line: c.original_line,
+        commit_id: c.commit_id.unwrap_or_else(|| params.commit_id.clone()),
+        user: c.user.as_ref().and_then(|u| u.login.clone()).unwrap_or_else(|| "you".into()),
+        user_avatar: c.user.and_then(|u| u.avatar_url),
+        body: c.body.unwrap_or_else(|| params.body.clone()),
+        created_at: c.created_at.unwrap_or_default(),
+        updated_at: c.updated_at.unwrap_or_default(),
+        html_url: c.html_url.unwrap_or_default(),
+        in_reply_to_id: c.in_reply_to_id,
+    })
 }
 
 pub fn get_commit_check_runs(

@@ -7,7 +7,7 @@ use crate::git::{
     BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
     DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, GitHooksInfo, HostingProvider, ImageDiffData,
     IssueInfo, LocalSessionSource, ParsedGitHubRepo, ParsedHostingRepo, PublishRepoParams,
-    PullRequestInfo, RebaseCommitItem, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
+    CreateReviewCommentParams, PullRequestInfo, PullRequestReviewComment, RebaseCommitItem, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
     SubmoduleInfo, WorktreeInfo, GITHUB_PUBLIC_HOST,
 };
 use crate::system;
@@ -702,6 +702,47 @@ pub async fn list_github_issues(
             .resolve_account_for_repo(repo_path.as_deref(), target_host)
             .map(|(_, t)| t);
         git::list_issues(target_host, &owner, &repo, token.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn list_pr_comments(
+    owner: String,
+    repo: String,
+    pull_number: u64,
+    host: Option<String>,
+    repo_path: Option<String>,
+    accounts: State<'_, AccountManager>,
+) -> Result<Vec<PullRequestReviewComment>, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let target_host = host.as_deref().unwrap_or(GITHUB_PUBLIC_HOST);
+        let token = mgr
+            .resolve_account_for_repo(repo_path.as_deref(), target_host)
+            .map(|(_, t)| t);
+        git::list_pr_comments(target_host, &owner, &repo, pull_number, token.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn create_pr_comment(
+    owner: String,
+    repo: String,
+    pull_number: u64,
+    params: CreateReviewCommentParams,
+    host: Option<String>,
+    repo_path: Option<String>,
+    accounts: State<'_, AccountManager>,
+) -> Result<PullRequestReviewComment, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        let target_host = host.as_deref().unwrap_or(GITHUB_PUBLIC_HOST);
+        let token = mgr
+            .resolve_account_for_repo(repo_path.as_deref(), target_host)
+            .map(|(_, t)| t);
+        git::create_pr_comment(target_host, &owner, &repo, pull_number, params, token.as_deref())
     })
     .await
 }

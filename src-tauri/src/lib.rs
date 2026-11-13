@@ -101,6 +101,8 @@ pub fn run() {
             commands::parse_github_repository,
             commands::list_github_pull_requests,
             commands::list_github_issues,
+            commands::list_pr_comments,
+            commands::create_pr_comment,
             commands::checkout_github_pull_request,
             commands::get_commit_check_runs,
             commands::squash_commits,

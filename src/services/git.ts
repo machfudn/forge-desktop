@@ -28,7 +28,9 @@ import type {
   ParsedGitHubRepo,
   ParsedHostingRepo,
   PublishRepoParams,
+  CreateReviewCommentParams,
   PullRequestInfo,
+  PullRequestReviewComment,
   RebaseCommitItem,
   RebaseStep,
   ReflogEntry,
@@ -536,6 +538,40 @@ export async function listGithubPullRequests(
   return invoke<PullRequestInfo[]>("list_github_pull_requests", {
     owner,
     repo,
+    host,
+    repoPath,
+  });
+}
+
+export async function listPrComments(
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  host?: string,
+  repoPath?: string
+): Promise<PullRequestReviewComment[]> {
+  return invoke<PullRequestReviewComment[]>("list_pr_comments", {
+    owner,
+    repo,
+    pullNumber,
+    host,
+    repoPath,
+  });
+}
+
+export async function createPrComment(
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  params: CreateReviewCommentParams,
+  host?: string,
+  repoPath?: string
+): Promise<PullRequestReviewComment> {
+  return invoke<PullRequestReviewComment>("create_pr_comment", {
+    owner,
+    repo,
+    pullNumber,
+    params,
     host,
     repoPath,
   });

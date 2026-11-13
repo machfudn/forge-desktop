@@ -129,6 +129,30 @@ export interface PullRequestInfo {
   created_at: string;
 }
 
+export interface PullRequestReviewComment {
+  id: number;
+  path: string;
+  line: number | null;
+  original_line: number | null;
+  commit_id: string;
+  user: string;
+  user_avatar?: string | null;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+  in_reply_to_id?: number | null;
+}
+
+export interface CreateReviewCommentParams {
+  body: string;
+  commit_id: string;
+  path: string;
+  line: number;
+  side?: "LEFT" | "RIGHT";
+  in_reply_to?: number;
+}
+
 export interface IssueInfo {
   id: number;
   number: number;

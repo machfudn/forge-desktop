@@ -342,7 +342,14 @@
     "unstageSelectedLinesBtn": "Unstage Selected Lines",
     "clearSelectionBtn": "Clear",
     "stageSingleLineTitle": "Stage this line",
-    "unstageSingleLineTitle": "Unstage this line"
+    "unstageSingleLineTitle": "Unstage this line",
+    "prCommentBtn": "Comment",
+    "prReplyBtn": "Reply",
+    "prCancelBtn": "Cancel",
+    "prCommentPlaceholder": "Leave a review comment (Markdown supported)...",
+    "prReplyPlaceholder": "Write a reply...",
+    "prAddCommentTitle": "Add comment to line {line}",
+    "prViewCommentsTitle": "View {count} comment(s)"
   },
   "history": {
     "empty": "No commit history on this branch yet.",

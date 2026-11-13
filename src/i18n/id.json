@@ -342,7 +342,14 @@
     "unstageSelectedLinesBtn": "Unstage Baris Terpilih",
     "clearSelectionBtn": "Batal Pilih",
     "stageSingleLineTitle": "Stage baris ini",
-    "unstageSingleLineTitle": "Unstage baris ini"
+    "unstageSingleLineTitle": "Unstage baris ini",
+    "prCommentBtn": "Komentar",
+    "prReplyBtn": "Balas",
+    "prCancelBtn": "Batal",
+    "prCommentPlaceholder": "Tulis komentar review (didukung Markdown)...",
+    "prReplyPlaceholder": "Tulis balasan...",
+    "prAddCommentTitle": "Tambah komentar ke baris {line}",
+    "prViewCommentsTitle": "Lihat {count} komentar"
   },
   "history": {
     "empty": "Belum ada riwayat commit di branch ini.",

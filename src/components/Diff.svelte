@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ImageDiffData } from "../types/git";
+  import type { ImageDiffData, PullRequestReviewComment } from "../types/git";
+  import { renderMarkdownHtml } from "../utils/markdown";
   import { t } from "../i18n/index.svelte";
   import { joinRepoPath } from "../utils/path";
   import {
@@ -26,6 +27,9 @@
     onRevealFile?: (filePath: string) => void;
     onOpenInEditor?: (filePath: string) => void;
     onStatus?: (msg: string, isError?: boolean) => void;
+    prComments?: PullRequestReviewComment[];
+    activePrNumber?: number | null;
+    onCreatePrComment?: (line: number, body: string, inReplyTo?: number) => Promise<void>;
   }
 
   let {
@@ -46,6 +50,9 @@
     onRevealFile,
     onOpenInEditor,
     onStatus,
+    prComments = [],
+    activePrNumber = null,
+    onCreatePrComment,
   }: Props = $props();
   let isImage = $derived(
     /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(filePath) &&
@@ -64,6 +71,96 @@
       viewMode = "unified";
     }
   });
+  let expandedCommentLines = $state<Set<number>>(new Set());
+  let draftingCommentLine = $state<number | null>(null);
+  let draftCommentBody = $state("");
+  let replyingCommentId = $state<number | null>(null);
+  let replyCommentBody = $state("");
+  let isSubmittingComment = $state(false);
+
+  let commentsByLine = $derived.by(() => {
+    const map = new Map<number, PullRequestReviewComment[]>();
+    if (!prComments) return map;
+    for (const comment of prComments) {
+      const cPath = comment.path.replace(/\\/g, "/");
+      const fPath = filePath.replace(/\\/g, "/");
+      if (cPath === fPath || fPath.endsWith(cPath) || cPath.endsWith(fPath)) {
+        const line = comment.line ?? comment.original_line;
+        if (line !== null && line !== undefined) {
+          const existing = map.get(line) ?? [];
+          existing.push(comment);
+          map.set(line, existing);
+        }
+      }
+    }
+    return map;
+  });
+
+  function toggleLineComments(line: number) {
+    const next = new Set(expandedCommentLines);
+    if (next.has(line)) {
+      next.delete(line);
+    } else {
+      next.add(line);
+    }
+    expandedCommentLines = next;
+  }
+
+  function startDraftComment(line: number) {
+    draftingCommentLine = line;
+    draftCommentBody = "";
+    replyingCommentId = null;
+    const next = new Set(expandedCommentLines);
+    next.add(line);
+    expandedCommentLines = next;
+  }
+
+  function cancelDraftComment() {
+    draftingCommentLine = null;
+    draftCommentBody = "";
+  }
+
+  function startReply(commentId: number, line: number) {
+    replyingCommentId = commentId;
+    replyCommentBody = "";
+    draftingCommentLine = null;
+    const next = new Set(expandedCommentLines);
+    next.add(line);
+    expandedCommentLines = next;
+  }
+
+  function cancelReply() {
+    replyingCommentId = null;
+    replyCommentBody = "";
+  }
+
+  async function handleSendComment(line: number) {
+    if (!onCreatePrComment || !draftCommentBody.trim() || isSubmittingComment) return;
+    isSubmittingComment = true;
+    try {
+      await onCreatePrComment(line, draftCommentBody.trim());
+      draftCommentBody = "";
+      draftingCommentLine = null;
+    } catch (err) {
+      if (onStatus) onStatus(String(err), true);
+    } finally {
+      isSubmittingComment = false;
+    }
+  }
+
+  async function handleSendReply(line: number, replyToId: number) {
+    if (!onCreatePrComment || !replyCommentBody.trim() || isSubmittingComment) return;
+    isSubmittingComment = true;
+    try {
+      await onCreatePrComment(line, replyCommentBody.trim(), replyToId);
+      replyCommentBody = "";
+      replyingCommentId = null;
+    } catch (err) {
+      if (onStatus) onStatus(String(err), true);
+    } finally {
+      isSubmittingComment = false;
+    }
+  }
 
   function escapeHtml(str: string): string {
     return str
@@ -828,6 +925,9 @@
           {@const canStageLine = !!onStageLines && (item.kind === "add" || item.kind === "del") && !!item.hunkPatch && item.bodyIdx !== undefined}
           {@const selKey = lineSelectKey(item)}
           {@const isLineSelected = !!(selKey && selectedLineMap[selKey])}
+          {@const lineNum = item.newLn ?? item.oldLn}
+          {@const hasComments = lineNum !== null && commentsByLine.has(lineNum)}
+          {@const lineCommentList = lineNum !== null ? commentsByLine.get(lineNum) ?? [] : []}
           <div class="diff-line-row {item.kind === 'add' ? 'add' : item.kind === 'del' ? 'del' : ''} {isLineSelected ? 'is-line-selected' : ''}">
             {#if onStageLines}
               <span class="diff-line-select-cell">
@@ -845,17 +945,129 @@
             <span class="diff-ln">{item.oldLn ?? ""}</span>
             <span class="diff-ln">{item.newLn ?? ""}</span>
             <span class="diff-line {item.kind === 'meta' ? 'meta' : ''} diff-code">{@html item.html}</span>
-            {#if canStageLine}
-              <button
-                type="button"
-                class="diff-single-line-btn {isStaged ? 'is-unstage' : 'is-stage'}"
-                title={isStaged ? t("diff.unstageSingleLineTitle") : t("diff.stageSingleLineTitle")}
-                onclick={() => onStageLines!(item.hunkPatch!, [item.bodyIdx!], isStaged)}
-              >
-                {isStaged ? "−" : "+"}
-              </button>
-            {/if}
+            <div class="diff-line-actions-cell">
+              {#if hasComments}
+                <button
+                  type="button"
+                  class="diff-comment-badge-btn"
+                  title={t("diff.prViewCommentsTitle", { count: lineCommentList.length })}
+                  onclick={() => toggleLineComments(lineNum!)}
+                >
+                  💬 {lineCommentList.length}
+                </button>
+              {:else if activePrNumber && lineNum !== null}
+                <button
+                  type="button"
+                  class="diff-add-comment-btn"
+                  title={t("diff.prAddCommentTitle", { line: lineNum })}
+                  onclick={() => startDraftComment(lineNum!)}
+                >
+                  +💬
+                </button>
+              {/if}
+              {#if canStageLine}
+                <button
+                  type="button"
+                  class="diff-single-line-btn {isStaged ? 'is-unstage' : 'is-stage'}"
+                  title={isStaged ? t("diff.unstageSingleLineTitle") : t("diff.stageSingleLineTitle")}
+                  onclick={() => onStageLines!(item.hunkPatch!, [item.bodyIdx!], isStaged)}
+                >
+                  {isStaged ? "−" : "+"}
+                </button>
+              {/if}
+            </div>
           </div>
+
+          {#if lineNum !== null && expandedCommentLines.has(lineNum)}
+            <div class="diff-comment-thread-row">
+              {#if lineCommentList.length > 0}
+                <div class="diff-comment-thread">
+                  {#each lineCommentList as comment (comment.id)}
+                    <div class="diff-comment-card">
+                      <div class="diff-comment-header">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          {#if comment.user_avatar}
+                            <img src={comment.user_avatar} alt={comment.user} class="comment-avatar" />
+                          {/if}
+                          <span class="comment-author">{comment.user}</span>
+                        </div>
+                        <span class="comment-date">{comment.created_at.substring(0, 10)}</span>
+                      </div>
+                      <div class="diff-comment-body markdown-body">
+                        {@html renderMarkdownHtml(comment.body)}
+                      </div>
+                      {#if activePrNumber && replyingCommentId !== comment.id}
+                        <div class="diff-comment-actions">
+                          <button
+                            type="button"
+                            class="link-btn"
+                            onclick={() => startReply(comment.id, lineNum!)}
+                          >
+                            {t("diff.prReplyBtn")}
+                          </button>
+                        </div>
+                      {/if}
+                      {#if replyingCommentId === comment.id}
+                        <div class="diff-comment-reply-box">
+                          <textarea
+                            class="form-input diff-comment-input"
+                            rows="2"
+                            placeholder={t("diff.prReplyPlaceholder")}
+                            bind:value={replyCommentBody}
+                          ></textarea>
+                          <div style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px;">
+                            <button
+                              type="button"
+                              class="btn-secondary btn-xs"
+                              onclick={cancelReply}
+                            >
+                              {t("diff.prCancelBtn")}
+                            </button>
+                            <button
+                              type="button"
+                              class="btn-primary btn-xs"
+                              disabled={!replyCommentBody.trim() || isSubmittingComment}
+                              onclick={() => handleSendReply(lineNum!, comment.id)}
+                            >
+                              {t("diff.prReplyBtn")}
+                            </button>
+                          </div>
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+
+              {#if draftingCommentLine === lineNum}
+                <div class="diff-comment-draft-box">
+                  <textarea
+                    class="form-input diff-comment-input"
+                    rows="3"
+                    placeholder={t("diff.prCommentPlaceholder")}
+                    bind:value={draftCommentBody}
+                  ></textarea>
+                  <div style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px;">
+                    <button
+                      type="button"
+                      class="btn-secondary btn-xs"
+                      onclick={cancelDraftComment}
+                    >
+                      {t("diff.prCancelBtn")}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-primary btn-xs"
+                      disabled={!draftCommentBody.trim() || isSubmittingComment}
+                      onclick={() => handleSendComment(lineNum!)}
+                    >
+                      {t("diff.prCommentBtn")}
+                    </button>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {/if}
         {/if}
       {/each}
     </div>

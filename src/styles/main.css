@@ -6416,3 +6416,134 @@ select optgroup {
   background: color-mix(in srgb, var(--diff-del-text) 12%, transparent);
   color: var(--diff-del-text);
 }
+
+/* Diff PR Review Comments */
+.diff-line-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+
+.diff-comment-badge-btn {
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 40%, transparent);
+  background: color-mix(in srgb, var(--accent-blue) 15%, transparent);
+  color: var(--text-accent);
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 14px;
+  transition: all 0.12s ease;
+}
+
+.diff-comment-badge-btn:hover {
+  background: color-mix(in srgb, var(--accent-blue) 30%, transparent);
+}
+
+.diff-add-comment-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: all 0.12s ease;
+}
+
+.diff-line-row:hover .diff-add-comment-btn,
+.diff-add-comment-btn:focus-visible {
+  opacity: 1;
+}
+
+.diff-add-comment-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.diff-comment-thread-row {
+  grid-column: 1 / -1;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  padding: 8px 16px 8px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diff-comment-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diff-comment-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diff-comment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.comment-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.comment-author {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.comment-date {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.diff-comment-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  user-select: text;
+}
+
+.diff-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.diff-comment-reply-box,
+.diff-comment-draft-box {
+  margin-top: 4px;
+  padding: 6px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.diff-comment-input {
+  width: 100%;
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+}
