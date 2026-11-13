@@ -1004,7 +1004,18 @@
     "emptyHint": "Jalankan perintah git, build, atau shell langsung di direktori repositori.",
     "inputPlaceholder": "Ketik perintah lalu tekan Enter...",
     "runBtn": "Jalankan",
-    "runningBtn": "Berjalan..."
+    "runningBtn": "Berjalan...",
+    "newTab": "Tab Baru",
+    "closeTab": "Tutup Tab",
+    "maximize": "Maksimalkan Terminal",
+    "restore": "Kembalikan Ukuran Terminal",
+    "copyOutput": "Salin Output",
+    "copiedOutput": "Output disalin",
+    "searchPlaceholder": "Cari output...",
+    "newOutputBadge": "Output baru",
+    "quickActions": "Aksi cepat",
+    "cwdCopy": "Salin direktori kerja",
+    "cwdCopied": "Direktori disalin"
   },
   "palette": {
     "title": "Palet Perintah",

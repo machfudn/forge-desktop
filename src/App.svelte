@@ -2943,6 +2943,7 @@
   {#if terminalOpen && activeRepo}
     <TerminalDrawer
       repoPath={activeRepo}
+      currentBranch={currentStatus?.branch || "HEAD"}
       onClose={() => (terminalOpen = false)}
       onRefreshRepo={() => loadRepo(activeRepo)}
     />
