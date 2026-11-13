@@ -38,6 +38,7 @@ import type {
   SaveAiConfigInput,
   SubmoduleInfo,
   TerminalExecResult,
+  TargetPackageMode,
   UpdateApplyResult,
   UpdateChannel,
   WorktreeInfo,
@@ -628,18 +629,22 @@ export async function getAppRuntimeInfo(): Promise<AppRuntimeInfo> {
 }
 
 export async function checkAppUpdate(
-  channel?: UpdateChannel
+  channel?: UpdateChannel,
+  targetMode?: TargetPackageMode
 ): Promise<AppUpdateInfo> {
   return invoke<AppUpdateInfo>("check_app_update", {
     channel: channel ?? null,
+    targetMode: targetMode ?? null,
   });
 }
 
 export async function installAppUpdate(
-  channel?: UpdateChannel
+  channel?: UpdateChannel,
+  targetMode?: TargetPackageMode
 ): Promise<UpdateApplyResult> {
   return invoke<UpdateApplyResult>("install_app_update", {
     channel: channel ?? null,
+    targetMode: targetMode ?? null,
   });
 }
 

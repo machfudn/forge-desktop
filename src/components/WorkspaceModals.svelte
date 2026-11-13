@@ -17,6 +17,7 @@
     RemoteInfo,
     RepoConfig,
     RepoQuickSummary,
+    TargetPackageMode,
     UpdateChannel,
   } from "../types/git";
   import {
@@ -70,6 +71,7 @@
     appRuntimeInfo: AppRuntimeInfo | null;
     appUpdateInfo: AppUpdateInfo | null;
     updateChannel: UpdateChannel;
+    targetPackageMode?: TargetPackageMode;
     isCheckingUpdate: boolean;
     isInstallingUpdate: boolean;
     updateError: string;
@@ -96,9 +98,10 @@
       desktopNotifEnabled: boolean;
       externalEditor: string;
       updateChannel: UpdateChannel;
+      targetPackageMode: TargetPackageMode;
     }) => Promise<void>;
-    onCheckUpdates: (channel?: UpdateChannel) => Promise<void>;
-    onInstallUpdate: (channel?: UpdateChannel) => Promise<void>;
+    onCheckUpdates: (channel?: UpdateChannel, targetMode?: TargetPackageMode) => Promise<void>;
+    onInstallUpdate: (channel?: UpdateChannel, targetMode?: TargetPackageMode) => Promise<void>;
     onStatus: (msg: string, isError?: boolean) => void;
     onAccountsChanged: (overview: AccountOverview, syncedProfile?: AccountProfile) => void;
     onCheckAccountHealth: (accountId: string) => Promise<AccountHealth>;
@@ -135,6 +138,7 @@
     appRuntimeInfo,
     appUpdateInfo,
     updateChannel: initialUpdateChannel,
+    targetPackageMode: initialTargetPackageMode = "auto",
     isCheckingUpdate,
     isInstallingUpdate,
     updateError,
@@ -232,6 +236,7 @@
   let draftEditorPreset = $state("system");
   let draftCustomEditor = $state("");
   let draftUpdateChannel = $state<UpdateChannel>("auto");
+  let draftTargetPackageMode = $state<TargetPackageMode>("auto");
   // Custom AI Engine drafts
   let aiConfig = $state<AiConfigPublic>({
     provider_kind: "openai_compatible",
@@ -410,6 +415,7 @@
           draftCustomEditor = savedEditor;
         }
         draftUpdateChannel = initialUpdateChannel;
+        draftTargetPackageMode = initialTargetPackageMode;
         aiApiKeyInput = "";
         showAiApiKey = false;
         aiTestResult = null;
@@ -2618,7 +2624,7 @@
                     type="button"
                     class="btn-secondary btn-xs"
                     disabled={isCheckingUpdate || isInstallingUpdate}
-                    onclick={() => onCheckUpdates(draftUpdateChannel)}
+                    onclick={() => onCheckUpdates(draftUpdateChannel, draftTargetPackageMode)}
                   >
                     {isCheckingUpdate ? t("wsModal.settings.checkingUpdatesBtn") : t("wsModal.settings.checkUpdatesBtn")}
                   </button>
@@ -2630,6 +2636,26 @@
                     <option value="stable">{t("wsModal.settings.channelStable")}</option>
                     <option value="beta">{t("wsModal.settings.channelBeta")}</option>
                   </select>
+                </div>
+                <div class="settings-row">
+                  <label class="form-label" for="update-package-mode-select">{t("wsModal.settings.targetPackageModeLabel")}</label>
+                  <select
+                    id="update-package-mode-select"
+                    class="form-select"
+                    bind:value={draftTargetPackageMode}
+                    onchange={() => onCheckUpdates(draftUpdateChannel, draftTargetPackageMode)}
+                  >
+                    <option value="auto">{t("wsModal.settings.targetModeAuto")}</option>
+                    <option value="portable">{t("wsModal.settings.targetModePortable")}</option>
+                    <option value="installer">{t("wsModal.settings.targetModeInstaller")}</option>
+                  </select>
+                  <div class="settings-hint">
+                    {draftTargetPackageMode === "portable"
+                      ? t("wsModal.settings.targetModePortableHint")
+                      : draftTargetPackageMode === "installer"
+                      ? t("wsModal.settings.targetModeInstallerHint")
+                      : t("wsModal.settings.targetModeAutoHint")}
+                  </div>
                 </div>
                 {#if updateError}
                   <div class="settings-status-box is-error">{updateError}</div>
@@ -2666,7 +2692,7 @@
                             type="button"
                             class="btn-primary btn-xs"
                             disabled={isInstallingUpdate || isCheckingUpdate}
-                            onclick={() => onInstallUpdate(draftUpdateChannel)}
+                            onclick={() => onInstallUpdate(draftUpdateChannel, draftTargetPackageMode)}
                           >
                             {isInstallingUpdate ? t("wsModal.settings.installingUpdateBtn") : t("wsModal.settings.installUpdateBtn")}
                           </button>
@@ -2694,6 +2720,78 @@
                           </div>
                         </details>
                       {/if}
+                    {/if}
+                    {#if appUpdateInfo.available_packages && appUpdateInfo.available_packages.length > 0}
+                      <div class="settings-available-packages" style="margin-top: 10px; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">
+                          {t("wsModal.settings.availablePackagesHeader")}
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                          {#each appUpdateInfo.available_packages as pkg}
+                            <div
+                              class="settings-pkg-card {pkg.asset_name === appUpdateInfo.asset_name ? 'is-selected' : ''}"
+                              style="border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; font-size: 12px; background: var(--bg-surface); flex: 1 1 calc(50% - 8px); min-width: 220px;"
+                            >
+                              <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 2px;">
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                  <span class="badge-neutral" style="font-weight: 600;">
+                                    {pkg.mode === "portable" ? "Portable" : "Installer"}
+                                  </span>
+                                  {#if pkg.asset_name === appUpdateInfo.asset_name}
+                                    <span style="font-size: 11px; color: var(--accent); font-weight: 500;">
+                                      ({t("wsModal.settings.targetSelected")})
+                                    </span>
+                                  {/if}
+                                </div>
+                                {#if pkg.asset_size}
+                                  <span style="font-size: 11px; color: var(--text-secondary);">
+                                    {(pkg.asset_size / (1024 * 1024)).toFixed(1)} MB
+                                  </span>
+                                {/if}
+                              </div>
+                              <div style="font-family: monospace; font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;" title={pkg.asset_name}>
+                                {pkg.asset_name}
+                              </div>
+                              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                {#if appUpdateInfo.has_update}
+                                  {#if pkg.asset_name === appUpdateInfo.asset_name && appUpdateInfo.can_self_update}
+                                    <button
+                                      type="button"
+                                      class="btn-primary btn-xs"
+                                      disabled={isInstallingUpdate || isCheckingUpdate}
+                                      onclick={() => onInstallUpdate(draftUpdateChannel, draftTargetPackageMode)}
+                                    >
+                                      {isInstallingUpdate ? t("wsModal.settings.installingUpdateBtn") : t("wsModal.settings.installUpdateBtn")}
+                                    </button>
+                                  {:else if pkg.can_self_update}
+                                    <button
+                                      type="button"
+                                      class="btn-secondary btn-xs"
+                                      disabled={isInstallingUpdate || isCheckingUpdate}
+                                      onclick={() => {
+                                        draftTargetPackageMode = pkg.mode === "portable" ? "portable" : "installer";
+                                        void onInstallUpdate(draftUpdateChannel, draftTargetPackageMode);
+                                      }}
+                                    >
+                                      {t("wsModal.settings.installThisPackageBtn")}
+                                    </button>
+                                  {/if}
+                                {/if}
+                                {#if pkg.asset_url}
+                                  <button
+                                    type="button"
+                                    class="link-btn"
+                                    style="font-size: 11px;"
+                                    onclick={() => openExternalUrl(pkg.asset_url)}
+                                  >
+                                    {t("wsModal.settings.downloadPackageLink")}
+                                  </button>
+                                {/if}
+                              </div>
+                            </div>
+                          {/each}
+                        </div>
+                      </div>
                     {/if}
                   </div>
                 {/if}
@@ -2913,6 +3011,7 @@
               externalEditor:
                 draftEditorPreset === "custom" ? draftCustomEditor.trim() : draftEditorPreset,
               updateChannel: draftUpdateChannel,
+              targetPackageMode: draftTargetPackageMode,
             });
           }}
         >

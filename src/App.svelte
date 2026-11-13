@@ -21,6 +21,7 @@
     RepoConfig,
     RepoQuickSummary,
     RepoStatus,
+    TargetPackageMode,
     UpdateChannel,
   } from "./types/git";
   import Changes from "./components/Changes.svelte";
@@ -158,6 +159,12 @@
   let updateChannel = $state<UpdateChannel>(
     savedUpdateChannel === "stable" || savedUpdateChannel === "beta" || savedUpdateChannel === "auto"
       ? savedUpdateChannel
+      : "auto"
+  );
+  const savedTargetPackageMode = localStorage.getItem("forge_target_package_mode");
+  let targetPackageMode = $state<TargetPackageMode>(
+    savedTargetPackageMode === "portable" || savedTargetPackageMode === "installer"
+      ? savedTargetPackageMode
       : "auto"
   );
   let appRuntimeInfo = $state<AppRuntimeInfo | null>(null);
@@ -1391,6 +1398,7 @@
     desktopNotifEnabled: boolean;
     externalEditor: string;
     updateChannel: UpdateChannel;
+    targetPackageMode: TargetPackageMode;
   }) {
     try {
       if (activeRepo) {
@@ -1415,7 +1423,9 @@
       desktopNotifEnabled = cfg.desktopNotifEnabled;
       externalEditor = cfg.externalEditor.trim() || "system";
       const prevChannel = updateChannel;
+      const prevTargetMode = targetPackageMode;
       updateChannel = cfg.updateChannel;
+      targetPackageMode = cfg.targetPackageMode;
 
       localStorage.setItem("forge_theme", activeTheme);
       localStorage.setItem("forge_autofetch_seconds", String(autofetchSeconds));
@@ -1425,10 +1435,11 @@
       localStorage.setItem("forge_desktop_notif", String(desktopNotifEnabled));
       localStorage.setItem("forge_external_editor", externalEditor);
       localStorage.setItem("forge_update_channel", updateChannel);
+      localStorage.setItem("forge_target_package_mode", targetPackageMode);
       applyTheme(activeTheme);
       setupAutofetch(autofetchSeconds);
-      if (prevChannel !== updateChannel) {
-        void handleCheckUpdates(updateChannel);
+      if (prevChannel !== updateChannel || prevTargetMode !== targetPackageMode) {
+        void handleCheckUpdates(updateChannel, targetPackageMode);
       }
 
       activeModal = null;
@@ -1438,13 +1449,17 @@
     }
   }
 
-  async function handleCheckUpdates(channelOverride?: UpdateChannel) {
+  async function handleCheckUpdates(
+    channelOverride?: UpdateChannel,
+    targetModeOverride?: TargetPackageMode
+  ) {
     const targetChannel = channelOverride ?? updateChannel;
+    const targetMode = targetModeOverride ?? targetPackageMode;
     isCheckingUpdate = true;
     updateError = "";
     try {
       setStatus(t("app.status.checkingUpdates"));
-      appUpdateInfo = await gitService.checkAppUpdate(targetChannel);
+      appUpdateInfo = await gitService.checkAppUpdate(targetChannel, targetMode);
       setStatus(
         appUpdateInfo.has_update
           ? t("app.status.updateFound", {
@@ -1462,13 +1477,17 @@
     }
   }
 
-  async function handleInstallUpdate(channelOverride?: UpdateChannel) {
+  async function handleInstallUpdate(
+    channelOverride?: UpdateChannel,
+    targetModeOverride?: TargetPackageMode
+  ) {
     const targetChannel = channelOverride ?? updateChannel;
+    const targetMode = targetModeOverride ?? targetPackageMode;
     isInstallingUpdate = true;
     updateError = "";
     try {
       setStatus(t("app.status.installingUpdate"));
-      const res = await gitService.installAppUpdate(targetChannel);
+      const res = await gitService.installAppUpdate(targetChannel, targetMode);
       setStatus(res.message);
     } catch (err) {
       const msg = String(err);
@@ -1974,7 +1993,7 @@
       await Promise.allSettled(startupTasks);
 
       gitService
-        .checkAppUpdate(updateChannel)
+        .checkAppUpdate(updateChannel, targetPackageMode)
         .then((info) => {
           appUpdateInfo = info;
         })
@@ -2998,6 +3017,7 @@
     {appRuntimeInfo}
     {appUpdateInfo}
     {updateChannel}
+    {targetPackageMode}
     {isCheckingUpdate}
     {isInstallingUpdate}
     {updateError}

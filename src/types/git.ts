@@ -147,6 +147,17 @@ export interface ImageDiffData {
 }
 
 export type UpdateChannel = "auto" | "stable" | "beta";
+export type TargetPackageMode = "auto" | "portable" | "installer";
+
+export interface AvailablePackageInfo {
+  mode: "portable" | "installer";
+  package_kind: string;
+  asset_name: string;
+  asset_url: string;
+  asset_size?: number | null;
+  sha256?: string | null;
+  can_self_update: boolean;
+}
 
 export interface AppRuntimeInfo {
   current_version: string;
@@ -165,6 +176,7 @@ export interface AppUpdateInfo {
   is_prerelease: boolean;
   install_mode: string;
   package_kind: string;
+  target_mode: string;
   can_self_update: boolean;
   asset_name?: string | null;
   asset_url?: string | null;
@@ -172,6 +184,7 @@ export interface AppUpdateInfo {
   sha256?: string | null;
   release_notes?: string | null;
   html_url?: string | null;
+  available_packages: AvailablePackageInfo[];
 }
 
 export interface UpdateApplyResult {
