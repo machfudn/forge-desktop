@@ -103,6 +103,7 @@
   // Active modal
   let activeModal = $state<ModalType>(null);
   let allBranches = $state(true);
+  let selectedHistoryBranches = $state<string[]>([]);
   let conflictFilePath = $state<string | null>(null);
   let inspectFileState = $state<{ path: string; mode: "blame" | "history" } | null>(null);
   let workspaceToolsTab = $state<"reflog" | "submodules" | "worktrees" | null>(null);
@@ -799,16 +800,22 @@
         status.branch !== "HEAD terlepas" &&
         !status.branch.startsWith("(");
 
-      const [abRes, , tagsRes, historyRes, remotesRes] = await Promise.allSettled([
+      const [abRes, , tagsRes, historyRes, remotesRes, branchesRes] = await Promise.allSettled([
         isValidBranch
           ? gitService.getBranchAheadBehind(repoPath, status.branch)
           : Promise.resolve({ ...EMPTY_AHEAD_BEHIND, is_unborn: !status.has_commits }),
         status.files.length > 0 ? loadDiffForFile(status.files[0]) : Promise.resolve(),
         gitService.listTags(repoPath),
         activeView === "history"
-          ? gitService.getCommitHistory(repoPath, 100, allBranches)
+          ? gitService.getCommitHistory(
+              repoPath,
+              100,
+              allBranches,
+              selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
+            )
           : Promise.resolve(null),
         gitService.listRemotes(repoPath),
+        gitService.listBranches(repoPath),
         refreshAccounts(repoPath),
       ]);
       if (reqSeq !== loadRepoSeq) return;
@@ -821,7 +828,9 @@
       if (historyRes.status === "fulfilled" && historyRes.value !== null) {
         commits = historyRes.value;
       }
-
+      if (branchesRes.status === "fulfilled") {
+        branches = branchesRes.value;
+      }
       if (remotesRes.status === "fulfilled") {
         const remotes = remotesRes.value;
         repoRemotes = remotes;
@@ -994,11 +1003,17 @@
     }
   }
 
-  async function toggleAllBranches() {
-    allBranches = !allBranches;
+  async function handleFilterBranches(filter: { all: boolean; selected: string[] }) {
+    allBranches = filter.all;
+    selectedHistoryBranches = filter.selected;
     if (activeRepo && activeView === "history") {
       try {
-        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
+        commits = await gitService.getCommitHistory(
+          activeRepo,
+          100,
+          filter.all,
+          filter.selected.length > 0 ? filter.selected : undefined
+        );
       } catch (err) {
         setStatus(String(err), true);
       }
@@ -1147,17 +1162,35 @@
     activeView = view;
     if (view === "history" && activeRepo) {
       try {
-        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
-        tags = await gitService.listTags(activeRepo);
-        if (githubRepoInfo && activeRepoAccount && !githubRateLimited && commits.length > 0) {
+        const [nextCommits, nextBranches, nextTags] = await Promise.all([
+          gitService.getCommitHistory(
+            activeRepo,
+            100,
+            allBranches,
+            selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
+          ),
+          branches.length === 0 ? gitService.listBranches(activeRepo) : Promise.resolve(branches),
+          gitService.listTags(activeRepo),
+        ]);
+        commits = nextCommits;
+        branches = nextBranches;
+        tags = nextTags;
+        const activeInfo = hostingRepoInfo || (githubRepoInfo ? {
+          provider: "github" as const,
+          host: githubRepoInfo.host,
+          namespace: githubRepoInfo.owner,
+          repo: githubRepoInfo.repo,
+          web_url: `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}`
+        } : null);
+        if (activeInfo && activeRepoAccount && !githubRateLimited && commits.length > 0) {
           const pushedCommits = commits.filter((c) => c.is_pushed).slice(0, 12);
           const checkPromises = pushedCommits.map(async (c) => {
             try {
               const runs = await gitService.getCommitCheckRuns(
-                githubRepoInfo!.owner,
-                githubRepoInfo!.repo,
+                activeInfo.namespace,
+                activeInfo.repo,
                 c.sha,
-                githubRepoInfo!.host,
+                activeInfo.host,
                 activeRepo
               );
               if (runs && runs.length > 0) {
@@ -1792,12 +1825,12 @@
         },
       },
     ];
-    if (githubRepoInfo) {
-      const ghUrl = `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}`;
+    const webUrl = hostingRepoInfo?.web_url || (githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null);
+    if (webUrl) {
       items.push({
         label: t("ctx.repo.viewOnGithub"),
         onSelect: () => {
-          void openExternalUrl(ghUrl);
+          void openExternalUrl(webUrl);
         },
       });
     }
@@ -2750,9 +2783,9 @@
       </div>
     </main>
   {:else}
-    <main class="app-body" style="--sidebar-w: {sidebarWidth}px;">
-      <aside class="sidebar-panel">
-        {#if activeView === "changes"}
+    <main class="app-body {activeView === 'history' ? 'history-mode' : ''}" style="--sidebar-w: {sidebarWidth}px;">
+      {#if activeView === "changes"}
+        <aside class="sidebar-panel">
           <Changes
             repoPath={activeRepo}
             {externalEditorLabel}
@@ -2778,76 +2811,25 @@
             onStatus={setStatus}
             issues={issues.map((i) => ({ number: i.number, title: i.title }))}
           />
-        {:else}
-          <div class="sidebar-header">
-            <h3 class="tabular-nums">{t("app.historySidebar.title", { count: commits.length })}</h3>
-            {#if commits.length > 1}
-              <button type="button" class="btn-secondary btn-xs" onclick={openInteractiveRebase}>
-                {t("app.historySidebar.interactiveRebase")}
-              </button>
-            {/if}
-          </div>
-          <div class="history-sidebar-body">
-            <div class="form-field">
-              <label class="form-label" for="history-search-input">{t("app.historySidebar.filterLabel")}</label>
-              <input
-                id="history-search-input"
-                type="search"
-                class="form-input"
-                placeholder={t("app.historySidebar.filterPlaceholder")}
-                bind:value={historySearch}
-              />
-            </div>
+        </aside>
 
-            <div>
-              <div class="sidebar-section-title">
-                <span class="tabular-nums">{t("app.historySidebar.tagsHeader", { count: tags.length })}</span>
-                <button type="button" class="link-btn" onclick={() => openCreateTagModal(null)}>
-                  {t("app.historySidebar.createTagBtn")}
-                </button>
-              </div>
-              {#if tags.length === 0}
-                <div style="font-size: 11px; color: var(--text-muted); padding: 6px 0;">
-                  {t("app.historySidebar.noTags")}
-                </div>
-              {:else}
-                <div class="tag-badge-list">
-                  {#each tags as tagName (tagName)}
-                    <button
-                      type="button"
-                      class="tag-badge"
-                      title={t("app.historySidebar.tagTooltip", { tag: tagName })}
-                      aria-label={t("app.historySidebar.tagAria", { tag: tagName })}
-                      onclick={() => handleDeleteTag(tagName)}
-                      oncontextmenu={(e) => openSidebarTagContextMenu(e, tagName)}
-                    >
-                      <span class="tag-badge-label">{tagName}</span>
-                    </button>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          </div>
-        {/if}
-      </aside>
-
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-      <div
-        class="sidebar-resizer {isResizingSidebar ? 'is-resizing' : ''}"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("app.sidebarResizer.aria")}
-        aria-valuemin={SIDEBAR_MIN}
-        aria-valuemax={SIDEBAR_MAX}
-        aria-valuenow={sidebarWidth}
-        tabindex="0"
-        title={t("app.sidebarResizer.title")}
-        onpointerdown={startSidebarResize}
-        onkeydown={handleResizerKeydown}
-        ondblclick={() => updateSidebarWidth(SIDEBAR_DEFAULT)}
-      ></div>
-
-      <section class="content-panel">
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+        <div
+          class="sidebar-resizer {isResizingSidebar ? 'is-resizing' : ''}"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("app.sidebarResizer.aria")}
+          aria-valuemin={SIDEBAR_MIN}
+          aria-valuemax={SIDEBAR_MAX}
+          aria-valuenow={sidebarWidth}
+          tabindex="0"
+          title={t("app.sidebarResizer.title")}
+          onpointerdown={startSidebarResize}
+          onkeydown={handleResizerKeydown}
+          ondblclick={() => updateSidebarWidth(SIDEBAR_DEFAULT)}
+        ></div>
+      {/if}
+      <section class="content-panel {activeView === 'history' ? 'is-full-width' : ''}">
         {#if activeView === "changes"}
           {#if selectedFile}
             <Diff
@@ -2924,13 +2906,21 @@
           <History
             repoPath={activeRepo}
             {externalEditorLabel}
-            githubRepoUrl={githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null}
+            githubRepoUrl={hostingRepoInfo?.web_url || (githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null)}
+            accounts={accountOverview.accounts}
             {commits}
             searchQuery={historySearch}
+            onSearchChange={(q) => (historySearch = q)}
             {allBranches}
+            {branches}
+            currentBranch={currentStatus?.branch || ""}
+            selectedBranches={selectedHistoryBranches}
+            onFilterBranches={handleFilterBranches}
+            {tags}
+            onCreateTag={() => openCreateTagModal(null)}
+            onInteractiveRebase={openInteractiveRebase}
+            onTagContextMenu={openSidebarTagContextMenu}
             {checkRunsMap}
-            onToggleAllBranches={toggleAllBranches}
-            onStatus={setStatus}
             onCherryPick={handleCherryPick}
             onRevert={handleRevert}
             onTag={(sha) => openCreateTagModal(sha)}

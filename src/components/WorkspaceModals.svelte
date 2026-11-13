@@ -326,6 +326,17 @@
     if (hostingProvider === "bitbucket") return "bitbucket.org";
     return "dev.azure.com";
   });
+  function formatAccountHost(host: string): string {
+    const h = host.toLowerCase();
+    if (h === "github.com") return "GitHub.com";
+    if (h === "gitlab.com") return "GitLab.com";
+    if (h === "bitbucket.org") return "Bitbucket.org";
+    if (h === "dev.azure.com") return "Azure DevOps";
+    if (h.includes("gitlab")) return `GitLab (${host})`;
+    if (h.includes("bitbucket")) return `Bitbucket (${host})`;
+    if (h.includes("visualstudio.com")) return `Azure DevOps (${host})`;
+    return `Server: ${host}`;
+  }
 
   const authorMismatch = $derived.by(() => {
     if (!activeRepo || !activeRepoAccount) return null;
@@ -1814,7 +1825,7 @@
                       {/if}
                     </div>
                     <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);">
-                      @{acc.login} · {acc.host === "github.com" ? "GitHub.com" : `Enterprise: ${acc.host}`}
+                      @{acc.login} · {formatAccountHost(acc.host)}
                     </div>
                   </div>
                 </div>
