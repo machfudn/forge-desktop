@@ -955,6 +955,13 @@ pub async fn interactive_rebase(
     run_blocking(move || git::interactive_rebase(&repo, &base_sha, steps)).await
 }
 
+
+#[tauri::command]
+pub async fn get_all_rebase_commits(
+    repo: String,
+) -> Result<(String, Vec<RebaseCommitItem>), String> {
+    run_blocking(move || git::get_all_rebase_commits(&repo)).await
+}
 #[tauri::command]
 pub async fn reword_commit(
     repo: String,

@@ -149,6 +149,14 @@ pub fn get_rebase_commits(repo: &str, base_sha: &str) -> Result<Vec<RebaseCommit
     Ok(commits)
 }
 
+pub fn get_all_rebase_commits(repo: &str) -> Result<(String, Vec<RebaseCommitItem>), String> {
+    let root_sha = cli::run(repo, &["rev-list", "--max-parents=0", "--reverse", "HEAD"])?.trim().to_string();
+    if root_sha.is_empty() {
+        return Ok((String::new(), Vec::new()));
+    }
+    get_rebase_commits(repo, &root_sha).map(|commits| (root_sha, commits))
+}
+
 pub fn interactive_rebase(
     repo: &str,
     base_sha: &str,
