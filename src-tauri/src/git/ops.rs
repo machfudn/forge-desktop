@@ -1,6 +1,15 @@
 use super::cli;
 use super::repo::check_index_lock;
 use serde::{Deserialize, Serialize};
+use std::sync::{LazyLock, Mutex, MutexGuard};
+
+static GIT_MUTATION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+fn mutation_lock() -> MutexGuard<'static, ()> {
+    GIT_MUTATION_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn validate_sha(sha: &str) -> Result<&str, String> {
     let s = sha.trim();
@@ -26,6 +35,53 @@ fn validate_tag_name(name: &str) -> Result<&str, String> {
         return Err("Nama tag tidak valid".into());
     }
     Ok(n)
+}
+
+/// Preconditions every destructive Git operation must satisfy.
+fn begin_mutation(repo: &str) -> Result<String, String> {
+    if check_index_lock(repo)? {
+        return Err("File .git/index.lock terdeteksi. Silakan bersihkan file lock terlebih dahulu.".into());
+    }
+    let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
+    if !status_out.trim().is_empty() {
+        return Err("Working tree masih memiliki perubahan belum di-commit. Commit atau stash dahulu.".into());
+    }
+    Ok(cli::run(repo, &["rev-parse", "HEAD"])?.trim().to_string())
+}
+
+fn abort_in_progress(repo: &str) {
+    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+    let _ = cli::run(repo, &["rebase", "--abort"]);
+    let _ = cli::run(repo, &["merge", "--abort"]);
+    let _ = cli::run(repo, &["revert", "--abort"]);
+}
+
+/// Restores HEAD to the commit captured before the mutation.
+fn restore_to(repo: &str, orig_head: &str) -> Result<(), String> {
+    abort_in_progress(repo);
+    match cli::run(repo, &["reset", "--hard", orig_head]) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!(
+            "{e}. Pemulihan otomatis gagal; jalankan manual: git reset --hard {orig_head}"
+        )),
+    }
+}
+
+/// Commits between base (exclusive) and HEAD (inclusive), oldest first.
+fn linear_range_commits(repo: &str, base_sha: &str, head: &str) -> Result<Vec<String>, String> {
+    let rev_range = format!("{base_sha}..{head}");
+    let merges = cli::run(repo, &["rev-list", "--min-parents=2", &rev_range])?;
+    if !merges.trim().is_empty() {
+        return Err(
+            "Rentang rebase berisi merge commit. Rebase otomatis tidak didukung untuk history bercabang."
+                .into(),
+        );
+    }
+    Ok(cli::run(repo, &["rev-list", "--reverse", &rev_range])?
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect())
 }
 
 pub fn cherry_pick(repo: &str, sha: &str) -> Result<String, String> {
@@ -92,9 +148,12 @@ pub fn squash_commits(
     if s.is_empty() {
         return Err("Pesan komit baru tidak boleh kosong".into());
     }
-
+    let _mutation = mutation_lock();
+    let orig_head = begin_mutation(repo)?;
     let reset_target = format!("HEAD~{count}");
-    cli::run(repo, &["reset", "--soft", &reset_target])?;
+    if let Err(e) = cli::run(repo, &["reset", "--soft", &reset_target]) {
+        return Err(format!("Gagal menyiapkan squash: {e}"));
+    }
 
     let mut args = vec!["commit", "-m", s];
     let desc_val;
@@ -105,7 +164,14 @@ pub fn squash_commits(
             args.push(desc_val);
         }
     }
-    cli::run(repo, &args)
+    if let Err(e) = cli::run(repo, &args) {
+        let restore_err = restore_to(repo, &orig_head).err();
+        return Err(match restore_err {
+            Some(re) => format!("Gagal membuat squash: {e}; {re}"),
+            None => format!("Gagal membuat squash: {e}; repository dikembalikan ke HEAD awal"),
+        });
+    }
+    Ok("Squash berhasil diselesaikan".into())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -174,13 +240,18 @@ pub fn interactive_rebase(
         }
     }
 
-    let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
-    if !status_out.trim().is_empty() {
-        return Err("Working tree masih memiliki perubahan belum di-commit. Commit atau stash dahulu sebelum rebase.".into());
+    let _mutation = mutation_lock();
+    let orig_head = begin_mutation(repo)?;
+    let base = cli::run(repo, &["rev-parse", base_sha])?.trim().to_string();
+    if cli::run(repo, &["merge-base", "--is-ancestor", &base, &orig_head]).is_err() {
+        return Err("Base commit bukan ancestor dari HEAD aktif".into());
     }
-
-    let orig_head = cli::run(repo, &["rev-parse", "HEAD"])?.trim().to_string();
-    if let Err(e) = cli::run(repo, &["reset", "--hard", base_sha]) {
+    let expected = linear_range_commits(repo, &base, &orig_head)?;
+    let submitted: Vec<&str> = steps.iter().map(|s| s.sha.as_str()).collect();
+    if submitted.len() != expected.len() || !submitted.iter().zip(expected.iter()).all(|(a, b)| *a == b) {
+        return Err("Daftar langkah rebase tidak lengkap atau urutannya tidak sesuai history aktif".into());
+    }
+    if let Err(e) = cli::run(repo, &["reset", "--hard", &base]) {
         return Err(format!("Gagal reset ke base sha: {e}"));
     }
 
@@ -189,58 +260,40 @@ pub fn interactive_rebase(
             "drop" => continue,
             "pick" | "edit" => {
                 if let Err(e) = cli::run(repo, &["cherry-pick", &step.sha]) {
-                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
-                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    let _ = restore_to(repo, &orig_head);
                     return Err(format!("Gagal saat rebase pada commit {}: {e}", step.sha));
                 }
             }
             "reword" => {
                 if let Err(e) = cli::run(repo, &["cherry-pick", &step.sha]) {
-                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
-                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                    let _ = restore_to(repo, &orig_head);
                     return Err(format!("Gagal saat rebase pada commit {}: {e}", step.sha));
                 }
                 if let Some(msg) = &step.message {
                     if !msg.trim().is_empty() {
                         if let Err(e) = cli::run(repo, &["commit", "--amend", "-m", msg.trim()]) {
-                            let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                            let _ = restore_to(repo, &orig_head);
                             return Err(format!("Gagal saat reword commit {}: {e}", step.sha));
                         }
                     }
                 }
             }
-            "squash" => {
+            "squash" | "fixup" => {
                 if let Err(e) = cli::run(repo, &["cherry-pick", "-n", &step.sha]) {
-                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
-                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
-                    return Err(format!("Gagal saat squash commit {}: {e}", step.sha));
+                    let _ = restore_to(repo, &orig_head);
+                    return Err(format!("Gagal saat menggabungkan commit {}: {e}", step.sha));
                 }
-                let commit_res = if let Some(msg) = &step.message {
-                    if !msg.trim().is_empty() {
-                        cli::run(repo, &["commit", "--amend", "-m", msg.trim()])
-                    } else {
-                        cli::run(repo, &["commit", "--amend", "--no-edit"])
-                    }
+                let result = if step.action == "squash" && step.message.as_deref().is_some_and(|m| !m.trim().is_empty()) {
+                    cli::run(repo, &["commit", "--amend", "-m", step.message.as_deref().unwrap().trim()])
                 } else {
                     cli::run(repo, &["commit", "--amend", "--no-edit"])
                 };
-                if let Err(e) = commit_res {
-                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
-                    return Err(format!("Gagal saat commit squash {}: {e}", step.sha));
+                if let Err(e) = result {
+                    let _ = restore_to(repo, &orig_head);
+                    return Err(format!("Gagal saat commit {} {}: {e}", step.action, step.sha));
                 }
             }
-            "fixup" => {
-                if let Err(e) = cli::run(repo, &["cherry-pick", "-n", &step.sha]) {
-                    let _ = cli::run(repo, &["cherry-pick", "--abort"]);
-                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
-                    return Err(format!("Gagal saat fixup commit {}: {e}", step.sha));
-                }
-                if let Err(e) = cli::run(repo, &["commit", "--amend", "--no-edit"]) {
-                    let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
-                    return Err(format!("Gagal saat commit fixup {}: {e}", step.sha));
-                }
-            }
-            _ => {}
+            _ => unreachable!(),
         }
     }
 
@@ -258,16 +311,8 @@ pub fn reword_commit(
         return Err("Pesan commit baru tidak boleh kosong".into());
     }
 
-    if check_index_lock(repo)? {
-        return Err("File .git/index.lock terdeteksi. Silakan bersihkan file lock terlebih dahulu.".into());
-    }
-
-    let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
-    if !status_out.trim().is_empty() {
-        return Err("Working tree masih memiliki perubahan belum di-commit. Commit atau stash dahulu sebelum mengedit pesan commit.".into());
-    }
-
-    let orig_head = cli::run(repo, &["rev-parse", "HEAD"])?.trim().to_string();
+    let _mutation = mutation_lock();
+    let orig_head = begin_mutation(repo)?;
     let full_target = cli::run(repo, &["rev-parse", target_sha])?.trim().to_string();
 
     if orig_head == full_target {
@@ -287,14 +332,7 @@ pub fn reword_commit(
         }
     };
 
-    let rev_range = format!("{base_sha}..{orig_head}");
-    let log_out = cli::run(repo, &["log", "--reverse", "--format=%H", &rev_range])?;
-    let commits_to_replay: Vec<String> = log_out
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect();
-
+    let commits_to_replay = linear_range_commits(repo, &base_sha, &orig_head)?;
     if commits_to_replay.is_empty() {
         return Err("Tidak ada commit yang ditemukan untuk di-replay".into());
     }
@@ -305,15 +343,13 @@ pub fn reword_commit(
 
     for sha in &commits_to_replay {
         if let Err(e) = cli::run(repo, &["cherry-pick", sha]) {
-            let _ = cli::run(repo, &["cherry-pick", "--abort"]);
-            let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+            let _ = restore_to(repo, &orig_head);
             return Err(format!("Gagal saat cherry-pick commit {sha}: {e}"));
         }
 
         if *sha == full_target {
             if let Err(e) = cli::run(repo, &["commit", "--amend", "-m", trimmed_msg]) {
-                let _ = cli::run(repo, &["cherry-pick", "--abort"]);
-                let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                let _ = restore_to(repo, &orig_head);
                 return Err(format!("Gagal saat amend pesan commit {sha}: {e}"));
             }
         }
@@ -418,6 +454,42 @@ mod tests {
         assert!(res.is_ok());
         let log = cli::run(root.to_str().unwrap(), &["log", "--oneline"]).unwrap();
         assert!(log.contains("commit 1 updated"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+
+    #[test]
+    fn test_interactive_rebase_rejects_incomplete_steps_without_touching_head() {
+        use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-rebase-guard-test-{nanos}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let run_git = |args: &[&str]| {
+            let out = Command::new("git").args(args).current_dir(&root).output().unwrap();
+            assert!(out.status.success(), "git {:?} failed: {}", args, String::from_utf8_lossy(&out.stderr));
+        };
+        run_git(&["init"]);
+        run_git(&["config", "user.name", "Tester"]);
+        run_git(&["config", "user.email", "tester@example.com"]);
+        for (name, msg) in [("f1.txt", "commit 1 (base)"), ("f2.txt", "commit 2"), ("f3.txt", "commit 3")] {
+            std::fs::write(root.join(name), name).unwrap();
+            run_git(&["add", name]);
+            run_git(&["commit", "-m", msg]);
+        }
+        let repo = root.to_str().unwrap();
+        let base = cli::run(repo, &["rev-parse", "HEAD~2"]).unwrap().trim().to_string();
+        let head_before = cli::run(repo, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+        let only_first = cli::run(repo, &["rev-parse", "HEAD~1"]).unwrap().trim().to_string();
+
+        let steps = vec![RebaseStep { sha: only_first, action: "pick".into(), message: None }];
+        let res = interactive_rebase(repo, &base, steps);
+        assert!(res.is_err(), "incomplete steps must be rejected");
+
+        let head_after = cli::run(repo, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+        assert_eq!(head_before, head_after, "HEAD must be untouched on rejected rebase");
+        let count = cli::run(repo, &["rev-list", "--count", "HEAD"]).unwrap().trim().to_string();
+        assert_eq!(count, "3");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
