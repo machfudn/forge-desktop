@@ -415,7 +415,7 @@
   });
 
   const modalWidth = $derived(
-    modal === "rebase" ? "680px" : modal === "pr" ? "560px" : modal === "squash" || modal === "reword" ? "480px" : "420px"
+    modal === "rebase" ? "680px" : modal === "pr" ? "560px" : modal === "squash" ? "480px" : modal === "reword" ? "520px" : "420px"
   );
 </script>
 
@@ -490,23 +490,47 @@
           {t("hgModal.squashInfo", { count: squashCount })}
         </div>
         <div class="form-field">
-          <label class="form-label" for="squash-summary">{t("hgModal.squashSummaryLabel")}</label>
-          <input id="squash-summary" type="text" class="form-input" placeholder={t("hgModal.squashSummaryPlaceholder")} bind:value={squashSummary} />
+          <div class="form-label-row">
+            <label class="form-label" for="squash-summary">{t("hgModal.squashSummaryLabel")}</label>
+            <span class="form-field-hint">{t("rewordModal.summaryHint")}</span>
+          </div>
+          <input
+            id="squash-summary"
+            type="text"
+            class="form-input reword-summary-input"
+            placeholder={t("hgModal.squashSummaryPlaceholder")}
+            bind:value={squashSummary}
+          />
         </div>
         <div class="form-field">
-          <label class="form-label" for="squash-desc">{t("hgModal.squashDescLabel")}</label>
-          <textarea id="squash-desc" class="form-input" placeholder={t("hgModal.squashDescPlaceholder")} rows="3" bind:value={squashDescription} style="resize: vertical;"></textarea>
+          <div class="form-label-row">
+            <label class="form-label" for="squash-desc">{t("hgModal.squashDescLabel")}</label>
+            <span class="form-field-hint">{t("rewordModal.descHint")}</span>
+          </div>
+          <textarea
+            id="squash-desc"
+            class="form-input reword-description-input"
+            placeholder={t("hgModal.squashDescPlaceholder")}
+            rows="5"
+            bind:value={squashDescription}
+          ></textarea>
         </div>
       {:else if modal === "reword"}
-        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
-          {t("rewordModal.subtitle", { sha: rewordTargetCommit?.short_sha || "" })}
+        <div class="reword-context">
+          <span class="reword-context-label">{t("rewordModal.targetLabel")}</span>
+          <code>{rewordTargetCommit?.short_sha || ""}</code>
+          <span class="reword-context-summary">{rewordTargetCommit?.summary || ""}</span>
         </div>
+        <div class="reword-form-intro">{t("rewordModal.formHint")}</div>
         <div class="form-field">
-          <label class="form-label" for="reword-summary">{t("rewordModal.summaryLabel")}</label>
+          <div class="form-label-row">
+            <label class="form-label" for="reword-summary">{t("rewordModal.summaryLabel")}</label>
+            <span class="form-field-hint">{t("rewordModal.summaryHint")}</span>
+          </div>
           <input
             id="reword-summary"
             type="text"
-            class="form-input"
+            class="form-input reword-summary-input"
             placeholder={t("rewordModal.summaryPlaceholder")}
             bind:value={rewordSummary}
             disabled={isRewording}
@@ -518,21 +542,27 @@
           />
         </div>
         <div class="form-field">
-          <label class="form-label" for="reword-desc">{t("rewordModal.descLabel")}</label>
+          <div class="form-label-row">
+            <label class="form-label" for="reword-desc">{t("rewordModal.descLabel")}</label>
+            <span class="form-field-hint">{t("rewordModal.descHint")}</span>
+          </div>
           <textarea
             id="reword-desc"
-            class="form-input"
+            class="form-input reword-description-input"
             placeholder={t("rewordModal.descPlaceholder")}
-            rows="3"
+            rows="6"
             bind:value={rewordDescription}
             disabled={isRewording}
-            style="resize: vertical;"
             onkeydown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                 void executeRewordSubmit();
               }
             }}
           ></textarea>
+        </div>
+        <div class="reword-submit-hint">
+          <kbd>Ctrl</kbd><span>/</span><kbd>⌘</kbd><span>+</span><kbd>Enter</kbd>
+          <span>{t("rewordModal.submitHint")}</span>
         </div>
       {:else if modal === "rebase"}
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">

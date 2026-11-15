@@ -143,7 +143,7 @@
   let commitSummary = $state("");
   let commitDescription = $state("");
   let isAmend = $state(false);
-  let showDescription = $state(false);
+  let showDescription = $state(true);
   let showCoAuthors = $state(false);
   let coAuthorName = $state("");
   let coAuthorEmail = $state("");
@@ -151,7 +151,7 @@
 
   let gitHooks = $state<GitHooksInfo | null>(null);
   let showConventional = $state(false);
-  let convType = $state("feat");
+  let convType = $state("");
   let convScope = $state("");
   let convBreaking = $state(false);
   let convSummary = $state("");
@@ -184,6 +184,7 @@
   });
 
   function buildConventionalString(): string {
+    if (!convType) return convSummary.trimStart();
     const scopePart = convScope.trim() ? `(${convScope.trim()})` : "";
     const breakingPart = convBreaking ? "!" : "";
     const summaryPart = convSummary.trimStart();
@@ -193,12 +194,6 @@
   function updateConventionalSummary() {
     commitSummary = buildConventionalString();
   }
-
-  function selectConventionalType(type: string) {
-    convType = type;
-    updateConventionalSummary();
-  }
-
   function toggleConventional() {
     showConventional = !showConventional;
     if (showConventional) {
@@ -561,42 +556,75 @@
 </ul>
 
 <div class="commit-box">
-  <div class="prefix-row">
-    {#each ["feat: ", "fix: ", "docs: ", "refactor: ", "chore: "] as prefix}
-      <button
-        type="button"
-        class="prefix-chip"
-        onclick={() => {
-          if (!commitSummary.startsWith(prefix)) {
-            commitSummary = prefix + commitSummary.replace(/^[a-z]+:\s*/, "");
-          }
-        }}
-      >
-        {prefix.trim()}
-      </button>
-    {/each}
+  <div class="commit-box-heading">
+    <div>
+      <h3>{t("changes.commitMessageTitle")}</h3>
+      <p>{t("changes.commitMessageHint")}</p>
+    </div>
+    <span class="commit-box-count">{stagedCount}/{totalCount}</span>
+  </div>
+
+  <div class="commit-box-toolbar" aria-label="Commit options">
+    <button
+      type="button"
+      class="link-btn {showDescription ? 'is-active' : ''}"
+      aria-pressed={showDescription}
+      onclick={() => (showDescription = !showDescription)}
+    >
+      {t("changes.descToggle")}
+    </button>
     {#if onAiGenerateCommit}
-      <button
-        type="button"
-        class="prefix-chip ai-chip"
-        disabled={isGeneratingAiCommit || totalCount === 0}
-        onclick={handleAiGenerateCommit}
-        title={t("ai.generateCommitTitle")}
-      >
-        {isGeneratingAiCommit ? "…" : `✦ ${t("ai.generateCommitBtn")}`}
+      <button type="button" class="link-btn" disabled={isGeneratingAiCommit || totalCount === 0} onclick={handleAiGenerateCommit} title={t("ai.generateCommitTitle")}>
+        {isGeneratingAiCommit ? "…" : t("ai.generateCommitBtn")}
       </button>
     {/if}
+    <button
+      type="button"
+      class="link-btn {showCoAuthors ? 'is-active' : ''}"
+      aria-pressed={showCoAuthors}
+      onclick={() => (showCoAuthors = !showCoAuthors)}
+    >
+      {t("changes.coAuthorToggle")}
+    </button>
+    <button
+      type="button"
+      class="link-btn {showConventional ? 'is-active' : ''}"
+      aria-pressed={showConventional}
+      onclick={toggleConventional}
+    >
+      {t("changes.formatToggle")}
+    </button>
+  </div>
+
+  <div class="commit-summary-wrap">
+    <label class="commit-field-label" for="commit-summary-input">{t("changes.summaryFieldLabel")}</label>
+    <input
+      id="commit-summary-input"
+      type="text"
+      class="commit-input commit-summary-input"
+      aria-label={t("changes.summaryAria")}
+      placeholder={t("changes.summaryPlaceholder")}
+      maxlength="150"
+      bind:value={commitSummary}
+      oninput={(e) => {
+        checkAutocomplete(e.currentTarget.value, "summary");
+        if (showConventional) {
+          const match = e.currentTarget.value.match(/^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.*)$/i);
+          convSummary = match ? match[4] || "" : e.currentTarget.value;
+        }
+      }}
+      onkeydown={handleKeydown}
+    />
+    <span class="commit-char-count {commitSummary.length > 72 ? 'is-over-limit' : ''}" title={t("changes.summaryCountTitle")}>
+      {commitSummary.length}/72
+    </span>
   </div>
 
   {#if autocompleteType === "emoji" && filteredEmojis.length > 0}
     <div class="autocomplete-popover" role="listbox" aria-label={t("changes.chooseEmojiAria")}>
       <div class="autocomplete-header">{t("changes.chooseEmojiHeader")}</div>
       {#each filteredEmojis as item}
-        <button
-          type="button"
-          class="autocomplete-item"
-          onclick={() => insertEmoji(item.emoji)}
-        >
+        <button type="button" class="autocomplete-item" onclick={() => insertEmoji(item.emoji)}>
           <span style="font-size: 14px;">{item.emoji}</span>
           <span style="font-family: var(--font-mono); color: var(--text-accent);">{item.code}</span>
           <span style="color: var(--text-secondary); margin-left: auto;">{item.desc}</span>
@@ -607,21 +635,16 @@
     <div class="autocomplete-popover" role="listbox" aria-label={t("changes.chooseIssueAria")}>
       <div class="autocomplete-header">{t("changes.chooseIssueHeader")}</div>
       {#each filteredIssues as issue}
-        <button
-          type="button"
-          class="autocomplete-item"
-          onclick={() => insertIssue(issue.number)}
-        >
-          <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-accent);">
-            #{issue.number}
-          </span>
-          <span style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-            {issue.title}
-          </span>
+        <button type="button" class="autocomplete-item" onclick={() => insertIssue(issue.number)}>
+          <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-accent);">#{issue.number}</span>
+          <span style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{issue.title}</span>
         </button>
       {/each}
     </div>
   {/if}
+
+
+
 
   {#if gitHooks && gitHooks.hook_names.length > 0}
     <div class="commit-hooks-indicator" title={gitHooks.hook_names.join(", ")}>
@@ -631,67 +654,41 @@
   {/if}
 
   {#if showConventional}
-    <div class="conventional-builder-box">
-      <div class="conventional-types-chips">
-        {#each CONVENTIONAL_TYPES as ct}
-          <button
-            type="button"
-            class="conv-chip {convType === ct.type ? 'active' : ''}"
-            title={t(ct.descKey as any)}
-            onclick={() => selectConventionalType(ct.type)}
-          >
-            {ct.label}
-          </button>
-        {/each}
-      </div>
-      <div class="conventional-fields-row">
+    <div class="commit-type-row">
+      <label class="commit-field-label" for="commit-type-select">{t("changes.conventionalTypeLabel")}</label>
+      <div class="commit-type-controls">
+        <select
+          id="commit-type-select"
+          class="form-select commit-type-select"
+          bind:value={convType}
+          onchange={updateConventionalSummary}
+        >
+          <option value="">{t("changes.conventionalTypeNone")}</option>
+          {#each CONVENTIONAL_TYPES as ct}
+            <option value={ct.type}>{ct.label}</option>
+          {/each}
+        </select>
         <input
           type="text"
-          class="form-input conv-scope-input"
+          class="form-input commit-scope-input"
+          aria-label={t("changes.conventionalScopeLabel")}
           placeholder={t("changes.conventionalScopePlaceholder")}
           bind:value={convScope}
           oninput={updateConventionalSummary}
+          disabled={!convType}
         />
-        <label class="checkbox-label" style="font-size: 11px; white-space: nowrap;">
+        <label class="commit-breaking-toggle" title={t("changes.conventionalBreaking")}>
           <input
             type="checkbox"
             bind:checked={convBreaking}
             onchange={updateConventionalSummary}
+            disabled={!convType}
           />
-          <span>{t("changes.conventionalBreaking")}</span>
+          <span>!</span>
         </label>
       </div>
     </div>
   {/if}
-
-  <div class="commit-summary-wrap">
-    <input
-      type="text"
-      class="commit-input"
-      aria-label={t("changes.summaryAria")}
-      placeholder={t("changes.summaryPlaceholder")}
-      maxlength="150"
-      bind:value={commitSummary}
-      oninput={(e) => {
-        checkAutocomplete(e.currentTarget.value, "summary");
-        if (showConventional) {
-          const match = e.currentTarget.value.match(/^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.*)$/i);
-          if (match) {
-            convSummary = match[4] || "";
-          } else {
-            convSummary = e.currentTarget.value;
-          }
-        }
-      }}
-      onkeydown={handleKeydown}
-    />
-    <span
-      class="commit-char-count {commitSummary.length > 72 ? 'is-over-limit' : ''}"
-      title={t("changes.summaryCountTitle")}
-    >
-      {commitSummary.length}/72
-    </span>
-  </div>
 
   {#if validationIssues.length > 0}
     <div class="commit-validation-list">
@@ -703,69 +700,51 @@
     </div>
   {/if}
 
+
   {#if showDescription}
-    <textarea
-      class="commit-input"
-      aria-label={t("changes.descAria")}
-      placeholder={t("changes.descPlaceholder")}
-      rows="3"
-      bind:value={commitDescription}
-      oninput={(e) => checkAutocomplete(e.currentTarget.value, "description")}
-      onkeydown={handleKeydown}
-      style="resize: vertical;"
-    ></textarea>
+    <div class="commit-description-field">
+      <div class="commit-field-head">
+        <label class="commit-field-label" for="commit-desc-input">{t("changes.descLabel")}</label>
+        <span class="commit-field-hint">{t("changes.descOptionalHint")}</span>
+      </div>
+      <textarea
+        id="commit-desc-input"
+        class="commit-input commit-desc-input"
+        aria-label={t("changes.descAria")}
+        placeholder={t("changes.descPlaceholder")}
+        rows="3"
+        bind:value={commitDescription}
+        oninput={(e) => checkAutocomplete(e.currentTarget.value, "description")}
+        onkeydown={handleKeydown}
+      ></textarea>
+    </div>
   {/if}
-
   {#if showCoAuthors}
-    <div class="coauthor-row">
-      <input
-        type="text"
-        class="commit-input"
-        aria-label={t("changes.coAuthorNamePlaceholder")}
-        placeholder={t("changes.coAuthorNamePlaceholder")}
-        style="font-size: 11px;"
-        bind:value={coAuthorName}
-      />
-      <input
-        type="email"
-        class="commit-input"
-        aria-label={t("changes.coAuthorEmailAria")}
-        placeholder={t("changes.coAuthorEmailPlaceholder")}
-        style="font-size: 11px;"
-        bind:value={coAuthorEmail}
-      />
+    <div class="commit-coauthor-field">
+      <span class="commit-field-label">{t("changes.coAuthorFieldLabel")}</span>
+      <div class="coauthor-row">
+        <input
+          type="text"
+          class="commit-input"
+          aria-label={t("changes.coAuthorNamePlaceholder")}
+          placeholder={t("changes.coAuthorNamePlaceholder")}
+          bind:value={coAuthorName}
+        />
+        <input
+          type="email"
+          class="commit-input"
+          aria-label={t("changes.coAuthorEmailAria")}
+          placeholder={t("changes.coAuthorEmailPlaceholder")}
+          bind:value={coAuthorEmail}
+        />
+      </div>
     </div>
   {/if}
 
-  <div class="commit-meta-row">
-    <label class="checkbox-label" title={!status.has_commits ? t("changes.amendDisabledTitle") : undefined}>
-      <input type="checkbox" bind:checked={isAmend} disabled={!status.has_commits} />
-      <span>{t("changes.amendLabel")}</span>
-    </label>
-    <div style="display: flex; gap: 8px; align-items: center;">
-      <button
-        type="button"
-        class="link-btn {showConventional ? 'is-active' : ''}"
-        onclick={toggleConventional}
-      >
-        {showConventional ? t("changes.conventionalHide") : t("changes.conventionalToggle")}
-      </button>
-      <button
-        type="button"
-        class="link-btn"
-        onclick={() => (showCoAuthors = !showCoAuthors)}
-      >
-        {showCoAuthors ? t("changes.coAuthorHide") : t("changes.coAuthorShow")}
-      </button>
-      <button
-        type="button"
-        class="link-btn"
-        onclick={() => (showDescription = !showDescription)}
-      >
-        {showDescription ? t("changes.descHide") : t("changes.descShow")}
-      </button>
-    </div>
-  </div>
+  <label class="commit-amend-option" title={!status.has_commits ? t("changes.amendDisabledTitle") : undefined}>
+    <input type="checkbox" bind:checked={isAmend} disabled={!status.has_commits} />
+    <span>{t("changes.amendLabel")}</span>
+  </label>
 
   <button
     type="button"
