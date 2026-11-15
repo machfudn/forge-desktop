@@ -17,6 +17,7 @@
     selectedFile: FileEntry | null;
     onSelectFile: (file: FileEntry) => void;
     onToggleStage: (file: FileEntry) => void;
+    onDiscardSelected: (files: FileEntry[]) => void;
     onStageAll: () => void;
     onUnstageAll: () => void;
     onCommit: (summary: string, description?: string, amend?: boolean) => void;
@@ -46,6 +47,7 @@
     onToggleStage,
     onStageAll,
     onUnstageAll,
+    onDiscardSelected,
     onCommit,
     onUndoCommit,
     onAbortMerge,
@@ -62,6 +64,13 @@
     onStatus,
     issues = [],
   }: Props = $props();
+  let selectAllCheckbox = $state<HTMLInputElement>();
+  let fileFilter = $state<"all" | "staged" | "unstaged">("all");
+  let visibleFiles = $derived(status.files.filter((file) => fileFilter === "all" || file.staged === (fileFilter === "staged")));
+  let selectedFiles = $derived(status.files.filter((file) => file.staged));
+  let visibleSelectedCount = $derived(visibleFiles.filter((file) => file.staged).length);
+  let allFilesIndeterminate = $derived(visibleSelectedCount > 0 && visibleSelectedCount < visibleFiles.length);
+  $effect(() => { if (selectAllCheckbox) selectAllCheckbox.indeterminate = allFilesIndeterminate; });
 
   const EMOJI_LIST = $derived([
     { code: ":sparkles:", emoji: "✨", desc: t("changes.emoji.sparkles") },
@@ -444,51 +453,28 @@
   {/if}
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="sidebar-header" oncontextmenu={openListContextMenu}>
-  <h3 class="tabular-nums">
-    {stagedCount > 0
-      ? t("changes.headerTitleStaged", { total: totalCount, staged: stagedCount })
-      : t("changes.headerTitle", { total: totalCount })}
-  </h3>
-  <div class="sidebar-actions">
-    {#if totalCount > 0 && onDiscardAll}
-      <button
-        type="button"
-        class="btn-secondary btn-xs btn-danger"
-        onclick={onDiscardAll}
-        title={t("changes.discardAllTitle")}
-      >
-        {t("changes.discardAllBtn")}
-      </button>
-    {/if}
-    <button
-      type="button"
-      class="btn-secondary btn-xs"
-      onclick={onStageAll}
-      disabled={totalCount === 0}
-      title={t("changes.stageAllTitle")}
-    >
-      {t("changes.stageAllBtn")}
-    </button>
-    <button
-      type="button"
-      class="btn-secondary btn-xs"
-      onclick={onUnstageAll}
-      disabled={stagedCount === 0}
-      title={t("changes.unstageAllTitle")}
-    >
-      {t("changes.unstageAllBtn")}
-    </button>
+<div class="sidebar-header file-changes-header" oncontextmenu={openListContextMenu}>
+  <div class="file-changes-title-row">
+    <h3 class="tabular-nums">{stagedCount > 0 ? t("changes.headerTitleStaged", { total: totalCount, staged: stagedCount }) : t("changes.headerTitle", { total: totalCount })}</h3>
   </div>
+  <div class="file-filter-group" role="group" aria-label={t("changes.filterAria")}>
+    <button type="button" class="file-filter-btn {fileFilter === 'all' ? 'is-active' : ''}" aria-pressed={fileFilter === "all"} onclick={() => (fileFilter = "all")}>{t("changes.filterAll")}</button>
+    <button type="button" class="file-filter-btn {fileFilter === 'staged' ? 'is-active' : ''}" aria-pressed={fileFilter === "staged"} onclick={() => (fileFilter = "staged")}>{t("changes.filterStaged")}</button>
+    <button type="button" class="file-filter-btn {fileFilter === 'unstaged' ? 'is-active' : ''}" aria-pressed={fileFilter === "unstaged"} onclick={() => (fileFilter = "unstaged")}>{t("changes.filterUnstaged")}</button>
+  </div>
+  {#if selectedFiles.length > 0}
+    <div class="file-selection-actions" aria-label={t("changes.selectionActionsAria")}>
+      <span class="file-selection-count">{t("changes.selectedCount", { count: selectedFiles.length })}</span>
+      {#if onDiscardSelected}<button type="button" class="btn-secondary btn-xs btn-danger" onclick={() => onDiscardSelected(selectedFiles)}>{t("changes.discardSelected")}</button>{/if}
+    </div>
+  {/if}
 </div>
 
 <ul class="file-list" id="file-list-container" oncontextmenu={openListContextMenu}>
-  {#if status.files.length === 0}
-    <li class="empty-state" style="padding: 32px 16px;">
-      <span>{status.has_commits ? t("changes.emptyClean") : t("changes.emptyNoCommits")}</span>
-    </li>
+  {#if visibleFiles.length === 0}
+    <li class="empty-state" style="padding: 32px 16px;"><span>{status.files.length === 0 ? (status.has_commits ? t("changes.emptyClean") : t("changes.emptyNoCommits")) : t("changes.filterEmpty")}</span></li>
   {:else}
-    {#each status.files as file (file.path)}
+    {#each visibleFiles as file (file.path)}
       {@const badge = getBadge(file)}
       {@const isSelected = selectedFile?.path === file.path}
       {@const slashIdx = Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\"))}
@@ -496,14 +482,7 @@
         class="file-item {isSelected ? 'selected' : ''}"
         oncontextmenu={(e) => openFileContextMenu(e, file)}
       >
-        <input
-          type="checkbox"
-          class="file-stage-cb"
-          checked={file.staged}
-          disabled={file.is_conflict}
-          onchange={() => onToggleStage(file)}
-          aria-label={t("changes.stageFileAria", { path: file.path })}
-        />
+        <input type="checkbox" class="file-stage-cb" checked={file.staged} disabled={file.is_conflict} onchange={() => onToggleStage(file)} aria-label={t("changes.stageFileAria", { path: file.path })} />
         <button
           type="button"
           class="file-select-btn"
