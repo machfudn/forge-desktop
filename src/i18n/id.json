@@ -1158,6 +1158,11 @@
     "updatedStatus": "Pesan commit berhasil diperbarui",
     "dirtyWarning": "Working tree memiliki perubahan yang belum di-commit. Harap simpan ke Stash terlebih dahulu sebelum mengedit pesan commit lama."
   },
+  "lockModal": {
+    "title": "File Lock Git Terdeteksi",
+    "message": "Ditemukan file lock Git (.git/index.lock) pada repository ini. File ini kemungkinan tertinggal dari proses yang terhenti atau proses Git lain yang berjalan. Apakah Anda ingin membersihkan file lock ini sekarang?",
+    "clearedStatus": "File .git/index.lock berhasil dibersihkan."
+  },
   "bisect": {
     "title": "Wizard Git Bisect",
     "setupSubtitle": "Cari commit penyebab bug menggunakan pencarian biner",

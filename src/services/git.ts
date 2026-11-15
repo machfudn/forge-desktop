@@ -737,6 +737,14 @@ export async function interactiveRebase(
   return invoke<string>("interactive_rebase", { repo, baseSha, steps });
 }
 
+export async function checkIndexLock(repo: string): Promise<boolean> {
+  return invoke<boolean>("check_index_lock", { repo });
+}
+
+export async function clearIndexLock(repo: string): Promise<void> {
+  return invoke<void>("clear_index_lock", { repo });
+}
+
 export async function stageLines(
   repo: string,
   hunkPatch: string,

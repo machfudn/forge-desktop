@@ -43,6 +43,12 @@
     rewordTargetIndex?: number;
     commits?: CommitInfo[];
     status?: RepoStatus | null;
+    onRequestConfirm?: (
+      title: string,
+      message: string,
+      action: () => Promise<void>,
+      danger?: boolean
+    ) => void;
     confirmTitle: string;
     confirmMessage: string;
     confirmDanger: boolean;
@@ -78,6 +84,7 @@
     rewordTargetIndex = 0,
     commits = [],
     status = null,
+    onRequestConfirm,
     confirmTitle,
     confirmMessage,
     confirmDanger,
@@ -219,6 +226,29 @@
       return;
     }
     try {
+      const hasLock = await gitService.checkIndexLock(activeRepo);
+      if (hasLock && onRequestConfirm) {
+        onRequestConfirm(
+          t("lockModal.title"),
+          t("lockModal.message"),
+          async () => {
+            try {
+              await gitService.clearIndexLock(activeRepo);
+              onStatus(t("lockModal.clearedStatus"));
+              inlineError = "";
+              await executeInteractiveRebase();
+            } catch (err) {
+              inlineError = String(err);
+            }
+          },
+          true
+        );
+        return;
+      }
+    } catch {
+      // Ignore check failure
+    }
+    try {
       onStatus(t("hgModal.rebasingStatus"));
       await gitService.interactiveRebase(
         activeRepo,
@@ -234,7 +264,26 @@
       await onReloadRepo();
       await onReloadHistory();
     } catch (err) {
-      inlineError = String(err);
+      const errMsg = String(err);
+      if (errMsg.includes("index.lock") && onRequestConfirm) {
+        onRequestConfirm(
+          t("lockModal.title"),
+          t("lockModal.message"),
+          async () => {
+            try {
+              await gitService.clearIndexLock(activeRepo);
+              onStatus(t("lockModal.clearedStatus"));
+              inlineError = "";
+              await executeInteractiveRebase();
+            } catch (clearErr) {
+              inlineError = String(clearErr);
+            }
+          },
+          true
+        );
+      } else {
+        inlineError = errMsg;
+      }
     }
   }
   async function executeRewordSubmit() {
@@ -251,6 +300,30 @@
         inlineError = t("rewordModal.dirtyWarning");
         return;
       }
+    }
+
+    try {
+      const hasLock = await gitService.checkIndexLock(activeRepo);
+      if (hasLock && onRequestConfirm) {
+        onRequestConfirm(
+          t("lockModal.title"),
+          t("lockModal.message"),
+          async () => {
+            try {
+              await gitService.clearIndexLock(activeRepo);
+              onStatus(t("lockModal.clearedStatus"));
+              inlineError = "";
+              await executeRewordSubmit();
+            } catch (err) {
+              inlineError = String(err);
+            }
+          },
+          true
+        );
+        return;
+      }
+    } catch {
+      // Ignore check failure
     }
 
     isRewording = true;
@@ -293,8 +366,27 @@
       await onReloadRepo();
       await onReloadHistory();
     } catch (err) {
-      inlineError = String(err);
-      onStatus(String(err), true);
+      const errMsg = String(err);
+      if (errMsg.includes("index.lock") && onRequestConfirm) {
+        onRequestConfirm(
+          t("lockModal.title"),
+          t("lockModal.message"),
+          async () => {
+            try {
+              await gitService.clearIndexLock(activeRepo);
+              onStatus(t("lockModal.clearedStatus"));
+              inlineError = "";
+              await executeRewordSubmit();
+            } catch (clearErr) {
+              inlineError = String(clearErr);
+            }
+          },
+          true
+        );
+      } else {
+        inlineError = errMsg;
+        onStatus(errMsg, true);
+      }
     } finally {
       isRewording = false;
     }
@@ -436,6 +528,11 @@
             placeholder={t("rewordModal.summaryPlaceholder")}
             bind:value={rewordSummary}
             disabled={isRewording}
+            onkeydown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                void executeRewordSubmit();
+              }
+            }}
           />
         </div>
         <div class="form-field">
@@ -448,10 +545,13 @@
             bind:value={rewordDescription}
             disabled={isRewording}
             style="resize: vertical;"
+            onkeydown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                void executeRewordSubmit();
+              }
+            }}
           ></textarea>
         </div>
-
-
       {:else if modal === "rebase"}
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
           <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">

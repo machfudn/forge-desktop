@@ -1158,6 +1158,11 @@
     "updatedStatus": "Commit message updated successfully",
     "dirtyWarning": "Working tree has uncommitted changes. Please stash or commit them before editing past commit messages."
   },
+  "lockModal": {
+    "title": "Git Lock File Detected",
+    "message": "A Git lock file (.git/index.lock) was found in this repository. It may be leftover from a previous interrupted operation or another Git process. Do you want to clean up this lock file now?",
+    "clearedStatus": "Git index.lock cleaned successfully."
+  },
   "bisect": {
     "title": "Git Bisect Wizard",
     "setupSubtitle": "Find the regression commit using binary search",

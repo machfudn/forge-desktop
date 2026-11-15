@@ -582,7 +582,11 @@
     danger = false
   ) {
     confirmReturnModal =
-      activeModal === "auth" || activeModal === "stash" || activeModal === "remote"
+      activeModal === "auth" ||
+      activeModal === "stash" ||
+      activeModal === "remote" ||
+      activeModal === "reword" ||
+      activeModal === "rebase"
         ? activeModal
         : null;
     confirmTitle = title;
@@ -3193,6 +3197,7 @@
     {confirmTitle}
     {confirmMessage}
     {confirmDanger}
+    onRequestConfirm={requestConfirmation}
     onConfirmSubmit={handleConfirmSubmit}
     onSwitchPrTab={handleSwitchPrTab}
     onCheckoutPr={handleCheckoutPr}
