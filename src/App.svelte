@@ -546,7 +546,7 @@
     if (normalizedSecs > 0 && activeRepo) {
       let isAutofetchRunning = false;
       autofetchTimer = window.setInterval(async () => {
-        if (!activeRepo || isLoading || isAutofetchRunning) return;
+        if (!activeRepo || isLoading || isAutofetchRunning || activeModal === "reword" || activeModal === "rebase" || activeModal === "squash") return;
         isAutofetchRunning = true;
         try {
           await gitService.gitFetch(activeRepo);

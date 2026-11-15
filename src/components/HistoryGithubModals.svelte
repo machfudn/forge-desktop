@@ -103,6 +103,8 @@
   let rewordSummary = $state("");
   let rewordDescription = $state("");
   let isRewording = $state(false);
+  let isSquashing = $state(false);
+  let isRebasing = $state(false);
 
   $effect(() => {
     inlineError = "";
@@ -142,8 +144,8 @@
   }
 
   async function handleSquashSubmit() {
-    if (!squashSummary.trim()) return;
-    onClose();
+    if (!squashSummary.trim() || isSquashing) return;
+    isSquashing = true;
     try {
       onStatus(t("hgModal.squashingStatus", { count: squashCount }));
       await gitService.squashCommits(
@@ -152,11 +154,14 @@
         squashSummary.trim(),
         squashDescription.trim() || undefined
       );
+      onClose();
       onStatus(t("hgModal.squashedStatus", { count: squashCount }));
       await onReloadRepo();
       await onReloadHistory();
     } catch (err) {
       onStatus(String(err), true);
+    } finally {
+      isSquashing = false;
     }
   }
 
@@ -217,12 +222,13 @@
   });
 
   async function executeInteractiveRebase() {
-    if (!activeRepo || !rebaseBaseSha) return;
+    if (isRebasing || !activeRepo || !rebaseBaseSha) return;
     const activeSteps = rebaseItems.filter((i) => i.action !== "drop");
     if (activeSteps.length === 0) {
       inlineError = t("hgModal.rebaseNeedPick");
       return;
     }
+    isRebasing = true;
     try {
       const hasLock = await gitService.checkIndexLock(activeRepo);
       if (hasLock && onRequestConfirm) {
@@ -282,6 +288,8 @@
       } else {
         inlineError = errMsg;
       }
+    } finally {
+      isRebasing = false;
     }
   }
   async function executeRewordSubmit() {
@@ -732,9 +740,9 @@
           {t("hgModal.createTagBtn")}
         </button>
       {:else if modal === "squash"}
-        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
-        <button type="button" class="btn-primary" onclick={handleSquashSubmit} disabled={!squashSummary.trim()}>
-          {t("hgModal.confirmSquashBtn")}
+        <button type="button" class="btn-secondary" onclick={onClose} disabled={isSquashing}>{t("common.cancel")}</button>
+        <button type="button" class="btn-primary" onclick={handleSquashSubmit} disabled={!squashSummary.trim() || isSquashing}>
+          {isSquashing ? t("hgModal.squashingStatus", { count: squashCount }) : t("hgModal.confirmSquashBtn")}
         </button>
       {:else if modal === "reword"}
         <button type="button" class="btn-secondary" onclick={onClose} disabled={isRewording}>{t("common.cancel")}</button>
@@ -747,14 +755,14 @@
           {isRewording ? t("rewordModal.updatingStatus") : t("rewordModal.saveBtn")}
         </button>
       {:else if modal === "rebase"}
-        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
+        <button type="button" class="btn-secondary" onclick={onClose} disabled={isRebasing}>{t("common.cancel")}</button>
         <button
           type="button"
           class="btn-primary"
           onclick={executeInteractiveRebase}
-          disabled={rebaseItems.filter((i) => i.action !== "drop").length === 0}
+          disabled={isRebasing || rebaseItems.filter((i) => i.action !== "drop").length === 0}
         >
-          {t("hgModal.startRebaseBtn")}
+          {isRebasing ? t("interactiveRebase.rebasing") : t("hgModal.startRebaseBtn")}
         </button>
       {:else if modal === "confirm"}
         <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
