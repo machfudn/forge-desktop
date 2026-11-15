@@ -956,6 +956,15 @@ pub async fn interactive_rebase(
 }
 
 #[tauri::command]
+pub async fn reword_commit(
+    repo: String,
+    sha: String,
+    message: String,
+) -> Result<String, String> {
+    run_blocking(move || git::reword_commit(&repo, &sha, &message)).await
+}
+
+#[tauri::command]
 pub async fn check_index_lock(repo: String) -> Result<bool, String> {
     run_blocking(move || git::check_index_lock(&repo)).await
 }

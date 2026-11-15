@@ -1,4 +1,5 @@
 use super::cli;
+use super::repo::check_index_lock;
 use serde::{Deserialize, Serialize};
 
 fn validate_sha(sha: &str) -> Result<&str, String> {
@@ -238,6 +239,81 @@ pub fn interactive_rebase(
     Ok("Interactive rebase berhasil diselesaikan".into())
 }
 
+pub fn reword_commit(
+    repo: &str,
+    target_sha: &str,
+    new_message: &str,
+) -> Result<String, String> {
+    validate_sha(target_sha)?;
+    let trimmed_msg = new_message.trim();
+    if trimmed_msg.is_empty() {
+        return Err("Pesan commit baru tidak boleh kosong".into());
+    }
+
+    if check_index_lock(repo)? {
+        return Err("File .git/index.lock terdeteksi. Silakan bersihkan file lock terlebih dahulu.".into());
+    }
+
+    let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
+    if !status_out.trim().is_empty() {
+        return Err("Working tree masih memiliki perubahan belum di-commit. Commit atau stash dahulu sebelum mengedit pesan commit.".into());
+    }
+
+    let orig_head = cli::run(repo, &["rev-parse", "HEAD"])?.trim().to_string();
+    let full_target = cli::run(repo, &["rev-parse", target_sha])?.trim().to_string();
+
+    if orig_head == full_target {
+        cli::run(repo, &["commit", "--amend", "-m", trimmed_msg])?;
+        return Ok("Pesan commit HEAD berhasil diperbarui".into());
+    }
+
+    if cli::run(repo, &["merge-base", "--is-ancestor", &full_target, &orig_head]).is_err() {
+        return Err("Commit yang dipilih bukan bagian dari branch aktif saat ini".into());
+    }
+
+    let parent_out = cli::run(repo, &["rev-parse", &format!("{full_target}^")]);
+    let base_sha = match parent_out {
+        Ok(out) => out.trim().to_string(),
+        Err(_) => {
+            return Err("Tidak dapat menemukan parent commit (commit root belum didukung untuk reword otomatis)".into());
+        }
+    };
+
+    let rev_range = format!("{base_sha}..{orig_head}");
+    let log_out = cli::run(repo, &["log", "--reverse", "--format=%H", &rev_range])?;
+    let commits_to_replay: Vec<String> = log_out
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if commits_to_replay.is_empty() {
+        return Err("Tidak ada commit yang ditemukan untuk di-replay".into());
+    }
+
+    if let Err(e) = cli::run(repo, &["reset", "--hard", &base_sha]) {
+        return Err(format!("Gagal reset ke base sha: {e}"));
+    }
+
+    for sha in &commits_to_replay {
+        if let Err(e) = cli::run(repo, &["cherry-pick", sha]) {
+            let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+            let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+            return Err(format!("Gagal saat cherry-pick commit {sha}: {e}"));
+        }
+
+        if *sha == full_target {
+            if let Err(e) = cli::run(repo, &["commit", "--amend", "-m", trimmed_msg]) {
+                let _ = cli::run(repo, &["cherry-pick", "--abort"]);
+                let _ = cli::run(repo, &["reset", "--hard", &orig_head]);
+                return Err(format!("Gagal saat amend pesan commit {sha}: {e}"));
+            }
+        }
+    }
+
+    Ok("Pesan commit berhasil diperbarui dan seluruh commit berhasil di-replay".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,5 +339,77 @@ mod tests {
             vec![RebaseStep { sha: "abc1234".into(), action: "invalid".into(), message: None }]
         )
         .is_err());
+    }
+
+    #[test]
+    fn test_reword_commit_preserves_all_subsequent_commits() {
+        use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-reword-preserve-test-{nanos}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let run_git = |args: &[&str]| {
+            let out = Command::new("git").args(args).current_dir(&root).output().unwrap();
+            assert!(out.status.success(), "git {:?} failed: {}", args, String::from_utf8_lossy(&out.stderr));
+        };
+        run_git(&["init"]);
+        run_git(&["config", "user.name", "Tester"]);
+        run_git(&["config", "user.email", "tester@example.com"]);
+        std::fs::write(root.join("f1.txt"), "hello").unwrap();
+        run_git(&["add", "f1.txt"]);
+        run_git(&["commit", "-m", "commit 1 (base)"]);
+
+        std::fs::write(root.join("f2.txt"), "world").unwrap();
+        run_git(&["add", "f2.txt"]);
+        run_git(&["commit", "-m", "commit 2 (to reword)"]);
+        let c2 = cli::run(root.to_str().unwrap(), &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+        std::fs::write(root.join("f3.txt"), "foo").unwrap();
+        run_git(&["add", "f3.txt"]);
+        run_git(&["commit", "-m", "commit 3 (subsequent 1)"]);
+
+        std::fs::write(root.join("f4.txt"), "bar").unwrap();
+        run_git(&["add", "f4.txt"]);
+        run_git(&["commit", "-m", "commit 4 (subsequent 2 HEAD)"]);
+
+        let res = reword_commit(root.to_str().unwrap(), &c2, "reworded commit 2 summary\n\nextended desc");
+        assert!(res.is_ok(), "reword_commit failed: {:?}", res);
+
+        let log = cli::run(root.to_str().unwrap(), &["log", "--oneline"]).unwrap();
+        assert!(log.contains("reworded commit 2 summary"));
+        assert!(log.contains("commit 3 (subsequent 1)"));
+        assert!(log.contains("commit 4 (subsequent 2 HEAD)"));
+        assert!(log.contains("commit 1 (base)"));
+
+        let count = cli::run(root.to_str().unwrap(), &["rev-list", "--count", "HEAD"]).unwrap().trim().to_string();
+        assert_eq!(count, "4", "Total commits must remain 4 after reword");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_reword_head_commit() {
+        use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-reword-head-test-{nanos}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let run_git = |args: &[&str]| {
+            let out = Command::new("git").args(args).current_dir(&root).output().unwrap();
+            assert!(out.status.success(), "git {:?} failed: {}", args, String::from_utf8_lossy(&out.stderr));
+        };
+        run_git(&["init"]);
+        run_git(&["config", "user.name", "Tester"]);
+        run_git(&["config", "user.email", "tester@example.com"]);
+        std::fs::write(root.join("f1.txt"), "hello").unwrap();
+        run_git(&["add", "f1.txt"]);
+        run_git(&["commit", "-m", "commit 1"]);
+        let c1 = cli::run(root.to_str().unwrap(), &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+        let res = reword_commit(root.to_str().unwrap(), &c1, "commit 1 updated");
+        assert!(res.is_ok());
+        let log = cli::run(root.to_str().unwrap(), &["log", "--oneline"]).unwrap();
+        assert!(log.contains("commit 1 updated"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
