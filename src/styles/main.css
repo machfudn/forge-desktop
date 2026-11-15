@@ -1015,16 +1015,38 @@ button.tag-badge:hover {
   padding: 1px 0;
 }
 
-.commit-quick-actions .link-btn {
+.commit-box-toolbar .link-btn {
   min-height: 28px;
-  padding: 3px 0;
-  color: var(--text-muted);
+  padding: 4px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  color: var(--text-secondary);
   font-size: 10px;
+  font-weight: 600;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-.commit-quick-actions .link-btn:hover,
-.commit-quick-actions .link-btn.is-active {
+.commit-box-toolbar .link-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.commit-box-toolbar .link-btn.is-active {
+  background: var(--accent-blue-subtle);
+  border-color: var(--accent-blue);
   color: var(--text-accent);
+}
+
+.commit-box-toolbar .link-btn:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.commit-box-toolbar .link-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .commit-description-field,
