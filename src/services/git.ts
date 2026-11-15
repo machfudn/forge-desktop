@@ -737,6 +737,14 @@ export async function interactiveRebase(
   return invoke<string>("interactive_rebase", { repo, baseSha, steps });
 }
 
+export async function rewordCommit(
+  repo: string,
+  sha: string,
+  message: string
+): Promise<string> {
+  return invoke<string>("reword_commit", { repo, sha, message });
+}
+
 export async function checkIndexLock(repo: string): Promise<boolean> {
   return invoke<boolean>("check_index_lock", { repo });
 }

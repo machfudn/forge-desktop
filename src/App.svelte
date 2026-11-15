@@ -263,7 +263,7 @@
   let rebaseBaseSha = $state("");
   let rebaseItems = $state<RebaseItem[]>([]);
   let rewordTargetCommit = $state<CommitInfo | null>(null);
-  let rewordTargetIndex = $state(0);
+
 
   // GitHub multi-account & repo context
   let accountOverview = $state<AccountOverview>({
@@ -1802,9 +1802,8 @@
     squashInitialSummary = selectedCommits[count - 1]?.summary || t("app.status.squashDefaultSummary");
     activeModal = "squash";
   }
-  function handleOpenRewordModal(commit: CommitInfo, index: number) {
+  function handleOpenRewordModal(commit: CommitInfo) {
     rewordTargetCommit = commit;
-    rewordTargetIndex = index;
     activeModal = "reword";
   }
 
@@ -3191,8 +3190,6 @@
     {rebaseBaseSha}
     bind:rebaseItems
     {rewordTargetCommit}
-    {rewordTargetIndex}
-    {commits}
     status={currentStatus}
     {confirmTitle}
     {confirmMessage}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CommitInfo, IssueInfo, ParsedGitHubRepo, ParsedHostingRepo, PullRequestInfo, RebaseAction, RebaseStep, RepoStatus } from "../types/git";
+  import type { CommitInfo, IssueInfo, ParsedGitHubRepo, ParsedHostingRepo, PullRequestInfo, RebaseAction, RepoStatus } from "../types/git";
   import * as gitService from "../services/git";
   import { openExternalUrl } from "../utils/path";
   import { t } from "../i18n/index.svelte";
@@ -40,8 +40,7 @@
     rebaseBaseSha: string;
     rebaseItems: RebaseItem[];
     rewordTargetCommit?: CommitInfo | null;
-    rewordTargetIndex?: number;
-    commits?: CommitInfo[];
+
     status?: RepoStatus | null;
     onRequestConfirm?: (
       title: string,
@@ -81,8 +80,7 @@
     rebaseBaseSha,
     rebaseItems = $bindable(),
     rewordTargetCommit = null,
-    rewordTargetIndex = 0,
-    commits = [],
+
     status = null,
     onRequestConfirm,
     confirmTitle,
@@ -335,31 +333,7 @@
       const desc = rewordDescription.trim();
       const fullMessage = desc ? `${summary}\n\n${desc}` : summary;
 
-      const targetIdx = commits.findIndex((c) => c.sha === rewordTargetCommit.sha);
-      const effectiveIndex = targetIdx >= 0 ? targetIdx : rewordTargetIndex;
-
-      if (effectiveIndex === 0) {
-        await gitService.commitChanges(
-          activeRepo,
-          summary,
-          desc || undefined,
-          true
-        );
-      } else {
-        const baseSha = commits[effectiveIndex + 1]?.sha ?? rewordTargetCommit.parents?.[0];
-        if (!baseSha) {
-          throw new Error("Cannot find base commit to reword");
-        }
-
-        const commitsToReplay = commits.slice(0, effectiveIndex + 1).reverse();
-        const steps: RebaseStep[] = commitsToReplay.map((c) => ({
-          sha: c.sha,
-          action: (c.sha === rewordTargetCommit.sha ? "reword" : "pick") as RebaseAction,
-          message: c.sha === rewordTargetCommit.sha ? fullMessage : undefined,
-        }));
-
-        await gitService.interactiveRebase(activeRepo, baseSha, steps);
-      }
+      await gitService.rewordCommit(activeRepo, rewordTargetCommit.sha, fullMessage);
 
       onClose();
       onStatus(t("rewordModal.updatedStatus"));
