@@ -1833,27 +1833,25 @@
       return;
     }
 
-    if (commits.length < 2) {
-      setStatus(t("app.status.rebaseMinCommits"), true);
-      return;
+    try {
+      const [baseSha, allRebaseCommits] = await gitService.getAllRebaseCommits(activeRepo);
+      if (!baseSha || allRebaseCommits.length < 2) {
+        setStatus(t("app.status.rebaseMinCommits"), true);
+        return;
+      }
+      rebaseBaseSha = baseSha;
+      rebaseItems = allRebaseCommits.map((c) => ({
+        sha: c.sha,
+        short_sha: c.short_sha,
+        summary: c.summary,
+        author: c.author,
+        action: "pick" as const,
+        message: c.summary,
+      }));
+      activeModal = "rebase";
+    } catch (err) {
+      setStatus(String(err), true);
     }
-    const targetCommits = commits.slice(0, Math.min(10, commits.length));
-    const oldestDisplayedIdx = targetCommits.length - 1;
-    const baseCommit = commits[oldestDisplayedIdx + 1];
-    if (!baseCommit) {
-      setStatus(t("app.status.rebaseNeedBase"), true);
-      return;
-    }
-    rebaseBaseSha = baseCommit.sha;
-    rebaseItems = [...targetCommits].reverse().map((c) => ({
-      sha: c.sha,
-      short_sha: c.short_sha,
-      summary: c.summary,
-      author: c.author,
-      action: "pick" as const,
-      message: c.summary,
-    }));
-    activeModal = "rebase";
   }
 
   async function openInEditorFile(filePath: string) {

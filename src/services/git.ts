@@ -729,6 +729,12 @@ export async function getRebaseCommits(
   return invoke<RebaseCommitItem[]>("get_rebase_commits", { repo, baseSha });
 }
 
+export async function getAllRebaseCommits(
+  repo: string
+): Promise<[string, RebaseCommitItem[]]> {
+  return invoke<[string, RebaseCommitItem[]]>("get_all_rebase_commits", { repo });
+}
+
 export async function interactiveRebase(
   repo: string,
   baseSha: string,
