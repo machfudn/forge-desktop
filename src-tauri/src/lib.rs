@@ -119,6 +119,8 @@ pub fn run() {
             commands::stage_hunk,
             commands::get_rebase_commits,
             commands::interactive_rebase,
+            commands::check_index_lock,
+            commands::clear_index_lock,
             commands::stage_lines,
             commands::get_file_blame,
             commands::get_file_history,

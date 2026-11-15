@@ -956,6 +956,16 @@ pub async fn interactive_rebase(
 }
 
 #[tauri::command]
+pub async fn check_index_lock(repo: String) -> Result<bool, String> {
+    run_blocking(move || git::check_index_lock(&repo)).await
+}
+
+#[tauri::command]
+pub async fn clear_index_lock(repo: String) -> Result<(), String> {
+    run_blocking(move || git::clear_index_lock(&repo)).await
+}
+
+#[tauri::command]
 pub async fn stage_lines(
     repo: String,
     hunk_patch: String,

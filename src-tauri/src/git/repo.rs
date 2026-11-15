@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use serde::Serialize;
 use super::providers::{parse_hosting_repo, HostingProvider};
+use super::status::resolve_git_dir;
 use super::cli;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -325,6 +326,29 @@ pub fn detect_git_hooks(repo: &str) -> Result<GitHooksInfo, String> {
     })
 }
 
+pub fn check_index_lock(repo: &str) -> Result<bool, String> {
+    let p = Path::new(repo);
+    if !p.exists() {
+        return Err("Direktori tidak ditemukan".into());
+    }
+    let git_dir = resolve_git_dir(repo);
+    Ok(git_dir.join("index.lock").exists())
+}
+
+pub fn clear_index_lock(repo: &str) -> Result<(), String> {
+    let p = Path::new(repo);
+    if !p.exists() {
+        return Err("Direktori tidak ditemukan".into());
+    }
+    let git_dir = resolve_git_dir(repo);
+    let lock_path = git_dir.join("index.lock");
+    if lock_path.exists() {
+        fs::remove_file(&lock_path)
+            .map_err(|e| format!("Gagal menghapus file index.lock: {e}"))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,6 +467,27 @@ mod tests {
         assert!(!info.has_commit_msg);
         assert!(info.hook_names.contains(&"husky".to_string()));
         assert!(info.hook_names.contains(&"pre-commit".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_check_and_clear_index_lock() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-index-lock-test-{nanos}"));
+        let dot_git = root.join(".git");
+        std::fs::create_dir_all(&dot_git).unwrap();
+
+        assert_eq!(check_index_lock(root.to_str().unwrap()).unwrap(), false);
+
+        let lock_file = dot_git.join("index.lock");
+        std::fs::write(&lock_file, b"").unwrap();
+        assert_eq!(check_index_lock(root.to_str().unwrap()).unwrap(), true);
+
+        clear_index_lock(root.to_str().unwrap()).unwrap();
+        assert_eq!(check_index_lock(root.to_str().unwrap()).unwrap(), false);
+        assert!(!lock_file.exists());
+
         let _ = std::fs::remove_dir_all(&root);
     }
 }

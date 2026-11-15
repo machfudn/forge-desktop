@@ -91,7 +91,7 @@ pub fn parse_status_branch_header(header_line: &str) -> (String, bool) {
     }
 }
 
-fn resolve_git_dir(repo: &str) -> PathBuf {
+pub fn resolve_git_dir(repo: &str) -> PathBuf {
     let dot_git = Path::new(repo).join(".git");
     if dot_git.is_file() {
         if let Ok(content) = fs::read_to_string(&dot_git) {
