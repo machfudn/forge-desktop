@@ -228,8 +228,8 @@
     "abortMerge": "Batalkan Merge",
     "inRebase": "Proses Rebase Aktif",
     "abortRebase": "Batalkan Rebase",
-    "headerTitle": "Perubahan ({total})",
-    "headerTitleStaged": "Perubahan ({total} · {staged} staged)",
+    "headerTitle": "Perubahan File ({total})",
+    "headerTitleStaged": "Perubahan File ({total} · {staged} staged)",
     "discardAllBtn": "Discard",
     "discardAllTitle": "Batalkan semua perubahan file",
     "stageAllBtn": "Stage",
@@ -1203,5 +1203,30 @@
     "resetStatus": "Git bisect direset ke HEAD awal",
     "selectBothCommits": "Pilih commit good dan bad terlebih dahulu.",
     "toolsMenu": "Wizard Git Bisect..."
+  }
+  ,"workspaceSettings": {
+    "title": "Tata letak panel",
+    "empty": "Tidak ada panel workspace yang terlihat",
+    "reset": "Atur ulang panel",
+    "groupEmpty": "Panel Perubahan File dan Commit tidak terlihat",
+    "panelFile": "Daftar file perubahan",
+    "panelCommit": "Kotak commit",
+    "panelDiff": "Diff",
+    "dockLeft": "Kiri",
+    "dockRight": "Kanan",
+    "dockTop": "Atas",
+    "dockBottom": "Bawah",
+    "dockCenter": "Tengah",
+    "show": "Tampilkan",
+    "hide": "Sembunyikan",
+    "groupLabel": "Panel file dan commit",
+    "layout": "Tata letak",
+    "layoutGroupLeft": "Perubahan File + Commit kiri / Diff kanan",
+    "layoutGroupRight": "Diff kiri / Perubahan File + Commit kanan",
+    "stackOrder": "Urutan tumpukan",
+    "fileAboveCommit": "Perubahan File di atas Commit",
+    "commitAboveFile": "Commit di atas Perubahan File",
+    "resizeRegions": "Ubah ukuran panel workspace",
+    "hint": "Pilih visibilitas panel, tata letak, dan urutan tumpukan."
   }
 }

@@ -58,6 +58,7 @@
     setLocale,
     t,
     type Locale,
+    type TranslationKey,
   } from "./i18n/index.svelte";
   import { getAppErrorLogs, logAppError } from "./utils/appLog.svelte";
 
@@ -246,6 +247,106 @@
     } else if (e.key === "End") {
       e.preventDefault();
       updateSidebarWidth(SIDEBAR_MAX);
+    }
+  }
+
+  const DOCK_MIN = 140;
+  const DOCK_MAX = 460;
+  const DOCK_DEFAULT = 220;
+
+  function clampDockHeight(h: number): number {
+    if (!Number.isFinite(h)) return DOCK_DEFAULT;
+    return Math.min(DOCK_MAX, Math.max(DOCK_MIN, Math.round(h)));
+  }
+
+  let dockHeight = $state(
+    clampDockHeight(Number(localStorage.getItem("forge_dock_height") || DOCK_DEFAULT))
+  );
+  let isResizingDock = $state(false);
+
+  function updateDockHeight(next: number) {
+    const clamped = clampDockHeight(next);
+    dockHeight = clamped;
+    localStorage.setItem("forge_dock_height", String(clamped));
+  }
+
+  function startDockResize(e: PointerEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = dockHeight;
+    isResizingDock = true;
+
+    const onMove = (ev: PointerEvent) => {
+      updateDockHeight(startH + (ev.clientY - startY));
+    };
+    const onUp = () => {
+      isResizingDock = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
+
+  function handleDockResizerKeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      updateDockHeight(dockHeight - (e.shiftKey ? 24 : 12));
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      updateDockHeight(dockHeight + (e.shiftKey ? 24 : 12));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      updateDockHeight(DOCK_MIN);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      updateDockHeight(DOCK_MAX);
+    }
+  }
+  const COMMIT_MIN = 180;
+  const COMMIT_MAX = 620;
+  const COMMIT_DEFAULT = 300;
+  function clampCommitHeight(h: number): number {
+    if (!Number.isFinite(h)) return COMMIT_DEFAULT;
+    return Math.min(COMMIT_MAX, Math.max(COMMIT_MIN, Math.round(h)));
+  }
+  let commitPanelHeight = $state(clampCommitHeight(Number(localStorage.getItem("forge_commit_panel_height") || COMMIT_DEFAULT)));
+  let isResizingCommit = $state(false);
+  function updateCommitPanelHeight(next: number) {
+    const clamped = clampCommitHeight(next);
+    commitPanelHeight = clamped;
+    localStorage.setItem("forge_commit_panel_height", String(clamped));
+  }
+  function startCommitResize(e: PointerEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = commitPanelHeight;
+    isResizingCommit = true;
+    const commitIsAbove = orderedWorkspacePanels()[0] === "commit";
+    const onMove = (ev: PointerEvent) => updateCommitPanelHeight(startH + (ev.clientY - startY) * (commitIsAbove ? 1 : -1));
+    const onUp = () => {
+      isResizingCommit = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
+  function handleCommitResizerKeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const commitIsAbove = orderedWorkspacePanels()[0] === "commit";
+      updateCommitPanelHeight(commitPanelHeight + (e.key === "ArrowDown" ? 12 : -12) * (commitIsAbove ? 1 : -1) * (e.shiftKey ? 2 : 1));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      updateCommitPanelHeight(COMMIT_MIN);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      updateCommitPanelHeight(COMMIT_MAX);
     }
   }
 
@@ -2077,6 +2178,8 @@
 
     window.addEventListener("keydown", handleGlobalKeydown);
     window.addEventListener("click", handleGlobalClick);
+    window.addEventListener("keydown", handleWorkspaceSettingsKeydown);
+    window.addEventListener("click", handleWorkspaceSettingsOutside);
     document.addEventListener("contextmenu", onDocContextMenu);
     const initApp = async () => {
       let initialRepo = "";
@@ -2125,6 +2228,8 @@
       mediaQuery.removeEventListener("change", handleSystemTheme);
       window.removeEventListener("keydown", handleGlobalKeydown);
       window.removeEventListener("click", handleGlobalClick);
+      window.removeEventListener("keydown", handleWorkspaceSettingsKeydown);
+      window.removeEventListener("click", handleWorkspaceSettingsOutside);
       document.removeEventListener("contextmenu", onDocContextMenu);
       if (autofetchTimer !== null) {
         clearInterval(autofetchTimer);
@@ -2214,8 +2319,119 @@
     }
     return cmds;
   });
-</script>
+  type WorkspacePanelId = "file" | "commit" | "diff";
+  type WorkspaceLayout = "group-left" | "group-right";
+  type WorkspacePanel = { id: WorkspacePanelId; visible: boolean; order: number };
+  const WORKSPACE_PANELS_STORAGE_KEY = "forge_workspace_panels_v2";
+  const DEFAULT_WORKSPACE_PANELS: WorkspacePanel[] = [
+    { id: "file", visible: true, order: 0 },
+    { id: "commit", visible: true, order: 1 },
+    { id: "diff", visible: true, order: 0 },
+  ];
+  const PANEL_LABEL_KEYS: Record<WorkspacePanelId, TranslationKey> = {
+    file: "workspaceSettings.panelFile", commit: "workspaceSettings.panelCommit", diff: "workspaceSettings.panelDiff",
+  };
+  function readWorkspacePanels(): WorkspacePanel[] {
+    try {
+      const raw = JSON.parse(localStorage.getItem(WORKSPACE_PANELS_STORAGE_KEY) || "null");
+      const saved: Array<{ id?: string; visible?: boolean; order?: number }> = Array.isArray(raw) ? raw : Array.isArray(raw?.panels) ? raw.panels : [];
+      if (saved.length) return DEFAULT_WORKSPACE_PANELS.map((panel) => {
+        const item = saved.find((entry: { id?: string }) => entry.id === panel.id);
+        return item ? { ...panel, visible: typeof item.visible === "boolean" ? item.visible : panel.visible, order: typeof item.order === "number" && Number.isFinite(item.order) ? item.order : panel.order } : { ...panel };
+      });
+    } catch {}
+    return DEFAULT_WORKSPACE_PANELS.map((panel) => ({ ...panel }));
+  }
+  function readWorkspaceLayout(): WorkspaceLayout {
+    try {
+      const raw = JSON.parse(localStorage.getItem(WORKSPACE_PANELS_STORAGE_KEY) || "null");
+      const file = Array.isArray(raw) ? raw.find((item: { id?: string; dock?: string }) => item.id === "file") : raw?.panels?.find((item: { id?: string; dock?: string }) => item.id === "file");
+      return file?.dock === "right" ? "group-right" : "group-left";
+    } catch {}
+    return "group-left";
+  }
+  let workspacePanels = $state<WorkspacePanel[]>(readWorkspacePanels());
+  let workspaceLayout = $state<WorkspaceLayout>(readWorkspaceLayout());
+  let workspaceSettingsOpen = $state(false);
+  let workspaceSettingsButton = $state<HTMLButtonElement | undefined>();
+  let draggedPanel: WorkspacePanelId | null = null;
+  let workspaceDividerWidth = $state(50);
+  let workspaceDividerDragging = $state(false);
+  let workspaceDividerStartX = 0;
+  let workspaceDividerStartWidth = 50;
+  function readWorkspaceDividerWidth() {
+    try { const raw = JSON.parse(localStorage.getItem(WORKSPACE_PANELS_STORAGE_KEY) || "null"); return typeof raw?.dividerWidth === "number" && raw.dividerWidth >= 20 && raw.dividerWidth <= 80 ? raw.dividerWidth : 50; }
+    catch { return 50; }
+  }
+  workspaceDividerWidth = readWorkspaceDividerWidth();
+  function startWorkspaceDividerResize(event: PointerEvent) {
+    event.preventDefault();
+    workspaceDividerDragging = true;
+    workspaceDividerStartX = event.clientX;
+    workspaceDividerStartWidth = workspaceDividerWidth;
+    const onMove = (move: PointerEvent) => {
+      const host = document.querySelector<HTMLElement>(".workspace-layout-panels");
+      if (!host) return;
+      const delta = (move.clientX - workspaceDividerStartX) / host.clientWidth * 100;
+      workspaceDividerWidth = Math.min(80, Math.max(20, workspaceDividerStartWidth + delta * (workspaceLayout === "group-left" ? 1 : -1)));
+    };
+    const onUp = () => {
+      workspaceDividerDragging = false;
+      persistWorkspacePanels();
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
+  function handleWorkspaceDividerKeydown(event: KeyboardEvent) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const step = event.shiftKey ? 5 : 2;
+    const direction = (event.key === "ArrowRight" ? 1 : -1) * (workspaceLayout === "group-left" ? 1 : -1);
+    workspaceDividerWidth = Math.min(80, Math.max(20, workspaceDividerWidth + step * direction));
+    persistWorkspacePanels();
+  }
+  function persistWorkspacePanels() { localStorage.setItem(WORKSPACE_PANELS_STORAGE_KEY, JSON.stringify({ panels: workspacePanels, layout: workspaceLayout, dividerWidth: workspaceDividerWidth })); }
+  function orderedWorkspacePanels() { return workspacePanels.filter((panel) => panel.visible && panel.id !== "diff").sort((a, b) => a.order - b.order).map((panel) => panel.id); }
+  function updateWorkspacePanel(id: WorkspacePanelId, patch: Partial<WorkspacePanel>) { workspacePanels = workspacePanels.map((panel) => panel.id === id ? { ...panel, ...patch } : panel); persistWorkspacePanels(); }
+  function toggleWorkspacePanel(id: WorkspacePanelId) { const panel = workspacePanels.find((item) => item.id === id); if (panel) updateWorkspacePanel(id, { visible: !panel.visible }); }
+  function setWorkspaceLayout(layout: WorkspaceLayout) { workspaceLayout = layout; persistWorkspacePanels(); }
+  function swapWorkspaceOrder() { const file = workspacePanels.find((panel) => panel.id === "file")?.order ?? 0; const commit = workspacePanels.find((panel) => panel.id === "commit")?.order ?? 1; workspacePanels = workspacePanels.map((panel) => panel.id === "file" ? { ...panel, order: commit } : panel.id === "commit" ? { ...panel, order: file } : panel); persistWorkspacePanels(); }
+  function resetWorkspacePanels() { workspacePanels = DEFAULT_WORKSPACE_PANELS.map((panel) => ({ ...panel })); workspaceLayout = "group-left"; workspaceDividerWidth = 50; persistWorkspacePanels(); }
+  function panelDragStart(id: WorkspacePanelId) { if (id !== "diff") draggedPanel = id; }
+  function panelDrop(targetId: WorkspacePanelId) { if (draggedPanel && targetId !== "diff" && draggedPanel !== targetId) swapWorkspaceOrder(); draggedPanel = null; }
+  function closeWorkspaceSettings() { workspaceSettingsOpen = false; workspaceSettingsButton?.focus(); }
+  function handleWorkspaceSettingsKeydown(event: KeyboardEvent) { if (event.key === "Escape") closeWorkspaceSettings(); }
+  function handleWorkspaceSettingsOutside(event: MouseEvent) { if (workspaceSettingsOpen && !(event.target as Element)?.closest("[data-workspace-settings]")) closeWorkspaceSettings(); }
+  const visibleWorkspacePanels = $derived(workspacePanels.filter((panel) => panel.visible));
+  const groupPanelsVisible = $derived(orderedWorkspacePanels().length > 0);
+  const diffVisible = $derived(visibleWorkspacePanels.some((panel) => panel.id === "diff"));
+  const workspaceGridStyle = $derived(`grid-template-columns: ${groupPanelsVisible && diffVisible ? `minmax(0, ${workspaceDividerWidth}fr) 5px minmax(0, ${100 - workspaceDividerWidth}fr)` : "minmax(0, 1fr)"}; grid-template-areas: ${groupPanelsVisible && diffVisible ? (workspaceLayout === "group-left" ? '"group . diff"' : '"diff . group"') : groupPanelsVisible ? '"group"' : '"diff"'};`);
+  void isResizingSidebar; void startSidebarResize; void handleResizerKeydown; void isResizingDock; void startDockResize; void handleDockResizerKeydown; void handleWorkspaceSettingsKeydown; void handleWorkspaceSettingsOutside;
+ </script>
 
+{#snippet workspacePanel(panelId: WorkspacePanelId, index: number)}
+  {@const siblings = orderedWorkspacePanels()}
+  {@const prev = index > 0 ? siblings[index - 1] : null}
+  {@const next = index < siblings.length - 1 ? siblings[index + 1] : null}
+  {@const connectedTop = prev === "file" && panelId === "commit"}
+  {@const connectedBottom = panelId === "file" && next === "commit"}
+  <article class="workspace-panel-card {panelId === 'commit' ? 'workspace-commit-card' : ''} {connectedTop ? 'is-connected-top' : ''} {connectedBottom ? 'is-connected-bottom' : ''}" style={panelId === "commit" ? `--commit-panel-h: ${commitPanelHeight}px;` : undefined} data-panel={panelId} role="listitem" draggable={panelId !== "diff"} ondragstart={() => panelDragStart(panelId)} ondragover={(event) => event.preventDefault()} ondrop={(event) => { event.stopPropagation(); panelDrop(panelId); }}>
+    {#if panelId === "file"}
+      <Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="files" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onAbortRebase={handleAbortRebase} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} />
+    {:else if panelId === "commit"}
+      <div class="commit-panel-content" style={`height: ${commitPanelHeight}px; flex-basis: ${commitPanelHeight}px;`}><Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="commit" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onAbortRebase={handleAbortRebase} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} /></div>
+      {:else if panelId === "diff"}
+        {#if selectedFile}<Diff repoPath={activeRepo} {externalEditorLabel} filePath={selectedFile.path} diffText={currentDiff} imageDiffData={currentImageDiff} {ignoreWhitespace} isLfs={selectedFile.is_lfs} isStaged={selectedFile.staged} onToggleWhitespace={toggleWhitespace} onAddToGitignore={handleAddToGitignore} onStageHunk={handleStageHunk} onStageLines={handleStageLines} onInspectFile={(fp: string, mode: "blame" | "history") => (inspectFileState = { path: fp, mode })} onAiExplainDiff={handleAiExplainDiff} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onStatus={setStatus} prComments={prReviewComments} activePrNumber={activePrReviewNumber} onCreatePrComment={handleCreatePrComment} />{:else}<div class="empty-state">{t("diff.emptyDiff")}</div>{/if}
+      {/if}
+    </article>
+    {#if (panelId === "file" && next === "commit") || (panelId === "commit" && next === "file")}
+      <div class="commit-panel-resizer {isResizingCommit ? 'is-resizing' : ''}" role="separator" aria-orientation="horizontal" aria-label={t("changes.commitMessageTitle")} aria-valuemin={COMMIT_MIN} aria-valuemax={COMMIT_MAX} aria-valuenow={commitPanelHeight} tabindex="0" onpointerdown={startCommitResize} onkeydown={handleCommitResizerKeydown}></div>
+    {/if}
+  {/snippet}
 <div class="app-container">
   <header class="app-header">
     <div class="header-left">
@@ -2463,6 +2679,58 @@
               <path d="M1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 14H1.75A1.75 1.75 0 0 1 0 12.25v-8.5C0 2.784.784 2 1.75 2Zm0 1.5a.25.25 0 0 0-.25.25v2.75h13V3.75a.25.25 0 0 0-.25-.25H1.75ZM1.5 8v4.25c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V8H1.5Zm4 1.5h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5Z" />
             </svg>
           </button>
+          <div class="menu-wrapper" data-workspace-settings>
+            <button
+              type="button"
+              class="icon-btn"
+              bind:this={workspaceSettingsButton}
+              onclick={() => {
+                workspaceSettingsOpen = !workspaceSettingsOpen;
+                syncMenuOpen = false;
+                toolsMenuOpen = false;
+              }}
+              title={t("workspaceSettings.title")}
+              aria-label={t("workspaceSettings.title")}
+              aria-expanded={workspaceSettingsOpen}
+              aria-haspopup="true"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+            {#if workspaceSettingsOpen}
+              <div class="popover-menu workspace-settings-popover" role="menu" aria-label={t("workspaceSettings.title")}>
+                <div class="workspace-settings-head">
+                  <span class="workspace-settings-title">{t("workspaceSettings.title")}</span>
+                  <button type="button" class="link-btn workspace-settings-reset" onclick={resetWorkspacePanels}>
+                    {t("workspaceSettings.reset")}
+                  </button>
+                </div>
+                <div class="workspace-settings-list">
+                  {#each workspacePanels as panel (panel.id)}
+                    <div class="workspace-settings-row" data-panel-id={panel.id}>
+                      <span class="workspace-settings-label">{t(PANEL_LABEL_KEYS[panel.id])}</span>
+                      <button type="button" class="eye-btn {panel.visible ? 'is-visible' : ''}" onclick={() => toggleWorkspacePanel(panel.id)} title={panel.visible ? t("workspaceSettings.hide") : t("workspaceSettings.show")} aria-label={panel.visible ? t("workspaceSettings.hide") : t("workspaceSettings.show")} aria-pressed={panel.visible}>
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1.2 8s2.2-4 6.8-4 6.8 4 6.8 4-2.2 4-6.8 4S1.2 8 1.2 8Z" /><circle cx="8" cy="8" r="1.8" fill="currentColor" stroke="none" />{#if !panel.visible}<path d="M2 2 14 14" stroke-width="1.8" stroke-linecap="round" />{/if}</svg>
+                      </button>
+                    </div>
+                  {/each}
+                </div>
+                <fieldset class="workspace-settings-choice">
+                  <legend>{t("workspaceSettings.layout")}</legend>
+                  <label><input type="radio" name="workspace-layout" checked={workspaceLayout === "group-left"} onchange={() => setWorkspaceLayout("group-left")} /> {t("workspaceSettings.layoutGroupLeft")}</label>
+                  <label><input type="radio" name="workspace-layout" checked={workspaceLayout === "group-right"} onchange={() => setWorkspaceLayout("group-right")} /> {t("workspaceSettings.layoutGroupRight")}</label>
+                </fieldset>
+                <fieldset class="workspace-settings-choice">
+                  <legend>{t("workspaceSettings.stackOrder")}</legend>
+                  <label><input type="radio" name="workspace-order" checked={workspacePanels.find((panel) => panel.id === "file")?.order === 0} onchange={() => { if (workspacePanels.find((panel) => panel.id === "file")?.order !== 0) swapWorkspaceOrder(); }} /> {t("workspaceSettings.fileAboveCommit")}</label>
+                  <label><input type="radio" name="workspace-order" checked={workspacePanels.find((panel) => panel.id === "commit")?.order === 0} onchange={() => { if (workspacePanels.find((panel) => panel.id === "commit")?.order !== 0) swapWorkspaceOrder(); }} /> {t("workspaceSettings.commitAboveFile")}</label>
+                </fieldset>
+                <p class="workspace-settings-hint">{t("workspaceSettings.hint")}</p>
+              </div>
+            {/if}
+          </div>
         </div>
         <button type="button" class="icon-btn" onclick={() => loadRepo(activeRepo)} disabled={isLoading} title={t("app.refreshRepo")} aria-label={t("app.refreshRepo")}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -2894,161 +3162,32 @@
   {:else}
     <main class="app-body {activeView === 'history' ? 'history-mode' : ''}" style="--sidebar-w: {sidebarWidth}px;">
       {#if activeView === "changes"}
-        <aside class="sidebar-panel">
-          <Changes
-            repoPath={activeRepo}
-            {externalEditorLabel}
-            status={currentStatus}
-            {selectedFile}
-            onSelectFile={selectFile}
-            onToggleStage={toggleStage}
-            onStageAll={handleStageAll}
-            onUnstageAll={handleUnstageAll}
-            onCommit={handleCommit}
-            onUndoCommit={handleUndoCommit}
-            onAbortMerge={handleAbortMerge}
-            onAbortRebase={handleAbortRebase}
-            onDiscardFile={handleDiscardFile}
-            onDiscardAll={handleDiscardAll}
-            onAddToGitignore={handleAddToGitignore}
-            onRevealFile={openInFileManagerTarget}
-            onOpenInEditor={openInEditorFile}
-            onOpenConflictEditor={(fp) => (conflictFilePath = fp)}
-            onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })}
-            onAiGenerateCommit={handleAiGenerateCommit}
-            onOpenStash={() => (activeModal = "stash")}
-            onStatus={setStatus}
-            issues={issues.map((i) => ({ number: i.number, title: i.title }))}
-          />
-        </aside>
-
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-        <div
-          class="sidebar-resizer {isResizingSidebar ? 'is-resizing' : ''}"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={t("app.sidebarResizer.aria")}
-          aria-valuemin={SIDEBAR_MIN}
-          aria-valuemax={SIDEBAR_MAX}
-          aria-valuenow={sidebarWidth}
-          tabindex="0"
-          title={t("app.sidebarResizer.title")}
-          onpointerdown={startSidebarResize}
-          onkeydown={handleResizerKeydown}
-          ondblclick={() => updateSidebarWidth(SIDEBAR_DEFAULT)}
-        ></div>
-      {/if}
-      <section class="content-panel {activeView === 'history' ? 'is-full-width' : ''}">
-        {#if activeView === "changes"}
-          {#if selectedFile}
-            <Diff
-              repoPath={activeRepo}
-              {externalEditorLabel}
-              filePath={selectedFile.path}
-              diffText={currentDiff}
-              imageDiffData={currentImageDiff}
-              {ignoreWhitespace}
-              isLfs={selectedFile.is_lfs}
-              isStaged={selectedFile.staged}
-              onToggleWhitespace={toggleWhitespace}
-              onAddToGitignore={handleAddToGitignore}
-              onStageHunk={handleStageHunk}
-              onStageLines={handleStageLines}
-              onInspectFile={(fp: string, mode: "blame" | "history") => (inspectFileState = { path: fp, mode })}
-              onAiExplainDiff={handleAiExplainDiff}
-              onRevealFile={openInFileManagerTarget}
-              onOpenInEditor={openInEditorFile}
-              onStatus={setStatus}
-              prComments={prReviewComments}
-              activePrNumber={activePrReviewNumber}
-              onCreatePrComment={handleCreatePrComment}
-            />
-          {:else}
-            <div class="empty-state">
-              <div class="empty-state-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
-                  {#if currentStatus.files.length === 0}
-                    <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
-                  {:else}
-                    <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z" />
-                  {/if}
-                </svg>
-              </div>
-              {#if currentStatus.files.length === 0}
-                {#if !currentStatus.has_commits}
-                  <div style="font-weight: 600; color: var(--text-primary);">{t("app.emptyChanges.emptyRepoTitle")}</div>
-                  <span style="font-size: 12px; max-width: 360px;">
-                    {t("app.emptyChanges.emptyRepoDesc", { branch: formatBranchDisplay(currentStatus.branch) })}
-                  </span>
-                  <div class="empty-state-actions">
-                    {#if !hasRemote}
-                      <button type="button" class="btn-secondary btn-xs" onclick={() => (activeModal = "remote")}>
-                        {t("app.connectRemote")}
-                      </button>
-                    {/if}
-                    <button type="button" class="btn-secondary btn-xs" onclick={openInEditor}>
-                      {t("app.emptyChanges.openInEditor")}
-                    </button>
-                  </div>
-                {:else}
-                  <div style="font-weight: 600; color: var(--text-primary);">{t("app.emptyChanges.cleanTreeTitle")}</div>
-                  <span style="font-size: 12px; max-width: 340px;">
-                    {t("app.emptyChanges.cleanTreeDesc", { branch: formatBranchDisplay(currentStatus.branch) })}
-                  </span>
-                  <div class="empty-state-actions">
-                    <button type="button" class="btn-secondary btn-xs" onclick={() => switchView("history")}>
-                      {t("app.emptyChanges.viewHistory")}
-                    </button>
-                    {#if hasRemote}
-                      <button type="button" class="btn-secondary btn-xs" onclick={handleFetch} disabled={isLoading}>
-                        {t("app.emptyChanges.fetchRemote")}
-                      </button>
-                    {/if}
-                  </div>
-                {/if}
-              {:else}
-                <div style="font-weight: 600; color: var(--text-primary);">{t("app.emptyChanges.selectFileTitle")}</div>
-                <span style="font-size: 12px; max-width: 340px;">
-                  {t("app.emptyChanges.selectFileDesc", { count: currentStatus.files.length })}
-                </span>
-              {/if}
-            </div>
+        <div class="workspace-layout-panels {workspaceLayout} {workspaceDividerDragging ? 'is-resizing' : ''} {groupPanelsVisible && diffVisible ? 'has-two-regions' : groupPanelsVisible ? 'has-group-only' : diffVisible ? 'has-diff-only' : 'has-no-panels'}" style={workspaceGridStyle}>
+          <section class="workspace-group" role="list" aria-label={t("workspaceSettings.groupLabel")}>
+            {#each orderedWorkspacePanels() as panelId, index (panelId)}
+              {@render workspacePanel(panelId, index)}
+            {:else}
+              <div class="workspace-center-empty"><span class="workspace-center-empty-title">{t("workspaceSettings.groupEmpty")}</span></div>
+            {/each}
+          </section>
+          {#if groupPanelsVisible && diffVisible}
+            <div class="workspace-region-divider" role="separator" aria-orientation="vertical" aria-label={t("workspaceSettings.resizeRegions")} tabindex="0" onpointerdown={startWorkspaceDividerResize} onkeydown={handleWorkspaceDividerKeydown}></div>
           {/if}
-        {:else}
-          <History
-            repoPath={activeRepo}
-            {externalEditorLabel}
-            remoteWebUrl={hostingRepoInfo?.web_url || (githubRepoInfo ? `https://${githubRepoInfo.host}/${githubRepoInfo.owner}/${githubRepoInfo.repo}` : null)}
-            accounts={accountOverview.accounts}
-            {commits}
-            searchQuery={historySearch}
-            onSearchChange={(q) => (historySearch = q)}
-            {allBranches}
-            {branches}
-            currentBranch={currentStatus?.branch || ""}
-            selectedBranches={selectedHistoryBranches}
-            onFilterBranches={handleFilterBranches}
-            {tags}
-            onCreateTag={() => openCreateTagModal(null)}
-            onInteractiveRebase={openInteractiveRebase}
-            onTagContextMenu={openSidebarTagContextMenu}
-            {checkRunsMap}
-            onCherryPick={handleCherryPick}
-            onRevert={handleRevert}
-            onTag={(sha) => openCreateTagModal(sha)}
-            onDeleteTag={handleDeleteTag}
-            onReset={handleReset}
-            onSquash={(idx) => handleOpenSquash(idx)}
-            onEditCommitMessage={handleOpenRewordModal}
-            onMergeBranch={handleMergeBranchFromGraph}
-            onRebaseBranch={handleRebaseBranchFromGraph}
-            onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })}
-            onAiExplainCommit={handleAiExplainCommit}
-            onRevealFile={openInFileManagerTarget}
-            onOpenInEditor={openInEditorFile}
-          />
-        {/if}
-      </section>
+          {#if diffVisible}
+            <section class="workspace-diff" role="list" aria-label={t("workspaceSettings.panelDiff")}>
+              {@render workspacePanel("diff", 0)}
+            </section>
+          {/if}
+          {#if !groupPanelsVisible && !diffVisible}
+            <div class="workspace-all-empty"><span class="workspace-center-empty-title">{t("workspaceSettings.empty")}</span></div>
+          {/if}
+        </div>
+      {/if}
+      {#if activeView === "history"}
+        <section class="content-panel is-full-width">
+          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} />
+        </section>
+      {/if}
     </main>
   {/if}
 

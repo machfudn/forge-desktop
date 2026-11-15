@@ -472,6 +472,150 @@ a {
 .app-body:has(.content-panel.is-full-width) {
   grid-template-columns: 1fr;
 }
+.workspace-layout-panels { display: grid; grid-template-columns: minmax(0, 1fr) 5px minmax(0, 1fr); grid-template-areas: "group . diff"; grid-column: 1 / -1; width: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.workspace-layout-panels.group-right { grid-template-areas: "diff . group"; }
+.workspace-layout-panels.has-group-only { grid-template-columns: minmax(0, 1fr); grid-template-areas: "group"; }
+.workspace-layout-panels.has-diff-only { grid-template-columns: minmax(0, 1fr); grid-template-areas: "diff"; }
+.workspace-layout-panels.has-no-panels { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "empty"; place-items: center; }
+.workspace-layout-panels:not(.has-two-regions) .workspace-region-divider { display: none; }
+.workspace-all-empty { grid-area: empty; align-self: stretch; justify-self: stretch; display: grid; place-items: center; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 24px; }
+.workspace-region-divider { grid-column: 2; grid-row: 1; width: 5px; min-height: 0; cursor: col-resize; touch-action: none; background: var(--border-default); z-index: 2; }
+.workspace-region-divider:hover, .workspace-region-divider:focus-visible { background: var(--accent-blue); outline: none; }
+.workspace-diff { grid-area: diff; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 6px; background: var(--bg-canvas); }
+.workspace-group { grid-area: group; display: flex; flex-direction: column; gap: 6px; padding: 6px; min-width: 0; min-height: 0; overflow: hidden; }
+.workspace-group > .workspace-panel-card, .workspace-diff > .workspace-panel-card { min-width: 0; min-height: 0; }
+.workspace-panel-card { flex: 1 1 0; min-height: 0; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: var(--radius-sm); display: flex; flex-direction: column; }
+.workspace-panel-card[data-panel="file"] { flex: 1 1 0; min-height: 132px; }
+.workspace-panel-card.workspace-commit-card { flex: 0 0 var(--commit-panel-h, 300px); min-height: 0; max-height: calc(100% - 132px); height: auto; }
+.workspace-panel-card[draggable="true"] { cursor: grab; }
+.workspace-panel-card.is-connected-top { border-top-left-radius: 0; border-top-right-radius: 0; margin-top: -7px; }
+.workspace-panel-card.is-connected-bottom { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.workspace-panel-card .commit-box { flex: 1 1 auto; min-height: 0; max-height: none; border-top: 0; overflow-y: auto; }
+.commit-panel-content { min-height: 0; overflow-x: hidden; overflow-y: auto; display: flex; flex: 1 1 0; flex-direction: column; }
+.commit-panel-content .commit-box { min-height: 0; max-height: none; flex: 1 0 auto; overflow-y: visible; }
+.commit-panel-resizer { position: relative; z-index: 2; flex: 0 0 7px; margin: 0 -2px; cursor: row-resize; touch-action: none; background: var(--border-default); }
+.commit-panel-resizer::after { content: ""; position: absolute; inset: 1px 0; background: var(--border-default); }
+.commit-panel-resizer:hover::after, .commit-panel-resizer:focus-visible::after, .commit-panel-resizer.is-resizing::after { background: var(--accent-blue); }
+.workspace-center-empty, .workspace-all-empty { margin: auto; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); }
+.workspace-center-empty-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.workspace-settings-choice { border: 0; padding: 6px; margin: 0; display: grid; gap: 5px; color: var(--text-secondary); font-size: 11px; }
+.workspace-settings-choice legend { font-weight: 650; color: var(--text-primary); }
+.workspace-settings-choice label { display: flex; gap: 6px; align-items: flex-start; line-height: 1.35; }
+.dock-resizer {
+  position: relative;
+  height: 5px;
+  cursor: row-resize;
+  touch-action: none;
+  background: transparent;
+  z-index: 1;
+}
+.dock-resizer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 1px;
+  background-color: var(--border-default);
+  transition: background-color 0.12s ease, height 0.12s ease, top 0.12s ease;
+}
+.dock-resizer:hover::before,
+.dock-resizer:focus-visible::before,
+.dock-resizer.is-resizing::before { height: 3px; top: 1px; background-color: var(--accent-blue); }
+.dock-resizer::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 24px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background-color: var(--border-strong);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.dock-resizer:hover::after,
+.dock-resizer:focus-visible::after,
+.dock-resizer.is-resizing::after { opacity: 1; background-color: var(--accent-blue); }
+.dock-resizer:focus-visible { outline: none; }
+
+.workspace-settings-popover { min-width: 272px; max-width: 320px; gap: 6px; }
+.workspace-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px 2px;
+}
+.workspace-settings-title {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.workspace-settings-reset { min-height: 24px; padding: 3px 8px; font-size: 11px; }
+.workspace-settings-list { display: flex; flex-direction: column; gap: 2px; }
+.workspace-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+}
+.workspace-settings-grip { color: var(--text-muted); display: inline-flex; flex-shrink: 0; opacity: 0.8; }
+.workspace-settings-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dock-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  flex-shrink: 0;
+}
+.dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.dock-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.dock-btn.is-active { background: var(--bg-panel); color: var(--text-accent); box-shadow: var(--shadow-sm); }
+.dock-btn:focus-visible { outline: none; }
+.eye-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.eye-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.eye-btn.is-visible { color: var(--text-secondary); }
+.eye-btn:focus-visible { outline: none; }
+.workspace-settings-hint { margin: 2px 6px 0; font-size: 10px; line-height: 1.45; color: var(--text-muted); }
 
 .content-panel.is-full-width {
   grid-column: 1 / -1;
@@ -970,149 +1114,6 @@ button.tag-badge:hover {
   padding-right: 54px;
 }
 
-/* Commit message panel: controls first, then one joined writing surface. */
-.commit-box {
-  gap: 0;
-  padding: 10px 12px 12px;
-}
-
-.commit-box-heading {
-  align-items: center;
-  padding: 2px 2px 8px;
-}
-
-.commit-box-heading p {
-  display: none;
-}
-
-.commit-box-count {
-  padding: 2px 6px;
-  border: 1px solid var(--border-muted);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-}
-
-.commit-summary-wrap {
-  gap: 5px;
-}
-
-.commit-summary-wrap .commit-field-label,
-.commit-description-field .commit-field-head {
-  position: static;
-  width: auto;
-  height: auto;
-  overflow: visible;
-  clip: auto;
-  white-space: normal;
-}
-
-.commit-summary-input,
-.commit-desc-input {
-  border-color: var(--border-default);
-  background: var(--bg-input);
-}
-
-.commit-summary-input {
-  min-height: 34px;
-  border-radius: var(--radius-sm);
-  padding-top: 8px;
-  padding-bottom: 8px;
-  font-size: 12px;
-}
-
-.commit-description-field {
-  gap: 5px;
-  margin-top: 8px;
-}
-
-.commit-desc-input {
-  min-height: 78px;
-  margin-top: 0;
-  border-radius: var(--radius-sm);
-  border-top-color: var(--border-default);
-  padding-top: 8px;
-  line-height: 1.45;
-}
-
-.commit-box-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 0 12px;
-}
-
-.commit-box-toolbar .link-btn {
-  min-height: 30px;
-  padding: 5px 9px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--bg-input);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.commit-box-toolbar .link-btn:hover:not(:disabled) {
-  border-color: var(--text-accent);
-  color: var(--text-accent);
-}
-
-.commit-box-toolbar .link-btn.is-active {
-  border-color: var(--text-accent);
-  background: color-mix(in srgb, var(--text-accent) 14%, var(--bg-input));
-  color: var(--text-accent);
-  box-shadow: inset 0 -2px 0 var(--text-accent);
-}
-
-.commit-box-toolbar .link-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.commit-amend-option {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 12px 0 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border-muted);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.commit-amend-option:has(input:checked) {
-  border-color: var(--warn-text);
-  background: var(--warn-bg);
-  color: var(--warn-text);
-}
-
-.commit-box .btn-commit {
-  min-height: 34px;
-  margin: 12px 0 10px;
-}
-
-.commit-box .btn-commit + .btn-secondary {
-  margin-top: 2px;
-}
-
-.commit-box .btn-secondary.btn-xs {
-  margin-bottom: 2px;
-}
-
-.commit-quick-actions {
-  min-height: 28px;
-  gap: 2px 12px;
-  padding: 4px 2px 0;
-}
-
-.commit-type-row {
-  margin-top: 6px;
-  padding: 7px 8px;
-  border: 1px solid var(--border-muted);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-}
 
 @media (max-width: 480px) {
   .commit-box-toolbar {
@@ -4060,6 +4061,15 @@ select optgroup {
 
   .footer-path {
     max-width: 100%;
+  }
+  .workspace-layout-panels {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    overflow: auto;
+  }
+  .sidebar-resizer,
+  .dock-resizer {
+    display: none;
   }
 }
 

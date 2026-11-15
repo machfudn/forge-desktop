@@ -13,6 +13,7 @@
     repoPath?: string;
     externalEditorLabel?: string;
     status: RepoStatus;
+    panelMode?: "files" | "commit";
     selectedFile: FileEntry | null;
     onSelectFile: (file: FileEntry) => void;
     onToggleStage: (file: FileEntry) => void;
@@ -34,11 +35,12 @@
     onStatus?: (msg: string, isError?: boolean) => void;
     issues?: { number: number; title: string }[];
   }
-
+ 
   let {
     repoPath = "",
     externalEditorLabel = "Editor",
     status,
+    panelMode = "files",
     selectedFile,
     onSelectFile,
     onToggleStage,
@@ -60,6 +62,7 @@
     onStatus,
     issues = [],
   }: Props = $props();
+
   const EMOJI_LIST = $derived([
     { code: ":sparkles:", emoji: "✨", desc: t("changes.emoji.sparkles") },
     { code: ":bug:", emoji: "🐛", desc: t("changes.emoji.bug") },
@@ -423,23 +426,24 @@
   }
 </script>
 
-{#if status.in_merge}
-  <div class="alert-banner">
-    <span>{t("changes.inMerge")}</span>
-    <button type="button" onclick={onAbortMerge} class="btn-secondary btn-xs btn-danger">
-      {t("changes.abortMerge")}
-    </button>
-  </div>
-{:else if status.in_rebase}
-  <div class="alert-banner">
-    <span>{t("changes.inRebase")}</span>
-    <button type="button" onclick={onAbortRebase} class="btn-secondary btn-xs btn-danger">
-      {t("changes.abortRebase")}
-    </button>
-  </div>
-{/if}
+{#if panelMode === "files"}
+  {#if status.in_merge}
+    <div class="alert-banner">
+      <span>{t("changes.inMerge")}</span>
+      <button type="button" onclick={onAbortMerge} class="btn-secondary btn-xs btn-danger">
+        {t("changes.abortMerge")}
+      </button>
+    </div>
+  {:else if status.in_rebase}
+    <div class="alert-banner">
+      <span>{t("changes.inRebase")}</span>
+      <button type="button" onclick={onAbortRebase} class="btn-secondary btn-xs btn-danger">
+        {t("changes.abortRebase")}
+      </button>
+    </div>
+  {/if}
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="sidebar-header" oncontextmenu={openListContextMenu}>
   <h3 class="tabular-nums">
     {stagedCount > 0
@@ -554,6 +558,8 @@
     {/each}
   {/if}
 </ul>
+{/if}
+{#if panelMode === "commit"}
 
 <div class="commit-box">
   <div class="commit-box-heading">
@@ -778,3 +784,4 @@
     </button>
   {/if}
 </div>
+{/if}

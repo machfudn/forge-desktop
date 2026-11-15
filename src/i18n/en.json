@@ -228,8 +228,8 @@
     "abortMerge": "Abort Merge",
     "inRebase": "Rebase in Progress",
     "abortRebase": "Abort Rebase",
-    "headerTitle": "Changes ({total})",
-    "headerTitleStaged": "Changes ({total} · {staged} staged)",
+    "headerTitle": "File Changes ({total})",
+    "headerTitleStaged": "File Changes ({total} · {staged} staged)",
     "discardAllBtn": "Discard",
     "discardAllTitle": "Discard all file changes",
     "stageAllBtn": "Stage",
@@ -1224,5 +1224,30 @@
     "resetStatus": "Git bisect reset to original HEAD",
     "selectBothCommits": "Please select both a good and bad commit.",
     "toolsMenu": "Git Bisect Wizard..."
+  }
+  ,"workspaceSettings": {
+    "title": "Panel layout",
+    "empty": "No workspace panels visible",
+    "groupEmpty": "No File Changes or Commit panels visible",
+    "reset": "Reset panels",
+    "panelFile": "File changes",
+    "panelCommit": "Commit box",
+    "panelDiff": "Diff",
+    "dockLeft": "Left",
+    "dockRight": "Right",
+    "dockTop": "Top",
+    "dockBottom": "Bottom",
+    "dockCenter": "Center",
+    "show": "Show",
+    "hide": "Hide",
+    "groupLabel": "File and commit panels",
+    "layout": "Layout",
+    "layoutGroupLeft": "File Changes + Commit left / Diff right",
+    "layoutGroupRight": "Diff left / File Changes + Commit right",
+    "stackOrder": "Stack order",
+    "fileAboveCommit": "File Changes above Commit",
+    "commitAboveFile": "Commit above File Changes",
+    "resizeRegions": "Resize workspace panels",
+    "hint": "Choose panel visibility, layout, and stack order."
   }
 }
