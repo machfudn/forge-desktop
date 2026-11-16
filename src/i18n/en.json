@@ -1242,7 +1242,6 @@
   ,"workspaceSettings": {
     "title": "Panel layout",
     "empty": "No workspace panels visible",
-    "groupEmpty": "No File Changes or Commit panels visible",
     "reset": "Reset panels",
     "panelFile": "File changes",
     "panelCommit": "Commit box",

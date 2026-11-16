@@ -496,7 +496,7 @@ a {
 .commit-panel-resizer { position: relative; z-index: 2; flex: 0 0 7px; margin: 0 -2px; cursor: row-resize; touch-action: none; background: var(--border-default); }
 .commit-panel-resizer::after { content: ""; position: absolute; inset: 1px 0; background: var(--border-default); }
 .commit-panel-resizer:hover::after, .commit-panel-resizer:focus-visible::after, .commit-panel-resizer.is-resizing::after { background: var(--accent-blue); }
-.workspace-center-empty, .workspace-all-empty { margin: auto; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); }
+.workspace-all-empty { margin: auto; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); }
 .workspace-center-empty-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 .workspace-settings-choice { border: 0; padding: 6px; margin: 0; display: grid; gap: 5px; color: var(--text-secondary); font-size: 11px; }
 .workspace-settings-choice legend { font-weight: 650; color: var(--text-primary); }

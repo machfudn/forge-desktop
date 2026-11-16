@@ -2431,7 +2431,7 @@
   const visibleWorkspacePanels = $derived(workspacePanels.filter((panel) => panel.visible));
   const groupPanelsVisible = $derived(orderedWorkspacePanels().length > 0);
   const diffVisible = $derived(visibleWorkspacePanels.some((panel) => panel.id === "diff"));
-  const workspaceGridStyle = $derived(`grid-template-columns: ${groupPanelsVisible && diffVisible ? `minmax(0, ${workspaceDividerWidth}fr) 5px minmax(0, ${100 - workspaceDividerWidth}fr)` : "minmax(0, 1fr)"}; grid-template-areas: ${groupPanelsVisible && diffVisible ? (workspaceLayout === "group-left" ? '"group . diff"' : '"diff . group"') : groupPanelsVisible ? '"group"' : '"diff"'};`);
+  const workspaceGridStyle = $derived(`grid-template-columns: ${groupPanelsVisible && diffVisible ? `minmax(0, ${workspaceDividerWidth}fr) 5px minmax(0, ${100 - workspaceDividerWidth}fr)` : "minmax(0, 1fr)"}; grid-template-areas: ${groupPanelsVisible && diffVisible ? (workspaceLayout === "group-left" ? '"group . diff"' : '"diff . group"') : groupPanelsVisible ? '"group"' : diffVisible ? '"diff"' : '"empty"'};`);
   void isResizingSidebar; void startSidebarResize; void handleResizerKeydown; void isResizingDock; void startDockResize; void handleDockResizerKeydown; void handleWorkspaceSettingsKeydown; void handleWorkspaceSettingsOutside;
  </script>
 
@@ -3185,13 +3185,13 @@
     <main class="app-body {activeView === 'history' ? 'history-mode' : ''}" style="--sidebar-w: {sidebarWidth}px;">
       {#if activeView === "changes"}
         <div class="workspace-layout-panels {workspaceLayout} {workspaceDividerDragging ? 'is-resizing' : ''} {groupPanelsVisible && diffVisible ? 'has-two-regions' : groupPanelsVisible ? 'has-group-only' : diffVisible ? 'has-diff-only' : 'has-no-panels'}" style={workspaceGridStyle}>
-          <section class="workspace-group" role="list" aria-label={t("workspaceSettings.groupLabel")}>
-            {#each orderedWorkspacePanels() as panelId, index (panelId)}
-              {@render workspacePanel(panelId, index)}
-            {:else}
-              <div class="workspace-center-empty"><span class="workspace-center-empty-title">{t("workspaceSettings.groupEmpty")}</span></div>
-            {/each}
-          </section>
+          {#if groupPanelsVisible}
+            <section class="workspace-group" role="list" aria-label={t("workspaceSettings.groupLabel")}>
+              {#each orderedWorkspacePanels() as panelId, index (panelId)}
+                {@render workspacePanel(panelId, index)}
+              {/each}
+            </section>
+          {/if}
           {#if groupPanelsVisible && diffVisible}
             <div class="workspace-region-divider" role="separator" aria-orientation="vertical" aria-label={t("workspaceSettings.resizeRegions")} tabindex="0" onpointerdown={startWorkspaceDividerResize} onkeydown={handleWorkspaceDividerKeydown}></div>
           {/if}
