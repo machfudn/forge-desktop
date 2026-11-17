@@ -2653,6 +2653,14 @@
                       <option value="neobrutalism-dark">{t("wsModal.settings.themeNeoDark")}</option>
                       <option value="neobrutalism-light">{t("wsModal.settings.themeNeoLight")}</option>
                     </optgroup>
+                    <optgroup label="Risograph">
+                      <option value="riso-dark">{t("wsModal.settings.themeRisoDark")}</option>
+                      <option value="riso-light">{t("wsModal.settings.themeRisoLight")}</option>
+                    </optgroup>
+                    <optgroup label="Blueprint">
+                      <option value="blueprint-dark">{t("wsModal.settings.themeBlueprintDark")}</option>
+                      <option value="blueprint-light">{t("wsModal.settings.themeBlueprintLight")}</option>
+                    </optgroup>
                     <option value="system">{t("wsModal.settings.themeSystem")}</option>
                   </select>
                 </div>
