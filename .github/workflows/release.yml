@@ -203,6 +203,16 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
+      - name: Free Disk Space (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force 2>/dev/null || true
+          df -h
+
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -221,6 +231,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm libfuse2 file xdg-utils
+          sudo apt-get clean
 
       - name: Install Frontend Dependencies
         run: npm ci
