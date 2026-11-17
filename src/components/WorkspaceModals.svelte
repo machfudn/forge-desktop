@@ -2645,10 +2645,14 @@
                 <div class="settings-row">
                   <label class="form-label" for="theme-select">{t("wsModal.settings.themeLabel")}</label>
                   <select id="theme-select" class="form-select" bind:value={draftTheme}>
-                    <option value="dark">{t("wsModal.settings.themeDark")}</option>
-                    <option value="light">{t("wsModal.settings.themeLight")}</option>
-                    <option value="neo-dark">{t("wsModal.settings.themeNeoDark")}</option>
-                    <option value="neo-light">{t("wsModal.settings.themeNeoLight")}</option>
+                    <optgroup label={t("wsModal.settings.themeGroupStandard")}>
+                      <option value="dark">{t("wsModal.settings.themeDark")}</option>
+                      <option value="light">{t("wsModal.settings.themeLight")}</option>
+                    </optgroup>
+                    <optgroup label="Neo-Brutalism">
+                      <option value="neobrutalism-dark">{t("wsModal.settings.themeNeoDark")}</option>
+                      <option value="neobrutalism-light">{t("wsModal.settings.themeNeoLight")}</option>
+                    </optgroup>
                     <option value="system">{t("wsModal.settings.themeSystem")}</option>
                   </select>
                 </div>

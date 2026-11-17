@@ -141,7 +141,12 @@
 
   // Settings & preferences
   let activeLocale = $state<Locale>(getLocale());
-  let activeTheme = $state(localStorage.getItem("forge_theme") || "dark");
+  function readInitialTheme(): string {
+    const saved = localStorage.getItem("forge_theme") || "dark";
+    // Migration for the first neo option names.
+    return saved.startsWith("neo-") ? `neobrutalism-${saved.slice(4)}` : saved;
+  }
+  let activeTheme = $state(readInitialTheme());
   function readInitialAutofetchSeconds(): number {
     const secRaw = localStorage.getItem("forge_autofetch_seconds");
     if (secRaw !== null) {
@@ -627,21 +632,21 @@
   }
 
   function applyTheme(theme: string) {
-    const isNeo = theme.startsWith("neo-");
-    let resolved = isNeo ? theme.slice(4) : theme;
+    const cut = theme.lastIndexOf("-");
+    const mode = cut > 0 ? theme.slice(cut + 1) : theme;
+    const isStyleTheme = mode === "dark" || mode === "light";
+    let resolved = isStyleTheme ? mode : theme;
     if (resolved === "system") {
       resolved = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     }
     const root = document.documentElement;
     root.setAttribute("data-theme", resolved);
-    if (isNeo) root.setAttribute("data-style", "neobrutalism");
+    if (isStyleTheme && cut > 0) root.setAttribute("data-style", theme.slice(0, cut));
     else root.removeAttribute("data-style");
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
-      const bg = isNeo
-        ? resolved === "light" ? "#f2efe6" : "#0c0c0c"
-        : resolved === "light" ? "#ffffff" : "#0d1117";
-      metaTheme.setAttribute("content", bg);
+      const bg = getComputedStyle(root).getPropertyValue("--bg-app").trim();
+      if (bg) metaTheme.setAttribute("content", bg);
     }
   }
 
