@@ -1,6 +1,6 @@
 [package]
 name = "forge-desktop"
-version = "1.1.4"
+version = "1.1.5"
 description = "Native Git Desktop Client"
 authors = ["Machfudin"]
 license = "GPL-3.0-or-later"
