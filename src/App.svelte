@@ -211,105 +211,7 @@
   let sidebarWidth = $state(
     clampSidebarWidth(Number(localStorage.getItem("forge_sidebar_width") || SIDEBAR_DEFAULT))
   );
-  let isResizingSidebar = $state(false);
 
-  function updateSidebarWidth(next: number) {
-    const clamped = clampSidebarWidth(next);
-    sidebarWidth = clamped;
-    localStorage.setItem("forge_sidebar_width", String(clamped));
-  }
-
-  function startSidebarResize(e: PointerEvent) {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = sidebarWidth;
-    isResizingSidebar = true;
-
-    const onMove = (ev: PointerEvent) => {
-      updateSidebarWidth(startW + (ev.clientX - startX));
-    };
-    const onUp = () => {
-      isResizingSidebar = false;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-  }
-
-  function handleResizerKeydown(e: KeyboardEvent) {
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      updateSidebarWidth(sidebarWidth - (e.shiftKey ? 24 : 12));
-    } else if (e.key === "ArrowRight") {
-      e.preventDefault();
-      updateSidebarWidth(sidebarWidth + (e.shiftKey ? 24 : 12));
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      updateSidebarWidth(SIDEBAR_MIN);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      updateSidebarWidth(SIDEBAR_MAX);
-    }
-  }
-
-  const DOCK_MIN = 140;
-  const DOCK_MAX = 460;
-  const DOCK_DEFAULT = 220;
-
-  function clampDockHeight(h: number): number {
-    if (!Number.isFinite(h)) return DOCK_DEFAULT;
-    return Math.min(DOCK_MAX, Math.max(DOCK_MIN, Math.round(h)));
-  }
-
-  let dockHeight = $state(
-    clampDockHeight(Number(localStorage.getItem("forge_dock_height") || DOCK_DEFAULT))
-  );
-  let isResizingDock = $state(false);
-
-  function updateDockHeight(next: number) {
-    const clamped = clampDockHeight(next);
-    dockHeight = clamped;
-    localStorage.setItem("forge_dock_height", String(clamped));
-  }
-
-  function startDockResize(e: PointerEvent) {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startH = dockHeight;
-    isResizingDock = true;
-
-    const onMove = (ev: PointerEvent) => {
-      updateDockHeight(startH + (ev.clientY - startY));
-    };
-    const onUp = () => {
-      isResizingDock = false;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-  }
-
-  function handleDockResizerKeydown(e: KeyboardEvent) {
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      updateDockHeight(dockHeight - (e.shiftKey ? 24 : 12));
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      updateDockHeight(dockHeight + (e.shiftKey ? 24 : 12));
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      updateDockHeight(DOCK_MIN);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      updateDockHeight(DOCK_MAX);
-    }
-  }
   const COMMIT_MIN = 180;
   const COMMIT_MAX = 620;
   const COMMIT_DEFAULT = 300;
@@ -2444,7 +2346,6 @@
   const groupPanelsVisible = $derived(orderedWorkspacePanels().length > 0);
   const diffVisible = $derived(visibleWorkspacePanels.some((panel) => panel.id === "diff"));
   const workspaceGridStyle = $derived(`grid-template-columns: ${groupPanelsVisible && diffVisible ? `minmax(0, ${workspaceDividerWidth}fr) 5px minmax(0, ${100 - workspaceDividerWidth}fr)` : "minmax(0, 1fr)"}; grid-template-areas: ${groupPanelsVisible && diffVisible ? (workspaceLayout === "group-left" ? '"group . diff"' : '"diff . group"') : groupPanelsVisible ? '"group"' : diffVisible ? '"diff"' : '"empty"'};`);
-  void isResizingSidebar; void startSidebarResize; void handleResizerKeydown; void isResizingDock; void startDockResize; void handleDockResizerKeydown; void handleWorkspaceSettingsKeydown; void handleWorkspaceSettingsOutside;
  </script>
 
 {#snippet workspacePanel(panelId: WorkspacePanelId, index: number)}
@@ -2463,6 +2364,7 @@
       {/if}
     </article>
     {#if (panelId === "file" && next === "commit") || (panelId === "commit" && next === "file")}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
       <div class="commit-panel-resizer {isResizingCommit ? 'is-resizing' : ''}" role="separator" aria-orientation="horizontal" aria-label={t("changes.commitMessageTitle")} aria-valuemin={COMMIT_MIN} aria-valuemax={COMMIT_MAX} aria-valuenow={commitPanelHeight} tabindex="0" onpointerdown={startCommitResize} onkeydown={handleCommitResizerKeydown}></div>
     {/if}
   {/snippet}
@@ -3205,6 +3107,7 @@
             </section>
           {/if}
           {#if groupPanelsVisible && diffVisible}
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
             <div class="workspace-region-divider" role="separator" aria-orientation="vertical" aria-label={t("workspaceSettings.resizeRegions")} tabindex="0" onpointerdown={startWorkspaceDividerResize} onkeydown={handleWorkspaceDividerKeydown}></div>
           {/if}
           {#if diffVisible}
