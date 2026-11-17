@@ -39,6 +39,7 @@ playwright-report/
 
 # Agent internal files, design specs, and documentation
 .hermes/
+.agents/
 ROADMAP.md
 DESIGN.md
 docs/

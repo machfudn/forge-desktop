@@ -977,8 +977,8 @@ mod tests {
         assert_eq!(owner, "rust-lang");
         assert_eq!(repo, "rust");
 
-        let (o2, r2) = parse_github_repo("https://github.com/machfudin/forge-desktop").unwrap();
-        assert_eq!(o2, "machfudin");
+        let (o2, r2) = parse_github_repo("https://github.com/machfudn/forge-desktop").unwrap();
+        assert_eq!(o2, "machfudn");
         assert_eq!(r2, "forge-desktop");
     }
 

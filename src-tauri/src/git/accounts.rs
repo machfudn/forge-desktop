@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-pub const KEYRING_SERVICE: &str = "com.machfudin.forge-desktop.github";
+pub const KEYRING_SERVICE: &str = "com.forge-desktop.github";
 pub const GITHUB_PUBLIC_HOST: &str = "github.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
