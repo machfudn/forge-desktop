@@ -867,6 +867,8 @@
       "themeLabel": "Theme",
       "themeDark": "Dark",
       "themeLight": "Light",
+      "themeNeoDark": "Neo-Brutalism: Dark",
+      "themeNeoLight": "Neo-Brutalism: Light",
       "themeSystem": "Follow OS",
       "autofetchSection": "Background Sync",
       "autofetchLabel": "Auto-fetch interval",

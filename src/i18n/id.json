@@ -846,6 +846,8 @@
       "themeLabel": "Tema",
       "themeDark": "Gelap",
       "themeLight": "Terang",
+      "themeNeoDark": "Neo-Brutalism: Gelap",
+      "themeNeoLight": "Neo-Brutalism: Terang",
       "themeSystem": "Ikuti Sistem OS",
       "autofetchSection": "Sinkronisasi Latar",
       "autofetchLabel": "Interval Auto-fetch",
