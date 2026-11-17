@@ -2345,7 +2345,17 @@
   const visibleWorkspacePanels = $derived(workspacePanels.filter((panel) => panel.visible));
   const groupPanelsVisible = $derived(orderedWorkspacePanels().length > 0);
   const diffVisible = $derived(visibleWorkspacePanels.some((panel) => panel.id === "diff"));
-  const workspaceGridStyle = $derived(`grid-template-columns: ${groupPanelsVisible && diffVisible ? `minmax(0, ${workspaceDividerWidth}fr) 5px minmax(0, ${100 - workspaceDividerWidth}fr)` : "minmax(0, 1fr)"}; grid-template-areas: ${groupPanelsVisible && diffVisible ? (workspaceLayout === "group-left" ? '"group . diff"' : '"diff . group"') : groupPanelsVisible ? '"group"' : diffVisible ? '"diff"' : '"empty"'};`);
+  const workspaceGridStyle = $derived(`grid-template-columns: ${
+    groupPanelsVisible && diffVisible
+      ? (workspaceLayout === "group-left"
+          ? `minmax(0, ${workspaceDividerWidth}fr) 5px minmax(0, ${100 - workspaceDividerWidth}fr)`
+          : `minmax(0, ${100 - workspaceDividerWidth}fr) 5px minmax(0, ${workspaceDividerWidth}fr)`)
+      : "minmax(0, 1fr)"
+  }; grid-template-areas: ${
+    groupPanelsVisible && diffVisible
+      ? (workspaceLayout === "group-left" ? '"group . diff"' : '"diff . group"')
+      : groupPanelsVisible ? '"group"' : diffVisible ? '"diff"' : '"empty"'
+  };`);
  </script>
 
 {#snippet workspacePanel(panelId: WorkspacePanelId, index: number)}
@@ -3108,7 +3118,7 @@
           {/if}
           {#if groupPanelsVisible && diffVisible}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-            <div class="workspace-region-divider" role="separator" aria-orientation="vertical" aria-label={t("workspaceSettings.resizeRegions")} tabindex="0" onpointerdown={startWorkspaceDividerResize} onkeydown={handleWorkspaceDividerKeydown}></div>
+            <div class="workspace-region-divider" role="separator" aria-orientation="vertical" aria-label={t("workspaceSettings.resizeRegions")} aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(workspaceDividerWidth)} tabindex="0" onpointerdown={startWorkspaceDividerResize} onkeydown={handleWorkspaceDividerKeydown}></div>
           {/if}
           {#if diffVisible}
             <section class="workspace-diff" role="list" aria-label={t("workspaceSettings.panelDiff")}>
