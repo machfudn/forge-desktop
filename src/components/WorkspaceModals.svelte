@@ -2647,6 +2647,8 @@
                   <select id="theme-select" class="form-select" bind:value={draftTheme}>
                     <option value="dark">{t("wsModal.settings.themeDark")}</option>
                     <option value="light">{t("wsModal.settings.themeLight")}</option>
+                    <option value="neo-dark">{t("wsModal.settings.themeNeoDark")}</option>
+                    <option value="neo-light">{t("wsModal.settings.themeNeoLight")}</option>
                     <option value="system">{t("wsModal.settings.themeSystem")}</option>
                   </select>
                 </div>

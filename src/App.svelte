@@ -627,14 +627,21 @@
   }
 
   function applyTheme(theme: string) {
-    let resolved = theme;
-    if (theme === "system") {
+    const isNeo = theme.startsWith("neo-");
+    let resolved = isNeo ? theme.slice(4) : theme;
+    if (resolved === "system") {
       resolved = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     }
-    document.documentElement.setAttribute("data-theme", resolved);
+    const root = document.documentElement;
+    root.setAttribute("data-theme", resolved);
+    if (isNeo) root.setAttribute("data-style", "neobrutalism");
+    else root.removeAttribute("data-style");
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
-      metaTheme.setAttribute("content", resolved === "light" ? "#ffffff" : "#0d1117");
+      const bg = isNeo
+        ? resolved === "light" ? "#f2efe6" : "#0c0c0c"
+        : resolved === "light" ? "#ffffff" : "#0d1117";
+      metaTheme.setAttribute("content", bg);
     }
   }
 

@@ -1,6 +1,7 @@
 import { installGlobalErrorListeners } from "./utils/appLog.svelte";
 import { mount } from "svelte";
 import "./styles/main.css";
+import "./styles/neobrutalism.css";
 import App from "./App.svelte";
 
 installGlobalErrorListeners();

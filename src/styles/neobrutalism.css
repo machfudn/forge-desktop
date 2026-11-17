@@ -1,0 +1,390 @@
+/* Neo-Brutalism skin, foundry-edition.
+   Active only when <html data-style="neobrutalism">.
+   World: stamped ink on foundry paper (light) and ember on cold iron (dark).
+   One accent carries action and selection; diff / warning / danger stay semantic.
+   ponytail: square-everything uses !important so literal radii in main.css
+   cannot leak through. Drop the hammer if main.css fully moves to radius tokens. */
+
+[data-style="neobrutalism"] {
+  --neo-ink: #0b0b0b;
+  --neo-pop: #0b0b0b;
+  --neo-shadow-sm: 2px 2px 0 var(--neo-pop);
+  --neo-shadow-hover: 3px 3px 0 var(--neo-pop);
+  --neo-shadow-md: 4px 4px 0 var(--neo-pop);
+  --neo-shadow-lg: 6px 6px 0 var(--neo-pop);
+  --neo-control-shadow: 2px 2px 0 var(--neo-ink);
+  --neo-control-shadow-hover: 3px 3px 0 var(--neo-ink);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --shadow-sm: var(--neo-shadow-sm);
+  --shadow-md: var(--neo-shadow-md);
+  --shadow-modal: var(--neo-shadow-lg);
+  --border-subtle: var(--border-muted);
+}
+
+[data-style="neobrutalism"] *,
+[data-style="neobrutalism"] *::before,
+[data-style="neobrutalism"] *::after {
+  border-radius: 0 !important;
+}
+
+/* Round things stay round: avatars, graph nodes, status dots. */
+[data-style="neobrutalism"] :is(
+  .account-avatar,
+  .account-avatar-fallback,
+  .comment-avatar,
+  .graph-node-avatar,
+  .graph-node-avatar-img,
+  .graph-node-avatar-fallback,
+  .header-account-avatar,
+  .header-account-avatar-fallback,
+  .header-account-avatar-wrap,
+  .header-account-dot,
+  .header-account-status-dot,
+  .menu-account-avatar,
+  .menu-account-avatar-fallback,
+  .ci-dot,
+  .hooks-pulse-dot,
+  .terminal-tab-dot,
+  .update-dot
+) {
+  border-radius: 50% !important;
+}
+
+/* Light: warm newsprint, black ink, molten orange. */
+[data-style="neobrutalism"][data-theme="light"] {
+  color-scheme: light;
+  --neo-ink: #0b0b0b;
+  --neo-pop: #0b0b0b;
+
+  --bg-app: #f2efe6;
+  --bg-canvas: #f2efe6;
+  --bg-sidebar: #eae5d8;
+  --bg-panel: #fffdf7;
+  --bg-surface: #fffdf7;
+  --bg-subtle: #eae5d8;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(11, 11, 11, 0.06);
+  --bg-selected: #ffd9c4;
+  --bg-input: #ffffff;
+  --bg-overlay: rgba(11, 11, 11, 0.55);
+
+  --border-default: #0b0b0b;
+  --border-muted: #c9c2b2;
+  --border-strong: #000000;
+
+  --text-primary: #0b0b0b;
+  --text-default: #0b0b0b;
+  --text-secondary: #2f2c26;
+  --text-muted: #5e594e;
+  --text-accent: #b33600;
+
+  --accent-primary: #ff4d00;
+  --accent-primary-hover: #ff6a1f;
+  --accent-blue: #b33600;
+  --accent-blue-solid: #ff4d00;
+  --accent-blue-subtle: rgba(255, 77, 0, 0.14);
+  --focus-ring: #0b0b0b;
+
+  --diff-add-bg: #cff5d2;
+  --diff-add-text: #0a4d1c;
+  --diff-del-bg: #ffd1d1;
+  --diff-del-text: #7a0016;
+  --diff-meta-bg: #d9e6ff;
+  --diff-meta-text: #003a8c;
+
+  --warn-text: #7a4a00;
+  --warn-bg: #ffe9a8;
+  --warn-border: #7a4a00;
+
+  --danger-solid: #c81e3a;
+  --danger-solid-hover: #a80024;
+  --danger-bg: #ffd6d6;
+  --danger-border: #7a0016;
+
+  --tok-keyword: #b33600;
+  --tok-string: #0a4d1c;
+  --tok-number: #003a8c;
+  --tok-comment: #5e594e;
+  --tok-fn: #6b2fb3;
+}
+
+/* Dark: cold iron, bone ink, ember. */
+[data-style="neobrutalism"][data-theme="dark"] {
+  color-scheme: dark;
+  --neo-ink: #f5f2e8;
+  --neo-pop: #ff5a1a;
+
+  --bg-app: #0c0c0c;
+  --bg-canvas: #0c0c0c;
+  --bg-sidebar: #141412;
+  --bg-panel: #181816;
+  --bg-surface: #1e1e1b;
+  --bg-subtle: #232320;
+  --bg-elevated: #282824;
+  --bg-hover: rgba(245, 242, 232, 0.1);
+  --bg-selected: rgba(255, 90, 26, 0.24);
+  --bg-input: #0c0c0c;
+  --bg-overlay: rgba(0, 0, 0, 0.78);
+
+  --border-default: #f5f2e8;
+  --border-muted: #4a4a44;
+  --border-strong: #ffffff;
+
+  --text-primary: #f5f2e8;
+  --text-default: #f5f2e8;
+  --text-secondary: #d2cec4;
+  --text-muted: #a8a49a;
+  --text-accent: #ff8a4c;
+
+  --accent-primary: #ff5a1a;
+  --accent-primary-hover: #ff7a3d;
+  --accent-blue: #ff8a4c;
+  --accent-blue-solid: #ff5a1a;
+  --accent-blue-subtle: rgba(255, 90, 26, 0.18);
+  --focus-ring: #f5f2e8;
+
+  --diff-add-bg: rgba(34, 197, 94, 0.18);
+  --diff-add-text: #7ee2a8;
+  --diff-del-bg: rgba(244, 63, 94, 0.18);
+  --diff-del-text: #ff9aab;
+  --diff-meta-bg: rgba(59, 130, 246, 0.18);
+  --diff-meta-text: #8ab4ff;
+
+  --warn-text: #ffd166;
+  --warn-bg: rgba(255, 209, 102, 0.14);
+  --warn-border: rgba(255, 209, 102, 0.5);
+
+  --danger-solid: #d92d4b;
+  --danger-solid-hover: #f43f5e;
+  --danger-bg: rgba(217, 45, 75, 0.2);
+  --danger-border: rgba(244, 63, 94, 0.55);
+
+  --tok-keyword: #ff9aab;
+  --tok-string: #7ee2a8;
+  --tok-number: #8ab4ff;
+  --tok-comment: #a8a49a;
+  --tok-fn: #d2a8ff;
+}
+
+/* Browser surfaces belong to the skin too. */
+[data-style="neobrutalism"] body {
+  accent-color: var(--accent-primary);
+  caret-color: var(--accent-primary);
+}
+
+[data-style="neobrutalism"] ::selection {
+  background-color: var(--accent-primary);
+  color: #0b0b0b;
+}
+
+[data-style="neobrutalism"] ::-webkit-scrollbar-thumb {
+  background-color: var(--neo-ink);
+  border: 2px solid var(--bg-app);
+  border-radius: 0;
+}
+
+[data-style="neobrutalism"] ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent-primary);
+}
+
+[data-style="neobrutalism"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+[data-style="neobrutalism"] :is(.form-input, .form-select, .commit-input, textarea)::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+[data-style="neobrutalism"] a {
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* Shell: regional rules read like a ledger. */
+[data-style="neobrutalism"] .app-header {
+  border-bottom: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .app-footer {
+  border-top: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .sidebar-panel {
+  border-right: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] :is(.sidebar-header, .commit-box, .diff-header, .history-toolbar) {
+  border-bottom: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .commit-box {
+  border-bottom: none;
+  border-top: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .terminal-drawer {
+  border-top: 2px solid var(--neo-ink);
+}
+
+/* Floating surfaces */
+[data-style="neobrutalism"] :is(.modal-dialog, .palette-dialog) {
+  border: 2px solid var(--neo-ink);
+  box-shadow: var(--neo-shadow-lg);
+}
+
+[data-style="neobrutalism"] .popover-menu {
+  border: 2px solid var(--neo-ink);
+  box-shadow: var(--neo-shadow-md);
+}
+
+[data-style="neobrutalism"] .modal-header {
+  border-bottom: 2px solid var(--neo-ink);
+  padding-bottom: 10px;
+}
+
+[data-style="neobrutalism"] .palette-search-row {
+  border-bottom: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .settings-shell {
+  border: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .settings-nav {
+  border-right: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .settings-nav-item.active {
+  border: 2px solid var(--neo-ink);
+  background: var(--accent-primary);
+  color: #0b0b0b;
+  box-shadow: var(--neo-control-shadow);
+}
+
+[data-style="neobrutalism"] .settings-nav-item.active svg {
+  color: #0b0b0b;
+}
+
+[data-style="neobrutalism"] .settings-pkg-card {
+  border: 2px solid var(--neo-ink);
+  box-shadow: var(--neo-shadow-sm);
+}
+
+[data-style="neobrutalism"] .settings-pkg-card.is-selected {
+  border-color: var(--neo-ink) !important;
+  background-color: var(--bg-selected) !important;
+  box-shadow: var(--neo-control-shadow);
+}
+
+[data-style="neobrutalism"] .ai-answer-box {
+  border: 2px solid var(--neo-ink);
+}
+
+/* Controls: primary carries a stamp; secondary earns it on hover. */
+[data-style="neobrutalism"] :is(.btn-primary, .btn-commit) {
+  border: 2px solid var(--neo-ink);
+  box-shadow: var(--neo-control-shadow);
+  color: #0b0b0b;
+  font-weight: 700;
+  transition: transform 0.12s var(--ease-ui), box-shadow 0.12s var(--ease-ui),
+    background-color 0.12s var(--ease-ui);
+}
+
+[data-style="neobrutalism"] :is(.btn-primary, .btn-commit):hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--neo-control-shadow-hover);
+}
+
+[data-style="neobrutalism"] :is(.btn-primary, .btn-commit):active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+[data-style="neobrutalism"] :is(.btn-secondary, .terminal-btn) {
+  border: 2px solid var(--neo-ink);
+  font-weight: 600;
+  transition: transform 0.12s var(--ease-ui), box-shadow 0.12s var(--ease-ui),
+    background-color 0.12s var(--ease-ui);
+}
+
+[data-style="neobrutalism"] :is(.btn-secondary, .terminal-btn):hover:not(:disabled) {
+  box-shadow: var(--neo-control-shadow);
+  transform: translate(-1px, -1px);
+}
+
+[data-style="neobrutalism"] :is(.btn-secondary, .terminal-btn):active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+[data-style="neobrutalism"] :is(.btn-primary, .btn-secondary, .btn-commit, .terminal-btn):disabled {
+  border-color: var(--border-muted);
+  background-color: var(--bg-subtle);
+  box-shadow: none;
+  transform: none;
+  color: var(--text-muted);
+}
+
+[data-style="neobrutalism"] :is(
+  .form-input,
+  .form-select,
+  .commit-input,
+  .terminal-search-input,
+  .terminal-shell-select,
+  .tag-filter-search-input,
+  .history-toolbar-search
+) {
+  border: 2px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='%230b0b0b'%3E%3Cpath d='M4.427 6.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427Z'/%3E%3C/svg%3E");
+}
+
+[data-style="neobrutalism"][data-theme="dark"] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='%23f5f2e8'%3E%3Cpath d='M4.427 6.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427Z'/%3E%3C/svg%3E");
+}
+
+/* Ref badges stay neutral; accent is for action, not decoration. */
+[data-style="neobrutalism"] :is(
+  .tag-badge,
+  .badge-accent,
+  .badge-neutral,
+  .badge-success,
+  .badge-warn,
+  .badge-warning,
+  .badge-status,
+  .status-badge-ok,
+  .commit-push-badge,
+  .commit-lane-badge,
+  .worktree-count-badge,
+  .terminal-status-badge,
+  .terminal-branch-badge
+) {
+  border: 1px solid var(--neo-ink);
+}
+
+[data-style="neobrutalism"] .tag-badge {
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+/* Chunky headings, readable body. */
+[data-style="neobrutalism"] :is(
+  .modal-header,
+  .welcome-title,
+  .settings-panel-title,
+  .settings-group-title,
+  .sidebar-section-title
+) {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+[data-style="neobrutalism"] :is(.modal-header, .settings-panel-title) {
+  text-transform: uppercase;
+}
