@@ -12,10 +12,10 @@ jobs:
     name: Frontend Typecheck & Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -61,10 +61,10 @@ jobs:
           sudo docker image prune --all --force 2>/dev/null || true
           df -h
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -82,7 +82,7 @@ jobs:
           targets: ${{ matrix.rust_targets }}
 
       - name: Cache Cargo Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
