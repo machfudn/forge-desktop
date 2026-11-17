@@ -1,0 +1,355 @@
+/* Risograph skin: two-ink print on paper.
+   Active only when <html data-style="riso">.
+   World: warm stock, ink borders, spot blue for action, fluorescent pink for
+   selection and misregistration. Halftone grain sits on chrome strips only,
+   never behind text. Diff and syntax colors stay semantic. */
+
+[data-style="riso"] {
+  --riso-ink: #16120f;
+  --riso-blue: #005f9e;
+  --riso-pink: #ff48b0;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-modal: none;
+  --border-subtle: var(--border-muted);
+}
+
+/* Light: cream stock, ink, spot blue, fluoro pink. */
+[data-style="riso"][data-theme="light"] {
+  color-scheme: light;
+  --riso-ink: #16120f;
+  --riso-on-accent: #ffffff;
+  --on-accent: var(--riso-on-accent);
+  --riso-offset-control: 2px 2px 0 var(--riso-pink);
+  --riso-offset-panel: 5px 5px 0 var(--riso-pink);
+  --riso-grain: rgba(22, 18, 15, 0.055);
+
+  --bg-app: #f6f0e2;
+  --bg-canvas: #f6f0e2;
+  --bg-sidebar: #efe6d2;
+  --bg-panel: #fffaf0;
+  --bg-surface: #fbf4e6;
+  --bg-subtle: #efe6d2;
+  --bg-elevated: #fffdf7;
+  --bg-hover: rgba(22, 18, 15, 0.07);
+  --bg-selected: #ffd9ec;
+  --bg-input: #fffdf7;
+  --bg-overlay: rgba(22, 18, 15, 0.55);
+
+  --border-default: #16120f;
+  --border-muted: #cdc2ac;
+  --border-strong: #000000;
+
+  --text-primary: #16120f;
+  --text-default: #16120f;
+  --text-secondary: #3b352d;
+  --text-muted: #6b6357;
+  --text-accent: #005f9e;
+
+  --accent-primary: #005f9e;
+  --accent-primary-hover: #0074bd;
+  --accent-blue: #005f9e;
+  --accent-blue-solid: #005f9e;
+  --accent-blue-subtle: #d6e9f7;
+  --focus-ring: #005f9e;
+
+  --diff-add-bg: #d7efd9;
+  --diff-add-text: #1c5a2e;
+  --diff-del-bg: #ffd6e4;
+  --diff-del-text: #8a1238;
+  --diff-meta-bg: #d6e9f7;
+  --diff-meta-text: #0a4a7a;
+
+  --warn-text: #7a4a00;
+  --warn-bg: #ffe2a8;
+  --warn-border: #7a4a00;
+
+  --danger-solid: #b3123a;
+  --danger-solid-hover: #8f0c2e;
+  --danger-bg: #ffd6e4;
+  --danger-border: #8a1238;
+
+  --tok-keyword: #b3123a;
+  --tok-string: #1c5a2e;
+  --tok-number: #0a4a7a;
+  --tok-comment: #6b6357;
+  --tok-fn: #6b2fb3;
+}
+
+/* Dark: ink-black stock, bone text, same two inks reversed. */
+[data-style="riso"][data-theme="dark"] {
+  color-scheme: dark;
+  --riso-ink: #f7f0e2;
+  --riso-blue: #2f9fd8;
+  --riso-on-accent: #14110f;
+  --on-accent: var(--riso-on-accent);
+  --riso-offset-control: 2px 2px 0 var(--riso-blue);
+  --riso-offset-panel: 5px 5px 0 var(--riso-blue);
+  --riso-grain: rgba(247, 240, 226, 0.045);
+
+  --bg-app: #14110f;
+  --bg-canvas: #14110f;
+  --bg-sidebar: #1a1613;
+  --bg-panel: #1e1915;
+  --bg-surface: #241e19;
+  --bg-subtle: #2a231d;
+  --bg-elevated: #302820;
+  --bg-hover: rgba(247, 240, 226, 0.09);
+  --bg-selected: rgba(255, 72, 176, 0.18);
+  --bg-input: #14110f;
+  --bg-overlay: rgba(0, 0, 0, 0.72);
+
+  --border-default: #f7f0e2;
+  --border-muted: #4a4137;
+  --border-strong: #fffdf7;
+
+  --text-primary: #f7f0e2;
+  --text-default: #f7f0e2;
+  --text-secondary: #d8cfbe;
+  --text-muted: #a89f8d;
+  --text-accent: #ff9ad2;
+
+  --accent-primary: #ff48b0;
+  --accent-primary-hover: #ff6cc2;
+  --accent-blue: #6cc4f5;
+  --accent-blue-solid: #2f9fd8;
+  --accent-blue-subtle: rgba(47, 159, 216, 0.2);
+  --focus-ring: #ff6cc2;
+
+  --diff-add-bg: rgba(110, 220, 150, 0.16);
+  --diff-add-text: #86e0a8;
+  --diff-del-bg: rgba(255, 120, 150, 0.18);
+  --diff-del-text: #ff9ab3;
+  --diff-meta-bg: rgba(80, 170, 230, 0.18);
+  --diff-meta-text: #8fd0f5;
+
+  --warn-text: #ffd28a;
+  --warn-bg: rgba(255, 200, 110, 0.14);
+  --warn-border: rgba(255, 200, 110, 0.5);
+
+  --danger-solid: #d92d4b;
+  --danger-solid-hover: #f43f5e;
+  --danger-bg: rgba(217, 45, 75, 0.2);
+  --danger-border: rgba(244, 63, 94, 0.55);
+
+  --tok-keyword: #ff9ab3;
+  --tok-string: #86e0a8;
+  --tok-number: #8fd0f5;
+  --tok-comment: #a89f8d;
+  --tok-fn: #d2a8ff;
+}
+
+/* Browser surfaces belong to the print. */
+[data-style="riso"] body {
+  accent-color: var(--accent-primary);
+  caret-color: var(--accent-primary);
+}
+
+[data-style="riso"] ::selection {
+  background-color: var(--riso-pink);
+  color: #14110f;
+}
+
+[data-style="riso"] ::-webkit-scrollbar-thumb {
+  background-color: var(--riso-ink);
+  border: 2px solid var(--bg-app);
+  border-radius: 0;
+}
+
+[data-style="riso"] ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent-primary);
+}
+
+[data-style="riso"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+[data-style="riso"] :is(.form-input, .form-select, .commit-input, textarea)::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+[data-style="riso"] a {
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* Chrome: halftone strips and ink rules. */
+[data-style="riso"] :is(.app-header, .app-footer) {
+  background-image: radial-gradient(var(--riso-grain) 1px, transparent 1.4px);
+  background-size: 6px 6px;
+  border-color: var(--riso-ink);
+}
+
+[data-style="riso"] .app-header {
+  border-bottom-width: 2px;
+}
+
+[data-style="riso"] .app-footer {
+  border-top-width: 2px;
+}
+
+[data-style="riso"] .sidebar-panel {
+  border-right: 2px solid var(--riso-ink);
+}
+
+[data-style="riso"] .terminal-drawer {
+  border-top: 2px solid var(--riso-ink);
+}
+
+[data-style="riso"] :is(.sidebar-header, .diff-header, .history-toolbar) {
+  border-bottom: 2px solid var(--riso-ink);
+}
+
+/* Paper tooth on the canvas only; solid panels sit on top. */
+[data-style="riso"] .content-panel {
+  background-image: radial-gradient(var(--riso-grain) 0.7px, transparent 0.9px);
+  background-size: 3px 3px;
+}
+
+/* Misregistration: printed sheets never line up. */
+[data-style="riso"] :is(
+  .modal-dialog,
+  .palette-dialog,
+  .popover-menu,
+  .welcome-panel,
+  .settings-pkg-card
+) {
+  border: 2px solid var(--riso-ink);
+  box-shadow: var(--riso-offset-panel);
+}
+
+[data-style="riso"] .modal-header {
+  border-bottom: 2px solid var(--riso-ink);
+  padding-bottom: 10px;
+}
+
+[data-style="riso"] .palette-search-row {
+  border-bottom: 2px solid var(--riso-ink);
+}
+
+[data-style="riso"] .settings-shell {
+  border: 2px solid var(--riso-ink);
+}
+
+[data-style="riso"] .settings-nav {
+  border-right: 2px solid var(--riso-ink);
+}
+
+[data-style="riso"] .settings-nav-item.active {
+  background: var(--accent-primary);
+  color: var(--riso-on-accent);
+  box-shadow: var(--riso-offset-control);
+}
+
+[data-style="riso"] .settings-nav-item.active svg {
+  color: var(--riso-on-accent);
+}
+
+[data-style="riso"] .settings-pkg-card.is-selected {
+  border-color: var(--riso-ink) !important;
+  background-color: var(--bg-selected) !important;
+}
+
+[data-style="riso"] .ai-answer-box {
+  border: 2px solid var(--riso-ink);
+}
+
+/* Controls: two inks, hard offset, press to register. */
+[data-style="riso"] :is(.btn-primary, .btn-commit) {
+  border: 2px solid var(--riso-ink);
+  box-shadow: var(--riso-offset-control);
+  color: var(--riso-on-accent);
+  font-weight: 700;
+  transition: background-color 0.12s var(--ease-ui), transform 0.1s var(--ease-ui),
+    box-shadow 0.1s var(--ease-ui);
+}
+
+[data-style="riso"] :is(.btn-primary, .btn-commit):active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+[data-style="riso"] :is(.btn-secondary, .terminal-btn) {
+  border: 2px solid var(--riso-ink);
+  font-weight: 600;
+  background-color: transparent;
+}
+
+[data-style="riso"] :is(.btn-secondary, .terminal-btn):hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+[data-style="riso"] :is(.btn-secondary, .terminal-btn):active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+
+[data-style="riso"] :is(.btn-primary, .btn-secondary, .btn-commit, .terminal-btn):disabled {
+  border-color: var(--border-muted);
+  background-color: var(--bg-subtle);
+  box-shadow: none;
+  transform: none;
+  color: var(--text-muted);
+}
+
+[data-style="riso"] :is(
+  .form-input,
+  .form-select,
+  .commit-input,
+  .terminal-search-input,
+  .terminal-shell-select,
+  .tag-filter-search-input,
+  .history-toolbar-search
+) {
+  border: 2px solid var(--riso-ink);
+}
+
+[data-style="riso"] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='%2316120f'%3E%3Cpath d='M4.427 6.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427Z'/%3E%3C/svg%3E");
+}
+
+[data-style="riso"][data-theme="dark"] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='%23f7f0e2'%3E%3Cpath d='M4.427 6.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427Z'/%3E%3C/svg%3E");
+}
+
+/* Badges: neutral stock with an ink hairline. */
+[data-style="riso"] :is(
+  .tag-badge,
+  .badge-accent,
+  .badge-neutral,
+  .badge-success,
+  .badge-warn,
+  .badge-warning,
+  .badge-status,
+  .status-badge-ok,
+  .commit-push-badge,
+  .commit-lane-badge,
+  .worktree-count-badge,
+  .terminal-status-badge,
+  .terminal-branch-badge
+) {
+  border: 1px solid var(--riso-ink);
+}
+
+[data-style="riso"] .tag-badge {
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+/* Chunky headings, mono section labels like a zine. */
+[data-style="riso"] :is(.modal-header, .welcome-title, .settings-panel-title, .settings-group-title) {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+[data-style="riso"] :is(.settings-group-title, .sidebar-section-title) {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-secondary);
+}

@@ -1,0 +1,33 @@
+/* Shared base for every non-default skin. Active when <html data-style> is set.
+   Skins own color, borders, and shadows; geometry stays square unless listed
+   below. ponytail: one global radius reset keeps literal radii in main.css
+   from leaking into any skin. Drop it if main.css moves fully to radius tokens. */
+
+[data-style] *,
+[data-style] *::before,
+[data-style] *::after {
+  border-radius: 0 !important;
+}
+
+/* Round things stay round: avatars, graph nodes, status dots. */
+[data-style] :is(
+  .account-avatar,
+  .account-avatar-fallback,
+  .comment-avatar,
+  .graph-node-avatar,
+  .graph-node-avatar-img,
+  .graph-node-avatar-fallback,
+  .header-account-avatar,
+  .header-account-avatar-fallback,
+  .header-account-avatar-wrap,
+  .header-account-dot,
+  .header-account-status-dot,
+  .menu-account-avatar,
+  .menu-account-avatar-fallback,
+  .ci-dot,
+  .hooks-pulse-dot,
+  .terminal-tab-dot,
+  .update-dot
+) {
+  border-radius: 50% !important;
+}

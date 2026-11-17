@@ -1,0 +1,352 @@
+/* Blueprint skin: drafting sheet.
+   Active only when <html data-style="blueprint">.
+   World: hairline rules, a measured grid on the canvas, mono micro labels,
+   flat plates instead of stacked shadows. Accent marks the active tool only. */
+
+[data-style="blueprint"] {
+  --bp-on-accent: #ffffff;
+  --on-accent: var(--bp-on-accent);
+  --bp-grid-minor: rgba(11, 95, 181, 0.05);
+  --bp-grid-major: rgba(11, 95, 181, 0.11);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --shadow-sm: none;
+}
+
+/* Light: vellum sheet, graphite ink, blueprint cyan. */
+[data-style="blueprint"][data-theme="light"] {
+  color-scheme: light;
+
+  --bg-app: #eef3f8;
+  --bg-canvas: #eef3f8;
+  --bg-sidebar: #e4ebf2;
+  --bg-panel: #f9fbfd;
+  --bg-surface: #f2f6fa;
+  --bg-subtle: #e4ebf2;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(18, 38, 58, 0.06);
+  --bg-selected: rgba(11, 107, 203, 0.14);
+  --bg-input: #ffffff;
+  --bg-overlay: rgba(18, 38, 58, 0.45);
+
+  --border-default: #9db4c8;
+  --border-muted: #cfdae4;
+  --border-strong: #17324d;
+
+  --text-primary: #12263a;
+  --text-default: #12263a;
+  --text-secondary: #2f4a63;
+  --text-muted: #566d82;
+  --text-accent: #0a56a3;
+
+  --accent-primary: #0b6bcb;
+  --accent-primary-hover: #0a5fb5;
+  --accent-blue: #0b6bcb;
+  --accent-blue-solid: #0b6bcb;
+  --accent-blue-subtle: rgba(11, 107, 203, 0.12);
+  --focus-ring: #0b6bcb;
+
+  --diff-add-bg: #d8f0e0;
+  --diff-add-text: #0c5a30;
+  --diff-del-bg: #ffe1e1;
+  --diff-del-text: #8c1d1d;
+  --diff-meta-bg: #dbeafe;
+  --diff-meta-text: #0a4a8a;
+
+  --warn-text: #7a4b00;
+  --warn-bg: #ffe9b0;
+  --warn-border: #7a4b00;
+
+  --danger-solid: #b3261e;
+  --danger-solid-hover: #8c1d18;
+  --danger-bg: #ffe1e1;
+  --danger-border: #8c1d1d;
+
+  --tok-keyword: #b3261e;
+  --tok-string: #0c5a30;
+  --tok-number: #0a4a8a;
+  --tok-comment: #566d82;
+  --tok-fn: #6b2fb3;
+
+  --shadow-md: 0 10px 28px rgba(23, 50, 77, 0.18);
+  --shadow-modal: 0 10px 28px rgba(23, 50, 77, 0.18);
+}
+
+/* Dark: night-shift board, chalk lines, cyan plot. */
+[data-style="blueprint"][data-theme="dark"] {
+  color-scheme: dark;
+  --bp-on-accent: #04202f;
+  --on-accent: var(--bp-on-accent);
+  --bp-grid-minor: rgba(108, 198, 255, 0.05);
+  --bp-grid-major: rgba(108, 198, 255, 0.10);
+
+  --bg-app: #081625;
+  --bg-canvas: #081625;
+  --bg-sidebar: #0a1a2a;
+  --bg-panel: #0d1f31;
+  --bg-surface: #10263a;
+  --bg-subtle: #12293d;
+  --bg-elevated: #163048;
+  --bg-hover: rgba(200, 225, 245, 0.08);
+  --bg-selected: rgba(63, 178, 255, 0.16);
+  --bg-input: #081625;
+  --bg-overlay: rgba(2, 8, 14, 0.75);
+
+  --border-default: #2f5675;
+  --border-muted: #1d3a52;
+  --border-strong: #6ea8cf;
+
+  --text-primary: #e8f1f8;
+  --text-default: #e8f1f8;
+  --text-secondary: #b9cbdb;
+  --text-muted: #93a9bc;
+  --text-accent: #7cc9ff;
+
+  --accent-primary: #3fb2ff;
+  --accent-primary-hover: #6cc6ff;
+  --accent-blue: #6cc6ff;
+  --accent-blue-solid: #3fb2ff;
+  --accent-blue-subtle: rgba(63, 178, 255, 0.16);
+  --focus-ring: #6cc6ff;
+
+  --diff-add-bg: rgba(90, 220, 150, 0.16);
+  --diff-add-text: #8fe6b4;
+  --diff-del-bg: rgba(255, 110, 110, 0.18);
+  --diff-del-text: #ffa3a3;
+  --diff-meta-bg: rgba(90, 170, 255, 0.18);
+  --diff-meta-text: #9ccbff;
+
+  --warn-text: #ffce7a;
+  --warn-bg: rgba(255, 206, 122, 0.14);
+  --warn-border: rgba(255, 206, 122, 0.5);
+
+  --danger-solid: #c23434;
+  --danger-solid-hover: #d13c3c;
+  --danger-bg: rgba(194, 52, 52, 0.2);
+  --danger-border: rgba(209, 60, 60, 0.55);
+
+  --tok-keyword: #ffa3a3;
+  --tok-string: #8fe6b4;
+  --tok-number: #9ccbff;
+  --tok-comment: #93a9bc;
+  --tok-fn: #d2a8ff;
+
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+/* Browser surfaces. */
+[data-style="blueprint"] body {
+  accent-color: var(--accent-primary);
+  caret-color: var(--accent-primary);
+}
+
+[data-style="blueprint"] ::selection {
+  background-color: var(--accent-primary);
+  color: var(--bp-on-accent);
+}
+
+[data-style="blueprint"] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-style="blueprint"] ::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border: 2px solid var(--bg-app);
+  border-radius: 0;
+}
+
+[data-style="blueprint"] ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent-primary);
+}
+
+[data-style="blueprint"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+[data-style="blueprint"] :is(.form-input, .form-select, .commit-input, textarea)::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+[data-style="blueprint"] a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  color: var(--text-accent);
+}
+
+/* Measured grid on the working canvas. Cards cover it; gutters show it. */
+[data-style="blueprint"] .content-panel,
+[data-style="blueprint"] .workspace-diff {
+  background-image:
+    linear-gradient(to right, var(--bp-grid-minor) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bp-grid-minor) 1px, transparent 1px),
+    linear-gradient(to right, var(--bp-grid-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bp-grid-major) 1px, transparent 1px);
+  background-size: 8px 8px, 8px 8px, 40px 40px, 40px 40px;
+}
+
+[data-style="blueprint"] .workspace-diff {
+  background-color: transparent;
+}
+
+/* Structure: hairlines, flat plates, one heavy edge per sheet. */
+[data-style="blueprint"] :is(.app-header, .app-footer) {
+  border-color: var(--border-strong);
+}
+
+[data-style="blueprint"] .sidebar-panel {
+  border-right: 1px solid var(--border-default);
+}
+
+[data-style="blueprint"] .terminal-drawer {
+  border-top: 1px solid var(--border-default);
+}
+
+[data-style="blueprint"] :is(.workspace-panel-card, .settings-shell, .welcome-panel, .settings-pkg-card, .ai-answer-box) {
+  border: 1px solid var(--border-default);
+  box-shadow: none;
+}
+
+[data-style="blueprint"] :is(.welcome-panel, .workspace-panel-card) {
+  border-top: 2px solid var(--border-strong);
+}
+
+[data-style="blueprint"] :is(.modal-dialog, .palette-dialog, .popover-menu) {
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+[data-style="blueprint"] .modal-header {
+  border-bottom: 1px solid var(--border-default);
+  padding-bottom: 10px;
+}
+
+[data-style="blueprint"] .palette-search-row {
+  border-bottom: 1px solid var(--border-default);
+}
+
+[data-style="blueprint"] .settings-nav {
+  border-right: 1px solid var(--border-default);
+}
+
+[data-style="blueprint"] .settings-nav-item.active {
+  background: var(--accent-blue-subtle);
+  color: var(--text-accent);
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+[data-style="blueprint"] .settings-nav-item.active svg {
+  color: var(--accent-primary);
+}
+
+[data-style="blueprint"] .settings-pkg-card.is-selected {
+  border-color: var(--accent-primary) !important;
+  background-color: var(--bg-selected) !important;
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+/* Controls: flat plates, accent only on the active tool. */
+[data-style="blueprint"] :is(.btn-primary, .btn-commit) {
+  border: 1px solid var(--border-strong);
+  box-shadow: none;
+  color: var(--bp-on-accent);
+  font-weight: 650;
+  transition: background-color 0.12s var(--ease-ui), border-color 0.12s var(--ease-ui);
+}
+
+[data-style="blueprint"] :is(.btn-primary, .btn-commit):not(.btn-danger-solid) {
+  color: var(--bp-on-accent);
+}
+
+[data-style="blueprint"] :is(.btn-secondary, .terminal-btn) {
+  border: 1px solid var(--border-default);
+  background-color: transparent;
+  font-weight: 600;
+  transition: background-color 0.12s var(--ease-ui), border-color 0.12s var(--ease-ui);
+}
+
+[data-style="blueprint"] :is(.btn-secondary, .terminal-btn):hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-blue-subtle);
+}
+
+[data-style="blueprint"] :is(.btn-primary, .btn-secondary, .btn-commit, .terminal-btn):disabled {
+  border-color: var(--border-muted);
+  background-color: var(--bg-subtle);
+  color: var(--text-muted);
+}
+
+[data-style="blueprint"] :is(
+  .form-input,
+  .form-select,
+  .commit-input,
+  .terminal-search-input,
+  .terminal-shell-select,
+  .tag-filter-search-input,
+  .history-toolbar-search
+) {
+  border: 1px solid var(--border-default);
+  background-color: var(--bg-input);
+}
+
+[data-style="blueprint"] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='%2312263a'%3E%3Cpath d='M4.427 6.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427Z'/%3E%3C/svg%3E");
+}
+
+[data-style="blueprint"][data-theme="dark"] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='%23e8f1f8'%3E%3Cpath d='M4.427 6.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427Z'/%3E%3C/svg%3E");
+}
+
+/* Labels: measured, mono, uppercase. */
+[data-style="blueprint"] :is(
+  .modal-header,
+  .settings-panel-title,
+  .settings-group-title,
+  .sidebar-section-title,
+  .sidebar-header h3
+) {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+[data-style="blueprint"] :is(.modal-header, .settings-panel-title) {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-style="blueprint"] :is(.settings-group-title, .sidebar-section-title, .sidebar-header h3) {
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+[data-style="blueprint"] :is(
+  .tag-badge,
+  .badge-accent,
+  .badge-neutral,
+  .badge-success,
+  .badge-warn,
+  .badge-warning,
+  .badge-status,
+  .status-badge-ok,
+  .commit-push-badge,
+  .commit-lane-badge,
+  .worktree-count-badge,
+  .terminal-status-badge,
+  .terminal-branch-badge
+) {
+  border: 1px solid var(--border-default);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+[data-style="blueprint"] .tag-badge {
+  background-color: transparent;
+  color: var(--text-secondary);
+}

@@ -2,8 +2,7 @@
    Active only when <html data-style="neobrutalism">.
    World: stamped ink on foundry paper (light) and ember on cold iron (dark).
    One accent carries action and selection; diff / warning / danger stay semantic.
-   ponytail: square-everything uses !important so literal radii in main.css
-   cannot leak through. Drop the hammer if main.css fully moves to radius tokens. */
+   Square geometry and the round exceptions live in skins.css. */
 
 [data-style="neobrutalism"] {
   --neo-ink: #0b0b0b;
@@ -14,6 +13,7 @@
   --neo-shadow-lg: 6px 6px 0 var(--neo-pop);
   --neo-control-shadow: 2px 2px 0 var(--neo-ink);
   --neo-control-shadow-hover: 3px 3px 0 var(--neo-ink);
+  --on-accent: #0b0b0b;
   --radius-sm: 0px;
   --radius-md: 0px;
   --radius-lg: 0px;
@@ -21,35 +21,6 @@
   --shadow-md: var(--neo-shadow-md);
   --shadow-modal: var(--neo-shadow-lg);
   --border-subtle: var(--border-muted);
-}
-
-[data-style="neobrutalism"] *,
-[data-style="neobrutalism"] *::before,
-[data-style="neobrutalism"] *::after {
-  border-radius: 0 !important;
-}
-
-/* Round things stay round: avatars, graph nodes, status dots. */
-[data-style="neobrutalism"] :is(
-  .account-avatar,
-  .account-avatar-fallback,
-  .comment-avatar,
-  .graph-node-avatar,
-  .graph-node-avatar-img,
-  .graph-node-avatar-fallback,
-  .header-account-avatar,
-  .header-account-avatar-fallback,
-  .header-account-avatar-wrap,
-  .header-account-dot,
-  .header-account-status-dot,
-  .menu-account-avatar,
-  .menu-account-avatar-fallback,
-  .ci-dot,
-  .hooks-pulse-dot,
-  .terminal-tab-dot,
-  .update-dot
-) {
-  border-radius: 50% !important;
 }
 
 /* Light: warm newsprint, black ink, molten orange. */
