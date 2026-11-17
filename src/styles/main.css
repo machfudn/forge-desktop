@@ -314,11 +314,14 @@ a {
 
 .btn-group > button.is-highlighted {
   background-color: var(--accent-blue-solid);
-  color: #ffffff;
+  color: var(--on-accent, #ffffff);
 }
 
+/* Keep the accent fill on hover: the generic hover rule above is more
+   specific than .is-highlighted, so without this the label would sit on
+   --bg-subtle. Darken instead of brighten so light-theme contrast improves. */
 .btn-group > button.is-highlighted:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background-color: color-mix(in srgb, var(--accent-blue-solid) 88%, #000000);
 }
 
 .icon-btn {

@@ -30,6 +30,7 @@
   --accent-blue-solid: #1f6feb;
   --accent-blue-subtle: rgba(56, 139, 253, 0.15);
   --focus-ring: #58a6ff;
+  --on-accent: #ffffff;
 
   --diff-add-bg: rgba(46, 160, 67, 0.15);
   --diff-add-text: #3fb950;
@@ -92,6 +93,7 @@
   --accent-blue-solid: #0969da;
   --accent-blue-subtle: rgba(9, 105, 218, 0.12);
   --focus-ring: #0969da;
+  --on-accent: #ffffff;
 
   --diff-add-bg: #dafbe1;
   --diff-add-text: #116329;
