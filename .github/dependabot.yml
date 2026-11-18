@@ -17,16 +17,12 @@ updates:
       - "dependencies"
       - "javascript"
     commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
+      prefix: "chore"
       include: "scope"
     groups:
       npm-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
 
   # 2. Rust & Tauri backend dependencies (src-tauri Cargo crates)
   - package-ecosystem: "cargo"
@@ -42,16 +38,12 @@ updates:
       - "dependencies"
       - "rust"
     commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
+      prefix: "chore"
       include: "scope"
     groups:
       cargo-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
 
   # 3. GitHub Actions CI/CD workflows
   - package-ecosystem: "github-actions"
@@ -67,12 +59,9 @@ updates:
       - "dependencies"
       - "ci"
     commit-message:
-      prefix: "ci(deps)"
+      prefix: "ci"
       include: "scope"
     groups:
       actions-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
