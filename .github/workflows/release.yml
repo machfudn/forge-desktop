@@ -47,12 +47,12 @@ jobs:
       release_id: ${{ steps.release.outputs.release_id }}
       should_release: ${{ steps.release.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -213,10 +213,10 @@ jobs:
           sudo docker image prune --all --force 2>/dev/null || true
           df -h
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -353,7 +353,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Download All Release Artifacts
         env:
