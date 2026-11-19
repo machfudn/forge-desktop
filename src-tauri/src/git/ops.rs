@@ -42,7 +42,16 @@ fn begin_mutation(repo: &str) -> Result<String, String> {
     if check_index_lock(repo)? {
         return Err("File .git/index.lock terdeteksi. Silakan bersihkan file lock terlebih dahulu.".into());
     }
-    let status_out = cli::run(repo, &["status", "--porcelain=v1"])?;
+    let status_out = cli::run(
+        repo,
+        &[
+            "-c",
+            "core.quotepath=false",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ],
+    )?;
     if !status_out.trim().is_empty() {
         return Err("Working tree masih memiliki perubahan belum di-commit. Commit atau stash dahulu.".into());
     }

@@ -182,7 +182,14 @@ pub fn inspect_repo_summary(path: &str) -> RepoQuickSummary {
 
     if let Some(status_out) = run_git_no_lock(
         path,
-        &["status", "--porcelain=v2", "--branch", "--untracked-files=normal"],
+        &[
+            "-c",
+            "core.quotepath=false",
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--untracked-files=all",
+        ],
     ) {
         for line in status_out.lines() {
             if let Some(oid) = line.strip_prefix("# branch.oid ") {

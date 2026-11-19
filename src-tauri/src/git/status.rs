@@ -122,7 +122,17 @@ fn repo_may_use_lfs(repo: &str, git_dir: &Path) -> bool {
 }
 
 pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
-    let status_out = cli::run(repo, &["status", "--porcelain=v1", "-b"])?;
+    let status_out = cli::run(
+        repo,
+        &[
+            "-c",
+            "core.quotepath=false",
+            "status",
+            "--porcelain=v1",
+            "-b",
+            "--untracked-files=all",
+        ],
+    )?;
     let mut lines = status_out.lines();
     let (branch, has_commits) = match lines.next() {
         Some(first) if first.starts_with("## ") => parse_status_branch_header(first),
