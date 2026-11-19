@@ -1248,5 +1248,27 @@
     "commitAboveFile": "Commit di atas Perubahan File",
     "resizeRegions": "Ubah ukuran panel workspace",
     "hint": "Pilih visibilitas panel, tata letak, dan urutan tumpukan."
+  },
+  "sshModal": {
+    "title": "Masalah Koneksi SSH",
+    "subtitle": "Koneksi ke server remote melalui SSH gagal atau diblokir oleh jaringan.",
+    "diagnosisTimeout": "Koneksi ke port 443/22 mengalami timeout. Kemungkinan firewall, ISP, atau VPN memblokir lalu lintas SSH.",
+    "diagnosisReset": "Koneksi diputus secara paksa oleh jaringan/server (Connection reset). Biasanya disebabkan oleh Deep Packet Inspection (DPI) pada port HTTPS.",
+    "diagnosisDns": "Nama host server tidak dapat ditemukan (DNS lookup failed). Periksa koneksi internet Anda.",
+    "diagnosisAuth": "Kunci SSH ditolak atau tidak memiliki hak akses (Permission denied / Host key failed).",
+    "diagnosisGeneral": "Terjadi kegagalan jaringan saat mencoba menghubungkan remote repository via SSH.",
+    "currentRemote": "Remote Saat Ini (SSH)",
+    "targetRemote": "Rekomendasi Remote (HTTPS)",
+    "switchSuccess": "Remote berhasil dialihkan ke HTTPS. Menyinkronkan repositori...",
+    "switchBtn": "Beralih ke HTTPS & Sinkronkan",
+    "switching": "Mengalihkan...",
+    "copyError": "Salin Log Error",
+    "copied": "Log Tersalin!",
+    "activeAccountHint": "Akan menggunakan token dari akun yang terhubung: @{login}",
+    "noAccountHint": "Tip: Hubungkan akun GitHub di Forge Desktop untuk autentikasi otomatis tanpa kata sandi.",
+    "whySwitch": "Mengapa beralih ke HTTPS?",
+    "whySwitchDesc": "HTTPS menggunakan port web standar 443 yang selalu diizinkan di hampir semua jaringan, ISP, dan firewall kantor tanpa memerlukan konfigurasi SSH key yang rumit.",
+    "switchToHttps": "Ganti ke HTTPS",
+    "switchToSsh": "Ganti ke SSH"
   }
 }

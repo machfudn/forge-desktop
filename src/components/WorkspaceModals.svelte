@@ -28,6 +28,11 @@
     pickDirectory,
     pickFile,
   } from "../utils/path";
+  import {
+    isSshRemoteUrl,
+    convertSshToHttps,
+    convertHttpsToSsh,
+  } from "../utils/remoteUrl";
   import { SUPPORTED_LOCALES, t, type Locale } from "../i18n/index.svelte";
   import {
     clearAppErrorLogs,
@@ -698,6 +703,25 @@
       const msg = await gitService.setRemoteUrl(activeRepo, name, url);
       editingRemoteName = null;
       editingRemoteUrl = "";
+      await onRemotesChanged();
+      onStatus(msg);
+    } catch (err) {
+      inlineError = String(err);
+    } finally {
+      isSubmittingRemote = false;
+    }
+  }
+
+  async function handleQuickSwitchRemoteUrl(name: string, targetUrl: string | null) {
+    if (!targetUrl) return;
+    inlineError = "";
+    isSubmittingRemote = true;
+    try {
+      const msg = await gitService.setRemoteUrl(activeRepo, name, targetUrl);
+      if (editingRemoteName === name) {
+        editingRemoteName = null;
+        editingRemoteUrl = "";
+      }
       await onRemotesChanged();
       onStatus(msg);
     } catch (err) {
@@ -1590,6 +1614,33 @@
                       </div>
                     </div>
                     <div style="display: flex; gap: 5px; flex-shrink: 0;">
+                      {#if isSshRemoteUrl(r.url)}
+                        {@const httpsTarget = convertSshToHttps(r.url)}
+                        {#if httpsTarget && httpsTarget !== r.url}
+                          <button
+                            type="button"
+                            class="btn-secondary btn-xs"
+                            title={t("sshModal.switchToHttps")}
+                            disabled={isSubmittingRemote}
+                            onclick={() => handleQuickSwitchRemoteUrl(r.name, httpsTarget)}
+                          >
+                            {t("sshModal.switchToHttps")}
+                          </button>
+                        {/if}
+                      {:else}
+                        {@const sshTarget = convertHttpsToSsh(r.url)}
+                        {#if sshTarget && sshTarget !== r.url}
+                          <button
+                            type="button"
+                            class="btn-secondary btn-xs"
+                            title={t("sshModal.switchToSsh")}
+                            disabled={isSubmittingRemote}
+                            onclick={() => handleQuickSwitchRemoteUrl(r.name, sshTarget)}
+                          >
+                            {t("sshModal.switchToSsh")}
+                          </button>
+                        {/if}
+                      {/if}
                       <button
                         type="button"
                         class="btn-secondary btn-xs"

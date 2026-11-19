@@ -42,9 +42,15 @@
   import WorktreeModal from "./components/WorktreeModal.svelte";
   import BisectWizardModal from "./components/BisectWizardModal.svelte";
   import AiAssistantModal from "./components/AiAssistantModal.svelte";
+  import SshRemoteSwitchModal from "./components/SshRemoteSwitchModal.svelte";
   import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
   import ProviderIcon from "./components/ProviderIcon.svelte";
   import { joinRepoPath, openExternalUrl, pathBaseName } from "./utils/path";
+  import {
+    isSshConnectionError,
+    isSshRemoteUrl,
+    convertSshToHttps,
+  } from "./utils/remoteUrl";
   import {
     copyTextToClipboard,
     handleGlobalContextMenu,
@@ -112,6 +118,22 @@
   let inspectFileState = $state<{ path: string; mode: "blame" | "history" } | null>(null);
   let workspaceToolsTab = $state<"reflog" | "submodules" | "worktrees" | null>(null);
   let terminalOpen = $state(false);
+  let sshSwitchModalState = $state<{
+    open: boolean;
+    repo: string;
+    remoteName: string;
+    currentUrl: string;
+    suggestedUrl: string;
+    errorMessage: string;
+    retryAction?: () => Promise<void>;
+  }>({
+    open: false,
+    repo: "",
+    remoteName: "",
+    currentUrl: "",
+    suggestedUrl: "",
+    errorMessage: "",
+  });
   let aiModalState = $state<{
     task: "custom_ask" | "explain_diff" | "explain_commit" | "review_changes";
     prompt: string;
@@ -1655,6 +1677,38 @@
     activeModal = "logs";
   }
 
+  async function checkAndOpenSshSwitchModal(
+    errStr: string,
+    retryAction?: () => Promise<void>
+  ): Promise<boolean> {
+    if (!activeRepo || !isSshConnectionError(errStr)) {
+      return false;
+    }
+    try {
+      const remotes =
+        repoRemotes.length > 0 ? repoRemotes : await gitService.listRemotes(activeRepo);
+      if (!remotes || remotes.length === 0) return false;
+      const matched =
+        remotes.find((r) => isSshRemoteUrl(r.url)) || remotes[0];
+      const currentUrl = matched.url;
+      const suggestedUrl = convertSshToHttps(currentUrl);
+      if (!suggestedUrl || suggestedUrl === currentUrl) return false;
+
+      sshSwitchModalState = {
+        open: true,
+        repo: activeRepo,
+        remoteName: matched.name,
+        currentUrl,
+        suggestedUrl,
+        errorMessage: errStr,
+        retryAction,
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function handleFetch() {
     if (!activeRepo) return;
     try {
@@ -1664,7 +1718,11 @@
       await loadRepo(activeRepo);
       setStatus(t("app.status.fetchDone"));
     } catch (err) {
-      setStatus(String(err), true);
+      const errStr = String(err);
+      const opened = await checkAndOpenSshSwitchModal(errStr, handleFetch);
+      if (!opened) {
+        setStatus(errStr, true);
+      }
     } finally {
       isLoading = false;
     }
@@ -1679,7 +1737,11 @@
       await loadRepo(activeRepo);
       setStatus(res || t("app.status.pullDone"));
     } catch (err) {
-      setStatus(String(err), true);
+      const errStr = String(err);
+      const opened = await checkAndOpenSshSwitchModal(errStr, handlePull);
+      if (!opened) {
+        setStatus(errStr, true);
+      }
     } finally {
       isLoading = false;
     }
@@ -1694,7 +1756,11 @@
       await loadRepo(activeRepo);
       setStatus(res || t("app.status.pushDone"));
     } catch (err) {
-      setStatus(String(err), true);
+      const errStr = String(err);
+      const opened = await checkAndOpenSshSwitchModal(errStr, handlePush);
+      if (!opened) {
+        setStatus(errStr, true);
+      }
     } finally {
       isLoading = false;
     }
@@ -1711,7 +1777,11 @@
         await loadRepo(activeRepo);
         setStatus(res || t("app.status.forcePushDone"));
       } catch (err) {
-        setStatus(String(err), true);
+        const errStr = String(err);
+        const opened = await checkAndOpenSshSwitchModal(errStr, execute);
+        if (!opened) {
+          setStatus(errStr, true);
+        }
       } finally {
         isLoading = false;
       }
@@ -3359,4 +3429,27 @@
 {#if paletteOpen}
   <CommandPalette commands={paletteCommands} onClose={() => (paletteOpen = false)} />
 {/if}
+
+<SshRemoteSwitchModal
+  open={sshSwitchModalState.open}
+  repo={sshSwitchModalState.repo}
+  remoteName={sshSwitchModalState.remoteName}
+  currentUrl={sshSwitchModalState.currentUrl}
+  suggestedUrl={sshSwitchModalState.suggestedUrl}
+  errorMessage={sshSwitchModalState.errorMessage}
+  accountLogin={activeRepoAccount?.login}
+  onClose={() => {
+    sshSwitchModalState.open = false;
+  }}
+  onSwitchSuccess={async () => {
+    sshSwitchModalState.open = false;
+    setStatus(t("sshModal.switchSuccess"));
+    await loadRepo(activeRepo);
+    await refreshRemotesAndPushState();
+    if (sshSwitchModalState.retryAction) {
+      void sshSwitchModalState.retryAction();
+    }
+  }}
+/>
+
 <ContextMenu />

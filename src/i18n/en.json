@@ -1269,5 +1269,27 @@
     "commitAboveFile": "Commit above File Changes",
     "resizeRegions": "Resize workspace panels",
     "hint": "Choose panel visibility, layout, and stack order."
+  },
+  "sshModal": {
+    "title": "SSH Connection Issue",
+    "subtitle": "Connecting to the remote server via SSH failed or was blocked by the network.",
+    "diagnosisTimeout": "Connection to port 443/22 timed out. Your firewall, ISP, or VPN is likely blocking SSH traffic.",
+    "diagnosisReset": "Connection was reset forcibly by network or server. Usually caused by Deep Packet Inspection (DPI) on HTTPS ports.",
+    "diagnosisDns": "Server hostname could not be resolved (DNS lookup failed). Check your internet connection.",
+    "diagnosisAuth": "SSH key was rejected or you lack access permissions (Permission denied / Host key failed).",
+    "diagnosisGeneral": "A network failure occurred while attempting to connect to the remote repository via SSH.",
+    "currentRemote": "Current Remote (SSH)",
+    "targetRemote": "Recommended Remote (HTTPS)",
+    "switchSuccess": "Remote successfully switched to HTTPS. Syncing repository...",
+    "switchBtn": "Switch to HTTPS & Sync",
+    "switching": "Switching...",
+    "copyError": "Copy Error Log",
+    "copied": "Log Copied!",
+    "activeAccountHint": "Will use credentials from connected account: @{login}",
+    "noAccountHint": "Tip: Connect your GitHub account in Forge Desktop for seamless authentication without passwords.",
+    "whySwitch": "Why switch to HTTPS?",
+    "whySwitchDesc": "HTTPS uses standard web port 443 which is always allowed across nearly all networks, ISPs, and firewalls without requiring complex SSH key setup.",
+    "switchToHttps": "Switch to HTTPS",
+    "switchToSsh": "Switch to SSH"
   }
 }
