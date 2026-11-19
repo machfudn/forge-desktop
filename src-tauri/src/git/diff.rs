@@ -128,6 +128,7 @@ pub fn add_to_gitignore(repo: &str, pattern: &str) -> Result<(), String> {
     current.push_str(pat);
     current.push('\n');
     fs::write(gi_path, current).map_err(|e| format!("Gagal menyimpan .gitignore: {e}"))?;
+    let _ = cli::run(repo, &["rm", "--cached", "-r", "-q", "--", pat]);
     Ok(())
 }
 
@@ -375,6 +376,49 @@ pub fn stage_lines(
 ) -> Result<(), String> {
     let selective_patch = build_selective_hunk_patch(hunk_patch, &selected_indices, reverse)?;
     stage_hunk(repo, &selective_patch, reverse)
+}
+
+pub fn discard_hunk(repo: &str, patch_text: &str) -> Result<(), String> {
+    if patch_text.trim().is_empty() {
+        return Err("Patch text tidak boleh kosong".into());
+    }
+    let args = vec!["-C", repo, "apply", "--reverse", "--whitespace=nowarn", "-"];
+    let mut child = crate::system::command_no_window("git")
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Gagal menjalankan git apply: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(patch_text.as_bytes())
+            .map_err(|e| format!("Gagal menulis patch ke stdin: {e}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Gagal menyelesaikan git apply: {e}"))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(if err.is_empty() {
+            "Gagal membuang perubahan hunk".into()
+        } else {
+            err
+        });
+    }
+    Ok(())
+}
+
+pub fn discard_lines(
+    repo: &str,
+    hunk_patch: &str,
+    selected_indices: &[usize],
+) -> Result<(), String> {
+    let selective_patch = build_selective_hunk_patch(hunk_patch, selected_indices, false)?;
+    discard_hunk(repo, &selective_patch)
 }
 
 #[cfg(test)]

@@ -52,7 +52,11 @@ fn begin_mutation(repo: &str) -> Result<String, String> {
             "--untracked-files=all",
         ],
     )?;
-    if !status_out.trim().is_empty() {
+    let has_dirty_tracked = status_out.lines().any(|l| {
+        let code = if l.len() >= 2 { &l[..2] } else { "" };
+        code != "??" && !code.is_empty()
+    });
+    if has_dirty_tracked {
         return Err("Working tree masih memiliki perubahan belum di-commit. Commit atau stash dahulu.".into());
     }
     Ok(cli::run(repo, &["rev-parse", "HEAD"])?.trim().to_string())
@@ -128,7 +132,7 @@ pub fn list_tags(repo: &str) -> Result<Vec<String>, String> {
 
 pub fn create_tag(repo: &str, tag_name: &str, target_sha: Option<&str>) -> Result<String, String> {
     let name = validate_tag_name(tag_name)?;
-    let mut args = vec!["tag", name];
+    let mut args = vec!["tag", "-a", name, "-m", name];
     let sha_val;
     if let Some(s) = target_sha {
         if !s.trim().is_empty() {
@@ -142,6 +146,13 @@ pub fn create_tag(repo: &str, tag_name: &str, target_sha: Option<&str>) -> Resul
 pub fn delete_tag(repo: &str, tag_name: &str) -> Result<String, String> {
     let name = validate_tag_name(tag_name)?;
     cli::run(repo, &["tag", "-d", name])
+}
+
+pub fn rename_tag(repo: &str, old_name: &str, new_name: &str) -> Result<String, String> {
+    let old = validate_tag_name(old_name)?;
+    let new = validate_tag_name(new_name)?;
+    cli::run(repo, &["tag", "-a", new, "-m", new, old])?;
+    cli::run(repo, &["tag", "-d", old])
 }
 
 pub fn squash_commits(

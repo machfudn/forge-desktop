@@ -249,13 +249,80 @@ pub async fn delete_tag(repo: String, tag_name: String) -> Result<String, String
 }
 
 #[tauri::command]
+pub async fn rename_tag(repo: String, old_name: String, new_name: String) -> Result<String, String> {
+    run_blocking(move || git::rename_tag(&repo, &old_name, &new_name)).await
+}
+
+#[tauri::command]
+pub async fn push_tag(
+    repo: String,
+    remote: Option<String>,
+    tag_name: String,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::push_tag(&repo, remote.as_deref(), &tag_name, |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_remote_tag(
+    repo: String,
+    remote: Option<String>,
+    tag_name: String,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::delete_remote_tag(&repo, remote.as_deref(), &tag_name, |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn abort_merge(repo: String) -> Result<(), String> {
     run_blocking(move || git::abort_merge(&repo)).await
 }
 
 #[tauri::command]
+pub async fn continue_merge(repo: String) -> Result<String, String> {
+    run_blocking(move || git::continue_merge(&repo)).await
+}
+
+#[tauri::command]
 pub async fn abort_rebase(repo: String) -> Result<(), String> {
     run_blocking(move || git::abort_rebase(&repo)).await
+}
+
+#[tauri::command]
+pub async fn continue_rebase(repo: String) -> Result<String, String> {
+    run_blocking(move || git::continue_rebase(&repo)).await
+}
+
+#[tauri::command]
+pub async fn abort_cherry_pick(repo: String) -> Result<(), String> {
+    run_blocking(move || git::abort_cherry_pick(&repo)).await
+}
+
+#[tauri::command]
+pub async fn continue_cherry_pick(repo: String) -> Result<String, String> {
+    run_blocking(move || git::continue_cherry_pick(&repo)).await
+}
+
+#[tauri::command]
+pub async fn abort_revert(repo: String) -> Result<(), String> {
+    run_blocking(move || git::abort_revert(&repo)).await
+}
+
+#[tauri::command]
+pub async fn continue_revert(repo: String) -> Result<String, String> {
+    run_blocking(move || git::continue_revert(&repo)).await
 }
 
 #[tauri::command]
@@ -987,6 +1054,20 @@ pub async fn stage_lines(
     reverse: bool,
 ) -> Result<(), String> {
     run_blocking(move || git::stage_lines(&repo, &hunk_patch, selected_indices, reverse)).await
+}
+
+#[tauri::command]
+pub async fn discard_hunk(repo: String, patch_text: String) -> Result<(), String> {
+    run_blocking(move || git::discard_hunk(&repo, &patch_text)).await
+}
+
+#[tauri::command]
+pub async fn discard_lines(
+    repo: String,
+    hunk_patch: String,
+    selected_indices: Vec<usize>,
+) -> Result<(), String> {
+    run_blocking(move || git::discard_lines(&repo, &hunk_patch, &selected_indices)).await
 }
 
 #[tauri::command]

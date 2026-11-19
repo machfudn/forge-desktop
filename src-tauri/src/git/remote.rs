@@ -448,25 +448,25 @@ where
     match (force_lease, has_upstream) {
         (false, true) => cli::run_with_credentials_and_options(
             repo,
-            &["push", &rem, &target_branch],
+            &["push", "--follow-tags", &rem, &target_branch],
             creds_ref,
             &borrowed_opts,
         ),
         (false, false) => cli::run_with_credentials_and_options(
             repo,
-            &["push", "-u", &rem, &target_branch],
+            &["push", "--follow-tags", "-u", &rem, &target_branch],
             creds_ref,
             &borrowed_opts,
         ),
         (true, true) => cli::run_with_credentials_and_options(
             repo,
-            &["push", "--force-with-lease", &rem, &target_branch],
+            &["push", "--follow-tags", "--force-with-lease", &rem, &target_branch],
             creds_ref,
             &borrowed_opts,
         ),
         (true, false) => cli::run_with_credentials_and_options(
             repo,
-            &["push", "--force-with-lease", "-u", &rem, &target_branch],
+            &["push", "--follow-tags", "--force-with-lease", "-u", &rem, &target_branch],
             creds_ref,
             &borrowed_opts,
         ),
@@ -515,6 +515,59 @@ pub fn force_push(
 ) -> Result<String, String> {
     let owned = creds.map(|(u, t)| (u.to_string(), t.to_string()));
     push_internal(repo, remote, branch, true, move |_| owned)
+}
+
+pub fn push_tag<F>(
+    repo: &str,
+    remote: Option<&str>,
+    tag_name: &str,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    let valid_tag = validate_remote_name(tag_name)?;
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, None)?;
+    let (creds, rewrite_options) = resolve_creds_and_rewrite(&snap, &rem, true, resolve_creds);
+    let borrowed_opts: Vec<(&str, &str)> = rewrite_options
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let creds_ref = creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str()));
+    let refspec = format!("refs/tags/{valid_tag}");
+    cli::run_with_credentials_and_options(
+        repo,
+        &["push", &rem, &refspec],
+        creds_ref,
+        &borrowed_opts,
+    )
+}
+
+pub fn delete_remote_tag<F>(
+    repo: &str,
+    remote: Option<&str>,
+    tag_name: &str,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    let valid_tag = validate_remote_name(tag_name)?;
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, None)?;
+    let (creds, rewrite_options) = resolve_creds_and_rewrite(&snap, &rem, true, resolve_creds);
+    let borrowed_opts: Vec<(&str, &str)> = rewrite_options
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let creds_ref = creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str()));
+    cli::run_with_credentials_and_options(
+        repo,
+        &["push", "--delete", &rem, valid_tag],
+        creds_ref,
+        &borrowed_opts,
+    )
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]

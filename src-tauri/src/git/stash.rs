@@ -9,9 +9,21 @@ pub fn discard_changes(repo: &str, file: &str) -> Result<(), String> {
     }
 
     let full_path = Path::new(repo).join(trimmed);
+    let status_out = cli::run(
+        repo,
+        &[
+            "-c",
+            "core.quotepath=false",
+            "status",
+            "--porcelain=v1",
+            "--",
+            trimmed,
+        ],
+    )?;
+    let code = if status_out.len() >= 2 { &status_out[..2] } else { "" };
+
     // If untracked file, remove it directly
-    let status_out = cli::run(repo, &["status", "--porcelain=v1", "--", trimmed])?;
-    if status_out.starts_with("??") {
+    if code == "??" {
         if full_path.is_file() {
             fs::remove_file(&full_path).map_err(|e| format!("Gagal menghapus file: {e}"))?;
             return Ok(());
@@ -21,8 +33,20 @@ pub fn discard_changes(repo: &str, file: &str) -> Result<(), String> {
         }
     }
 
-    // Tracked file: restore worktree and staged index
-    cli::run(repo, &["checkout", "HEAD", "--", trimmed]).map(|_| ())
+    let has_head = cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_ok();
+    if has_head {
+        // Tracked file: restore worktree and staged index
+        cli::run(repo, &["checkout", "HEAD", "--", trimmed]).map(|_| ())
+    } else {
+        // Unborn repository (no commits yet): unstage and remove
+        let _ = cli::run(repo, &["rm", "--cached", "-f", "--", trimmed]);
+        if full_path.is_file() {
+            let _ = fs::remove_file(&full_path);
+        } else if full_path.is_dir() {
+            let _ = fs::remove_dir_all(&full_path);
+        }
+        Ok(())
+    }
 }
 
 pub fn discard_all_changes(repo: &str) -> Result<(), String> {

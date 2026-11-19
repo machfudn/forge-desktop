@@ -19,6 +19,8 @@ pub struct RepoStatus {
     pub has_conflicts: bool,
     pub in_merge: bool,
     pub in_rebase: bool,
+    pub in_cherry_pick: bool,
+    pub in_revert: bool,
     pub has_commits: bool,
 }
 
@@ -154,12 +156,17 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
             let in_merge = git_dir.join("MERGE_HEAD").exists();
             let in_rebase =
                 git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists();
+            let in_cherry_pick = git_dir.join("CHERRY_PICK_HEAD").exists()
+                || git_dir.join("sequencer").join("todo").exists();
+            let in_revert = git_dir.join("REVERT_HEAD").exists();
             return Ok(RepoStatus {
                 branch: br.trim().to_string(),
                 files,
                 has_conflicts,
                 in_merge,
                 in_rebase,
+                in_cherry_pick,
+                in_revert,
                 has_commits: has_c,
             });
         }
@@ -177,6 +184,9 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
     let has_conflicts = files.iter().any(|f| f.is_conflict);
     let in_merge = git_dir.join("MERGE_HEAD").exists();
     let in_rebase = git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists();
+    let in_cherry_pick = git_dir.join("CHERRY_PICK_HEAD").exists()
+        || git_dir.join("sequencer").join("todo").exists();
+    let in_revert = git_dir.join("REVERT_HEAD").exists();
 
     Ok(RepoStatus {
         branch,
@@ -184,6 +194,8 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
         has_conflicts,
         in_merge,
         in_rebase,
+        in_cherry_pick,
+        in_revert,
         has_commits,
     })
 }
@@ -288,8 +300,32 @@ pub fn abort_merge(repo: &str) -> Result<(), String> {
     cli::run(repo, &["merge", "--abort"]).map(|_| ())
 }
 
+pub fn continue_merge(repo: &str) -> Result<String, String> {
+    cli::run(repo, &["-c", "core.editor=true", "merge", "--continue"])
+}
+
 pub fn abort_rebase(repo: &str) -> Result<(), String> {
     cli::run(repo, &["rebase", "--abort"]).map(|_| ())
+}
+
+pub fn continue_rebase(repo: &str) -> Result<String, String> {
+    cli::run(repo, &["-c", "core.editor=true", "rebase", "--continue"])
+}
+
+pub fn abort_cherry_pick(repo: &str) -> Result<(), String> {
+    cli::run(repo, &["cherry-pick", "--abort"]).map(|_| ())
+}
+
+pub fn continue_cherry_pick(repo: &str) -> Result<String, String> {
+    cli::run(repo, &["-c", "core.editor=true", "cherry-pick", "--continue"])
+}
+
+pub fn abort_revert(repo: &str) -> Result<(), String> {
+    cli::run(repo, &["revert", "--abort"]).map(|_| ())
+}
+
+pub fn continue_revert(repo: &str) -> Result<String, String> {
+    cli::run(repo, &["-c", "core.editor=true", "revert", "--continue"])
 }
 
 #[cfg(test)]
