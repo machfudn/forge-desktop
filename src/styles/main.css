@@ -740,6 +740,12 @@ a {
   flex-shrink: 0;
 }
 
+.alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .file-list {
   flex: 1 1 auto;
   min-height: 96px;

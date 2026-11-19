@@ -23,7 +23,13 @@
     onCommit: (summary: string, description?: string, amend?: boolean) => void;
     onUndoCommit?: () => void;
     onAbortMerge?: () => void;
+    onContinueMerge?: () => void;
     onAbortRebase?: () => void;
+    onContinueRebase?: () => void;
+    onAbortCherryPick?: () => void;
+    onContinueCherryPick?: () => void;
+    onAbortRevert?: () => void;
+    onContinueRevert?: () => void;
     onDiscardFile?: (file: FileEntry) => void;
     onDiscardAll?: () => void;
     onAddToGitignore?: (pattern: string) => void;
@@ -51,7 +57,13 @@
     onCommit,
     onUndoCommit,
     onAbortMerge,
+    onContinueMerge,
     onAbortRebase,
+    onContinueRebase,
+    onAbortCherryPick,
+    onContinueCherryPick,
+    onAbortRevert,
+    onContinueRevert,
     onDiscardFile,
     onDiscardAll,
     onAddToGitignore,
@@ -70,6 +82,7 @@
   let selectedFiles = $derived(status.files.filter((file) => file.staged));
   let visibleSelectedCount = $derived(visibleFiles.filter((file) => file.staged).length);
   let allFilesIndeterminate = $derived(visibleSelectedCount > 0 && visibleSelectedCount < visibleFiles.length);
+  let hasUnresolvedConflicts = $derived(status.has_conflicts || status.files.some((f) => f.is_conflict));
   $effect(() => { if (selectAllCheckbox) selectAllCheckbox.indeterminate = allFilesIndeterminate; });
 
   const EMOJI_LIST = $derived([
@@ -439,16 +452,90 @@
   {#if status.in_merge}
     <div class="alert-banner">
       <span>{t("changes.inMerge")}</span>
-      <button type="button" onclick={onAbortMerge} class="btn-secondary btn-xs btn-danger">
-        {t("changes.abortMerge")}
-      </button>
+      <div class="alert-actions">
+        {#if onContinueMerge}
+          <button
+            type="button"
+            onclick={onContinueMerge}
+            disabled={hasUnresolvedConflicts}
+            class="btn-secondary btn-xs btn-primary-tint"
+            title={hasUnresolvedConflicts ? t("changes.conflictsRemaining") : t("changes.continueMerge")}
+          >
+            {t("changes.continueMerge")}
+          </button>
+        {/if}
+        {#if onAbortMerge}
+          <button type="button" onclick={onAbortMerge} class="btn-secondary btn-xs btn-danger">
+            {t("changes.abortMerge")}
+          </button>
+        {/if}
+      </div>
     </div>
   {:else if status.in_rebase}
     <div class="alert-banner">
       <span>{t("changes.inRebase")}</span>
-      <button type="button" onclick={onAbortRebase} class="btn-secondary btn-xs btn-danger">
-        {t("changes.abortRebase")}
-      </button>
+      <div class="alert-actions">
+        {#if onContinueRebase}
+          <button
+            type="button"
+            onclick={onContinueRebase}
+            disabled={hasUnresolvedConflicts}
+            class="btn-secondary btn-xs btn-primary-tint"
+            title={hasUnresolvedConflicts ? t("changes.conflictsRemaining") : t("changes.continueRebase")}
+          >
+            {t("changes.continueRebase")}
+          </button>
+        {/if}
+        {#if onAbortRebase}
+          <button type="button" onclick={onAbortRebase} class="btn-secondary btn-xs btn-danger">
+            {t("changes.abortRebase")}
+          </button>
+        {/if}
+      </div>
+    </div>
+  {:else if status.in_cherry_pick}
+    <div class="alert-banner">
+      <span>{t("changes.inCherryPick")}</span>
+      <div class="alert-actions">
+        {#if onContinueCherryPick}
+          <button
+            type="button"
+            onclick={onContinueCherryPick}
+            disabled={hasUnresolvedConflicts}
+            class="btn-secondary btn-xs btn-primary-tint"
+            title={hasUnresolvedConflicts ? t("changes.conflictsRemaining") : t("changes.continueCherryPick")}
+          >
+            {t("changes.continueCherryPick")}
+          </button>
+        {/if}
+        {#if onAbortCherryPick}
+          <button type="button" onclick={onAbortCherryPick} class="btn-secondary btn-xs btn-danger">
+            {t("changes.abortCherryPick")}
+          </button>
+        {/if}
+      </div>
+    </div>
+  {:else if status.in_revert}
+    <div class="alert-banner">
+      <span>{t("changes.inRevert")}</span>
+      <div class="alert-actions">
+        {#if onContinueRevert}
+          <button
+            type="button"
+            onclick={onContinueRevert}
+            disabled={hasUnresolvedConflicts}
+            class="btn-secondary btn-xs btn-primary-tint"
+            title={hasUnresolvedConflicts ? t("changes.conflictsRemaining") : t("changes.continueRevert")}
+          >
+            {t("changes.continueRevert")}
+          </button>
+        {/if}
+        {#if onAbortRevert}
+          <button type="button" onclick={onAbortRevert} class="btn-secondary btn-xs btn-danger">
+            {t("changes.abortRevert")}
+          </button>
+        {/if}
+      </div>
     </div>
   {/if}
 

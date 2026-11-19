@@ -6,6 +6,7 @@
 
   export type HistoryGithubModalType =
     | "tag"
+    | "rename_tag"
     | "squash"
     | "rebase"
     | "reword"
@@ -35,6 +36,7 @@
     hasGithubAccount?: boolean;
     onOpenAuth?: () => void;
     tagTargetSha: string | null;
+    renameTargetTag?: string | null;
     squashCount: number;
     squashInitialSummary: string;
     rebaseBaseSha: string;
@@ -75,6 +77,7 @@
     hasGithubAccount = false,
     onOpenAuth,
     tagTargetSha,
+    renameTargetTag = null,
     squashCount,
     squashInitialSummary,
     rebaseBaseSha,
@@ -98,6 +101,7 @@
 
   let inlineError = $state("");
   let tagNameInput = $state("");
+  let newTagNameInput = $state("");
   let squashSummary = $state("");
   let squashDescription = $state("");
   let rewordSummary = $state("");
@@ -110,6 +114,8 @@
     inlineError = "";
     if (modal === "tag") {
       tagNameInput = "";
+    } else if (modal === "rename_tag") {
+      newTagNameInput = renameTargetTag || "";
     } else if (modal === "squash") {
       squashSummary = squashInitialSummary;
       squashDescription = "";
@@ -136,6 +142,20 @@
       onStatus(t("hgModal.creatingTagStatus", { name }));
       await gitService.createTag(activeRepo, name, tagTargetSha || undefined);
       onStatus(t("hgModal.tagCreatedStatus", { name }));
+      await onReloadTags();
+      onClose();
+    } catch (err) {
+      inlineError = String(err);
+    }
+  }
+
+  async function handleRenameTagSubmit() {
+    const newName = newTagNameInput.trim();
+    if (!newName || !renameTargetTag || newName === renameTargetTag) return;
+    try {
+      onStatus(t("hgModal.renamingTagStatus", { old: renameTargetTag, new: newName }));
+      await gitService.renameTag(activeRepo, renameTargetTag, newName);
+      onStatus(t("hgModal.tagRenamedStatus", { old: renameTargetTag, new: newName }));
       await onReloadTags();
       onClose();
     } catch (err) {
@@ -399,6 +419,7 @@
   const modalTitle = $derived.by(() => {
     switch (modal) {
       case "tag": return t("hgModal.titleTag");
+      case "rename_tag": return t("hgModal.titleRenameTag");
       case "squash": return t("hgModal.titleSquash", { count: squashCount });
       case "rebase": return t("hgModal.titleRebase");
       case "reword": return t("rewordModal.title");
@@ -481,6 +502,24 @@
             bind:value={tagNameInput}
             onkeydown={(e) => {
               if (e.key === "Enter") handleCreateTagSubmit();
+            }}
+          />
+        </div>
+
+      {:else if modal === "rename_tag"}
+        <div style="font-size: 12px; color: var(--text-secondary);">
+          {t("hgModal.currentTagLabel")} <span style="font-family: var(--font-mono); font-weight: 600; color: var(--text-primary);">{renameTargetTag}</span>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="tag-rename-input">{t("hgModal.newTagNameLabel")}</label>
+          <input
+            id="tag-rename-input"
+            type="text"
+            class="form-input"
+            placeholder={t("hgModal.newTagNamePlaceholder")}
+            bind:value={newTagNameInput}
+            onkeydown={(e) => {
+              if (e.key === "Enter") handleRenameTagSubmit();
             }}
           />
         </div>
@@ -768,6 +807,11 @@
         <button type="button" onclick={onClose} class="btn-secondary">{t("common.cancel")}</button>
         <button type="button" onclick={handleCreateTagSubmit} class="btn-primary" disabled={!tagNameInput.trim()}>
           {t("hgModal.createTagBtn")}
+        </button>
+      {:else if modal === "rename_tag"}
+        <button type="button" onclick={onClose} class="btn-secondary">{t("common.cancel")}</button>
+        <button type="button" onclick={handleRenameTagSubmit} class="btn-primary" disabled={!newTagNameInput.trim() || newTagNameInput.trim() === renameTargetTag}>
+          {t("hgModal.renameTagBtn")}
         </button>
       {:else if modal === "squash"}
         <button type="button" class="btn-secondary" onclick={onClose} disabled={isSquashing}>{t("common.cancel")}</button>

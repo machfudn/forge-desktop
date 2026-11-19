@@ -288,6 +288,7 @@
 
   // Tag / Squash / Rebase modal payloads
   let tagTargetSha = $state<string | null>(null);
+  let renameTargetTag = $state<string | null>(null);
   let squashCount = $state(2);
   let squashInitialSummary = $state("");
   let rebaseBaseSha = $state("");
@@ -1169,6 +1170,7 @@
       setStatus(t("app.status.hunkFailed", { err: String(err) }), true);
     }
   }
+
   async function handleStageLines(
     hunkPatch: string,
     selectedIndices: number[],
@@ -1180,6 +1182,26 @@
       setStatus(reverse ? t("app.status.linesUnstaged") : t("app.status.linesStaged"));
     } catch (err) {
       setStatus(t("app.status.hunkFailed", { err: String(err) }), true);
+    }
+  }
+
+  async function handleDiscardHunk(patchText: string) {
+    try {
+      await gitService.discardHunk(activeRepo, patchText);
+      await loadRepo(activeRepo);
+      setStatus(t("diff.hunkDiscarded"));
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleDiscardLines(hunkPatch: string, selectedIndices: number[]) {
+    try {
+      await gitService.discardLines(activeRepo, hunkPatch, selectedIndices);
+      await loadRepo(activeRepo);
+      setStatus(t("diff.linesDiscarded"));
+    } catch (err) {
+      setStatus(String(err), true);
     }
   }
 
@@ -1374,6 +1396,66 @@
     try {
       await gitService.abortRebase(activeRepo);
       setStatus(t("app.status.rebaseAborted"));
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleContinueMerge() {
+    try {
+      await gitService.continueMerge(activeRepo);
+      setStatus(t("changes.mergeContinued"));
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleContinueRebase() {
+    try {
+      await gitService.continueRebase(activeRepo);
+      setStatus(t("changes.rebaseContinued"));
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleAbortCherryPick() {
+    try {
+      await gitService.abortCherryPick(activeRepo);
+      setStatus(t("changes.cherryPickAborted"));
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleContinueCherryPick() {
+    try {
+      await gitService.continueCherryPick(activeRepo);
+      setStatus(t("changes.cherryPickContinued"));
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleAbortRevert() {
+    try {
+      await gitService.abortRevert(activeRepo);
+      setStatus(t("changes.revertAborted"));
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleContinueRevert() {
+    try {
+      await gitService.continueRevert(activeRepo);
+      setStatus(t("changes.revertContinued"));
       await loadRepo(activeRepo);
     } catch (err) {
       setStatus(String(err), true);
@@ -2006,6 +2088,11 @@
     activeModal = "tag";
   }
 
+  function handleOpenRenameTag(tagName: string) {
+    renameTargetTag = tagName;
+    activeModal = "rename_tag";
+  }
+
   function handleDeleteTag(tagName: string) {
     requestConfirmation(
       t("app.status.deleteTagTitle"),
@@ -2233,6 +2320,10 @@
           );
         },
       },
+      {
+        label: t("ctx.tag.renameTag"),
+        onSelect: () => handleOpenRenameTag(tagName),
+      },
       { type: "divider" },
       {
         label: t("ctx.tag.deleteTag", { tag: tagName }),
@@ -2417,6 +2508,7 @@
 
   const activeHistoryGithubModal = $derived(
     activeModal === "tag" ||
+      activeModal === "rename_tag" ||
       activeModal === "squash" ||
       activeModal === "rebase" ||
       activeModal === "reword" ||
@@ -2592,11 +2684,11 @@
   {@const connectedBottom = panelId === "file" && next === "commit"}
   <article class="workspace-panel-card {panelId === 'commit' ? 'workspace-commit-card' : ''} {connectedTop ? 'is-connected-top' : ''} {connectedBottom ? 'is-connected-bottom' : ''}" style={panelId === "commit" ? `--commit-panel-h: ${commitPanelHeight}px;` : undefined} data-panel={panelId} role="listitem" draggable={panelId !== "diff"} ondragstart={() => panelDragStart(panelId)} ondragover={(event) => event.preventDefault()} ondrop={(event) => { event.stopPropagation(); panelDrop(panelId); }}>
     {#if panelId === "file"}
-      <Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="files" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onAbortRebase={handleAbortRebase} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} />
+      <Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="files" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onContinueMerge={handleContinueMerge} onAbortRebase={handleAbortRebase} onContinueRebase={handleContinueRebase} onAbortCherryPick={handleAbortCherryPick} onContinueCherryPick={handleContinueCherryPick} onAbortRevert={handleAbortRevert} onContinueRevert={handleContinueRevert} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} />
     {:else if panelId === "commit"}
-      <div class="commit-panel-content" style={`height: ${commitPanelHeight}px; flex-basis: ${commitPanelHeight}px;`}><Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="commit" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onAbortRebase={handleAbortRebase} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} /></div>
+      <div class="commit-panel-content" style={`height: ${commitPanelHeight}px; flex-basis: ${commitPanelHeight}px;`}><Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="commit" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onContinueMerge={handleContinueMerge} onAbortRebase={handleAbortRebase} onContinueRebase={handleContinueRebase} onAbortCherryPick={handleAbortCherryPick} onContinueCherryPick={handleContinueCherryPick} onAbortRevert={handleAbortRevert} onContinueRevert={handleContinueRevert} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} /></div>
       {:else if panelId === "diff"}
-        {#if selectedFile}<Diff repoPath={activeRepo} {externalEditorLabel} filePath={selectedFile.path} diffText={currentDiff} imageDiffData={currentImageDiff} {ignoreWhitespace} isLfs={selectedFile.is_lfs} isStaged={selectedFile.staged} onToggleWhitespace={toggleWhitespace} onAddToGitignore={handleAddToGitignore} onStageHunk={handleStageHunk} onStageLines={handleStageLines} onInspectFile={(fp: string, mode: "blame" | "history") => (inspectFileState = { path: fp, mode })} onAiExplainDiff={handleAiExplainDiff} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onStatus={setStatus} prComments={prReviewComments} activePrNumber={activePrReviewNumber} onCreatePrComment={handleCreatePrComment} />{:else}<div class="empty-state">{t("diff.emptyDiff")}</div>{/if}
+        {#if selectedFile}<Diff repoPath={activeRepo} {externalEditorLabel} filePath={selectedFile.path} diffText={currentDiff} imageDiffData={currentImageDiff} {ignoreWhitespace} isLfs={selectedFile.is_lfs} isStaged={selectedFile.staged} onToggleWhitespace={toggleWhitespace} onAddToGitignore={handleAddToGitignore} onStageHunk={handleStageHunk} onStageLines={handleStageLines} onDiscardHunk={handleDiscardHunk} onDiscardLines={handleDiscardLines} onInspectFile={(fp: string, mode: "blame" | "history") => (inspectFileState = { path: fp, mode })} onAiExplainDiff={handleAiExplainDiff} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onStatus={setStatus} prComments={prReviewComments} activePrNumber={activePrReviewNumber} onCreatePrComment={handleCreatePrComment} />{:else}<div class="empty-state">{t("diff.emptyDiff")}</div>{/if}
       {/if}
     </article>
     {#if (panelId === "file" && next === "commit") || (panelId === "commit" && next === "file")}
@@ -3358,7 +3450,7 @@
       {/if}
       {#if activeView === "history"}
         <section class="content-panel is-full-width">
-          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} />
+          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onRenameTag={handleOpenRenameTag} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} />
         </section>
       {/if}
     </main>
@@ -3495,6 +3587,7 @@
     hasGithubAccount={Boolean(activeRepoAccount)}
     onOpenAuth={() => (activeModal = "auth")}
     {tagTargetSha}
+    {renameTargetTag}
     {squashCount}
     {squashInitialSummary}
     {rebaseBaseSha}

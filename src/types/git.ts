@@ -12,6 +12,8 @@ export interface RepoStatus {
   has_conflicts: boolean;
   in_merge: boolean;
   in_rebase: boolean;
+  in_cherry_pick: boolean;
+  in_revert: boolean;
   has_commits: boolean;
 }
 

@@ -22,6 +22,8 @@
     onAddToGitignore?: (path: string) => void;
     onStageHunk?: (patchText: string, reverse: boolean) => void;
     onStageLines?: (hunkPatch: string, selectedIndices: number[], reverse: boolean) => void;
+    onDiscardHunk?: (patchText: string) => void;
+    onDiscardLines?: (hunkPatch: string, selectedIndices: number[]) => void;
     onInspectFile?: (filePath: string, mode: "blame" | "history") => void;
     onAiExplainDiff?: (filePath: string, diffText: string) => void;
     onRevealFile?: (filePath: string) => void;
@@ -45,6 +47,8 @@
     onAddToGitignore,
     onStageHunk,
     onStageLines,
+    onDiscardHunk,
+    onDiscardLines,
     onInspectFile,
     onAiExplainDiff,
     onRevealFile,
@@ -596,6 +600,22 @@
       await onStageLines(patch, indices, isStaged);
     }
   }
+
+  async function applyDiscardSelectedLines() {
+    if (!onDiscardLines || selectedLineCount === 0 || isStaged) return;
+    const byHunk = new Map<string, { patch: string; indices: number[] }>();
+    for (const item of lines) {
+      const k = lineSelectKey(item);
+      if (!k || !selectedLineMap[k] || !item.hunkPatch || item.bodyIdx === undefined) continue;
+      const bucket = byHunk.get(item.hunkKey!) ?? { patch: item.hunkPatch, indices: [] };
+      bucket.indices.push(item.bodyIdx);
+      byHunk.set(item.hunkKey!, bucket);
+    }
+    selectedLineMap = {};
+    for (const { patch, indices } of byHunk.values()) {
+      await onDiscardLines(patch, indices);
+    }
+  }
   function openDiffContextMenu(e: MouseEvent) {
     if (e.target instanceof HTMLInputElement) return;
     const selectedText = window.getSelection()?.toString() || "";
@@ -895,6 +915,16 @@
         >
           {isStaged ? t("diff.unstageSelectedLinesBtn") : t("diff.stageSelectedLinesBtn")}
         </button>
+        {#if !isStaged && onDiscardLines}
+          <button
+            type="button"
+            class="btn-secondary btn-xs btn-danger"
+            onclick={applyDiscardSelectedLines}
+            title={t("diff.discardSelectedLinesTitle")}
+          >
+            {t("diff.discardSelectedLinesBtn")}
+          </button>
+        {/if}
         <button
           type="button"
           class="btn-secondary btn-xs"
@@ -918,6 +948,16 @@
                 title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
               >
                 {isStaged ? t("diff.unstageHunkBtn") : t("diff.stageHunkBtn")}
+              </button>
+            {/if}
+            {#if item.hunkPatch && onDiscardHunk && !isStaged}
+              <button
+                type="button"
+                class="btn-secondary btn-xs btn-danger"
+                onclick={() => onDiscardHunk(item.hunkPatch!)}
+                title={t("diff.discardHunkTitle")}
+              >
+                {t("diff.discardHunkBtn")}
               </button>
             {/if}
           </div>
@@ -1086,6 +1126,16 @@
                 title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
               >
                 {isStaged ? t("diff.unstageHunkBtn") : t("diff.stageHunkBtn")}
+              </button>
+            {/if}
+            {#if row.hunkPatch && onDiscardHunk && !isStaged}
+              <button
+                type="button"
+                class="btn-secondary btn-xs btn-danger"
+                onclick={() => onDiscardHunk(row.hunkPatch!)}
+                title={t("diff.discardHunkTitle")}
+              >
+                {t("diff.discardHunkBtn")}
               </button>
             {/if}
           </div>

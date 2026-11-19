@@ -149,6 +149,30 @@ export async function deleteTag(repo: string, tagName: string): Promise<string> 
   return invoke<string>("delete_tag", { repo, tagName });
 }
 
+export async function renameTag(
+  repo: string,
+  oldName: string,
+  newName: string
+): Promise<string> {
+  return invoke<string>("rename_tag", { repo, oldName, newName });
+}
+
+export async function pushTag(
+  repo: string,
+  tagName: string,
+  remote?: string
+): Promise<string> {
+  return invoke<string>("push_tag", { repo, remote, tagName });
+}
+
+export async function deleteRemoteTag(
+  repo: string,
+  tagName: string,
+  remote?: string
+): Promise<string> {
+  return invoke<string>("delete_remote_tag", { repo, remote, tagName });
+}
+
 export async function rebaseBranch(
   repo: string,
   baseBranch: string
@@ -232,8 +256,32 @@ export async function abortMerge(repo: string): Promise<void> {
   return invoke("abort_merge", { repo });
 }
 
+export async function continueMerge(repo: string): Promise<string> {
+  return invoke<string>("continue_merge", { repo });
+}
+
 export async function abortRebase(repo: string): Promise<void> {
   return invoke("abort_rebase", { repo });
+}
+
+export async function continueRebase(repo: string): Promise<string> {
+  return invoke<string>("continue_rebase", { repo });
+}
+
+export async function abortCherryPick(repo: string): Promise<void> {
+  return invoke("abort_cherry_pick", { repo });
+}
+
+export async function continueCherryPick(repo: string): Promise<string> {
+  return invoke<string>("continue_cherry_pick", { repo });
+}
+
+export async function abortRevert(repo: string): Promise<void> {
+  return invoke("abort_revert", { repo });
+}
+
+export async function continueRevert(repo: string): Promise<string> {
+  return invoke<string>("continue_revert", { repo });
 }
 
 export async function listRemotes(repo: string): Promise<RemoteInfo[]> {
@@ -766,6 +814,21 @@ export async function stageLines(
   reverse: boolean
 ): Promise<void> {
   return invoke<void>("stage_lines", { repo, hunkPatch, selectedIndices, reverse });
+}
+
+export async function discardHunk(
+  repo: string,
+  patchText: string
+): Promise<void> {
+  return invoke<void>("discard_hunk", { repo, patchText });
+}
+
+export async function discardLines(
+  repo: string,
+  hunkPatch: string,
+  selectedIndices: number[]
+): Promise<void> {
+  return invoke<void>("discard_lines", { repo, hunkPatch, selectedIndices });
 }
 
 export async function getFileBlame(

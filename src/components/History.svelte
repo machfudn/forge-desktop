@@ -35,6 +35,7 @@
     onEditCommitMessage?: (commit: CommitInfo, index: number) => void;
     onRevert?: (sha: string) => void;
     onTag?: (sha: string) => void;
+    onRenameTag?: (tagName: string) => void;
     onDeleteTag?: (tagName: string) => void;
     onReset?: (sha: string) => void;
     onSquash?: (commitIndex: number, sha: string) => void;
@@ -70,6 +71,7 @@
     onEditCommitMessage,
     onRevert,
     onTag,
+    onRenameTag,
     onDeleteTag,
     onReset,
     onSquash,
@@ -906,7 +908,7 @@
   function openCommitContextMenu(e: MouseEvent, commit: CommitInfo, index: number) {
     const clickedTag =
       e.target instanceof HTMLElement
-        ? e.target.closest<HTMLElement>(".commit-tag-badge")?.dataset.tag ?? null
+        ? e.target.closest<HTMLElement>(".graph-tag-badge, .commit-tag-badge")?.dataset.tag ?? null
         : null;
     const items: ContextMenuItem[] = [];
 
@@ -921,6 +923,12 @@
           );
         },
       });
+      if (onRenameTag) {
+        items.push({
+          label: t("ctx.tag.renameTag"),
+          onSelect: () => onRenameTag(clickedTag),
+        });
+      }
       if (onDeleteTag) {
         items.push({
           label: t("ctx.tag.deleteTag", { tag: clickedTag }),
@@ -1796,6 +1804,7 @@
                         <span
                           class="graph-tag-badge"
                           style="--tag-color: {nodeColor};"
+                          data-tag={refItem.name}
                           title={refItem.name}
                         >
                           <svg class="badge-icon" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1838,6 +1847,7 @@
                       <span
                         class="graph-tag-badge"
                         style="--tag-color: {nodeColor};"
+                        data-tag={tagName}
                         title={tagName}
                       >
                         <svg class="badge-icon" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
