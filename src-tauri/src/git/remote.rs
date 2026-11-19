@@ -384,7 +384,7 @@ where
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    let mut args = vec!["pull", rem.as_str()];
+    let mut args = vec!["pull", "--no-edit", rem.as_str()];
     let valid_branch;
     if let Some(b) = branch.filter(|s| !s.trim().is_empty()) {
         valid_branch = validate_arg(b, "Nama branch")?;
@@ -407,7 +407,7 @@ pub fn pull(
     let cur_branch = current_branch_name(repo);
     let snap = RemoteConfigSnapshot::read(repo);
     let rem = snap.resolve_remote(remote, branch.or(cur_branch.as_deref()))?;
-    let mut args = vec!["pull", rem.as_str()];
+    let mut args = vec!["pull", "--no-edit", rem.as_str()];
     let valid_branch;
     if let Some(b) = branch.filter(|s| !s.trim().is_empty()) {
         valid_branch = validate_arg(b, "Nama branch")?;

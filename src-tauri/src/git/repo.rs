@@ -301,7 +301,7 @@ pub fn detect_git_hooks(repo: &str) -> Result<GitHooksInfo, String> {
         names.push("husky".to_string());
     }
 
-    let hooks_dir = p.join(".git").join("hooks");
+    let hooks_dir = resolve_git_dir(repo).join("hooks");
     let mut has_pre_commit = false;
     let mut has_commit_msg = false;
 

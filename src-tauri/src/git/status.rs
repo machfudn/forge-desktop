@@ -22,6 +22,7 @@ pub struct RepoStatus {
     pub in_cherry_pick: bool,
     pub in_revert: bool,
     pub has_commits: bool,
+    pub is_detached: bool,
 }
 
 pub fn is_conflict_code(code: &str) -> bool {
@@ -66,10 +67,14 @@ pub fn parse_status_line(line: &str) -> Option<FileEntry> {
         is_lfs: false,
     })
 }
-pub fn parse_status_branch_header(header_line: &str) -> (String, bool) {
+pub fn parse_status_branch_header(header_line: &str) -> (String, bool, bool) {
     let rest = header_line.strip_prefix("## ").unwrap_or(header_line).trim();
-    if rest == "HEAD (no branch)" {
-        return ("HEAD terlepas".into(), true);
+    if rest == "HEAD (no branch)"
+        || rest.starts_with("HEAD (detached at ")
+        || rest.starts_with("HEAD (detached from ")
+        || rest == "(no branch)"
+    {
+        return ("HEAD terlepas".into(), true, true);
     }
     if let Some(branch) = rest
         .strip_prefix("No commits yet on ")
@@ -83,13 +88,14 @@ pub fn parse_status_branch_header(header_line: &str) -> (String, bool) {
                 name.to_string()
             },
             false,
+            name.is_empty(),
         );
     }
     let branch_part = rest.split("...").next().unwrap_or(rest).trim();
-    if branch_part.is_empty() {
-        ("HEAD terlepas".into(), true)
+    if branch_part.is_empty() || branch_part == "HEAD" || branch_part == "HEAD (no branch)" {
+        ("HEAD terlepas".into(), true, true)
     } else {
-        (branch_part.to_string(), true)
+        (branch_part.to_string(), true, false)
     }
 }
 
@@ -136,14 +142,15 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
         ],
     )?;
     let mut lines = status_out.lines();
-    let (branch, has_commits) = match lines.next() {
+    let (branch, has_commits, is_detached) = match lines.next() {
         Some(first) if first.starts_with("## ") => parse_status_branch_header(first),
         Some(other) => {
             let has_c = cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_ok();
-            let br = cli::run(repo, &["branch", "--show-current"])
+            let current_br = cli::run(repo, &["branch", "--show-current"])
                 .ok()
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| "HEAD terlepas".into());
+                .filter(|s| !s.trim().is_empty());
+            let is_det = current_br.is_none();
+            let br = current_br.unwrap_or_else(|| "HEAD terlepas".into());
             let mut files: Vec<FileEntry> = std::iter::once(other)
                 .chain(lines)
                 .filter_map(parse_status_line)
@@ -168,9 +175,10 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
                 in_cherry_pick,
                 in_revert,
                 has_commits: has_c,
+                is_detached: is_det,
             });
         }
-        None => ("HEAD terlepas".into(), false),
+        None => ("HEAD terlepas".into(), false, true),
     };
 
     let mut files: Vec<FileEntry> = lines.filter_map(parse_status_line).collect();
@@ -197,6 +205,7 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
         in_cherry_pick,
         in_revert,
         has_commits,
+        is_detached,
     })
 }
 
@@ -383,19 +392,27 @@ mod tests {
     fn parses_status_branch_headers() {
         assert_eq!(
             parse_status_branch_header("## No commits yet on main"),
-            ("main".to_string(), false)
+            ("main".to_string(), false, false)
         );
         assert_eq!(
             parse_status_branch_header("## HEAD (no branch)"),
-            ("HEAD terlepas".to_string(), true)
+            ("HEAD terlepas".to_string(), true, true)
+        );
+        assert_eq!(
+            parse_status_branch_header("## HEAD (detached at v1.0.0)"),
+            ("HEAD terlepas".to_string(), true, true)
+        );
+        assert_eq!(
+            parse_status_branch_header("## HEAD (detached from 3a4b5c)"),
+            ("HEAD terlepas".to_string(), true, true)
         );
         assert_eq!(
             parse_status_branch_header("## feat/perf...origin/feat/perf [ahead 2, behind 1]"),
-            ("feat/perf".to_string(), true)
+            ("feat/perf".to_string(), true, false)
         );
         assert_eq!(
             parse_status_branch_header("## main"),
-            ("main".to_string(), true)
+            ("main".to_string(), true, false)
         );
     }
 }

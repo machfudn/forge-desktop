@@ -1,4 +1,3 @@
-use std::path::Path;
 use serde::{Deserialize, Serialize};
 use super::cli;
 
@@ -39,9 +38,8 @@ fn get_commit_info(repo: &str, rev: &str) -> Option<BisectCommitInfo> {
 }
 
 pub fn is_bisect_active(repo: &str) -> bool {
-    let p = Path::new(repo);
-    p.join(".git").join("BISECT_START").exists()
-        || p.join(".git").join("BISECT_LOG").exists()
+    let git_dir = super::status::resolve_git_dir(repo);
+    git_dir.join("BISECT_START").exists() || git_dir.join("BISECT_LOG").exists()
 }
 
 fn parse_bisect_output(repo: &str, out: &str) -> BisectState {

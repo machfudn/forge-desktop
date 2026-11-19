@@ -33,9 +33,26 @@ pub fn discard_changes(repo: &str, file: &str) -> Result<(), String> {
         }
     }
 
+    // Handle renamed files: R  old.txt -> new.txt
+    if code.starts_with('R') {
+        let rest = status_out[2..].trim();
+        if let Some((old_p, new_p)) = rest.split_once(" -> ") {
+            let old_trimmed = old_p.trim().trim_matches('"');
+            let new_trimmed = new_p.trim().trim_matches('"');
+            let _ = cli::run(repo, &["reset", "HEAD", "--", new_trimmed]);
+            let _ = cli::run(repo, &["checkout", "HEAD", "--", old_trimmed]);
+            let new_full = Path::new(repo).join(new_trimmed);
+            if new_full.exists() && new_trimmed != old_trimmed {
+                let _ = fs::remove_file(&new_full);
+            }
+            return Ok(());
+        }
+    }
+
     let has_head = cli::run(repo, &["rev-parse", "--verify", "HEAD"]).is_ok();
     if has_head {
-        // Tracked file: restore worktree and staged index
+        // Tracked file: unstage and restore worktree
+        let _ = cli::run(repo, &["reset", "HEAD", "--", trimmed]);
         cli::run(repo, &["checkout", "HEAD", "--", trimmed]).map(|_| ())
     } else {
         // Unborn repository (no commits yet): unstage and remove

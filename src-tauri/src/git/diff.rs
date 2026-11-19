@@ -99,6 +99,15 @@ pub fn get_file_diff(
 
     let full_path = Path::new(repo).join(p);
     if full_path.exists() && full_path.is_file() {
+        if let Ok(meta) = fs::metadata(&full_path) {
+            // Guard against large untracked files (> 2MB)
+            if meta.len() > 2 * 1024 * 1024 {
+                return Ok(format!(
+                    "--- /dev/null\n+++ b/{p}\n@@ -0,0 +1,1 @@\n+[File terlalu besar untuk ditampilkan di diff viewer (ukuran: {:.1} MB)]",
+                    meta.len() as f64 / (1024.0 * 1024.0)
+                ));
+            }
+        }
         if let Ok(content) = fs::read_to_string(&full_path) {
             let lines: Vec<String> = content.lines().map(|l| format!("+{l}")).collect();
             return Ok(format!(
@@ -139,7 +148,7 @@ pub fn stage_hunk(repo: &str, patch_text: &str, reverse: bool) -> Result<(), Str
     if patch_text.trim().is_empty() {
         return Err("Patch text tidak boleh kosong".into());
     }
-    let mut args = vec!["-C", repo, "apply", "--cached"];
+    let mut args = vec!["-C", repo, "apply", "--cached", "--whitespace=nowarn"];
     if reverse {
         args.push("--reverse");
     }

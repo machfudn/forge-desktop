@@ -271,7 +271,7 @@ pub fn merge_branch(repo: &str, target_branch: &str) -> Result<String, String> {
     if target.is_empty() || target.starts_with('-') {
         return Err("Nama branch target tidak valid".into());
     }
-    cli::run(repo, &["merge", target])
+    cli::run(repo, &["merge", "--no-edit", target])
 }
 
 pub fn compare_branches(repo: &str, base: &str, target: &str) -> Result<AheadBehind, String> {
