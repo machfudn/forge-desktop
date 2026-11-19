@@ -179,7 +179,8 @@ fn resolve_avatar_url(author: &str, email: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(lower_email.as_bytes());
         let hash = hasher.finalize();
-        return format!("https://www.gravatar.com/avatar/{:x}?d=identicon&s=48", hash);
+        let hex_hash: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        return format!("https://www.gravatar.com/avatar/{hex_hash}?d=identicon&s=48");
     }
 
     // Single-word author username fallback only when email is absent
