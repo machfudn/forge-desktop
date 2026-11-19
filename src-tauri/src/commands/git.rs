@@ -44,13 +44,11 @@ fn resolve_creds_for_url(
     account_id: Option<&str>,
     url: &str,
 ) -> Option<(String, String)> {
-    if !git::is_http_remote_url(url) {
-        return None;
-    }
     let host = git::extract_host_from_url(url)?;
+    let lookup_host = if host == "ssh.github.com" { "github.com" } else { &host };
     accounts
-        .resolve_account(account_id, repo, &host)
-        .map(|(p, t)| (normalize_git_http_username(&host, &p.login), t))
+        .resolve_account(account_id, repo, lookup_host)
+        .map(|(p, t)| (normalize_git_http_username(lookup_host, &p.login), t))
 }
 
 fn resolve_remote_creds(

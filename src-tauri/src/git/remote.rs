@@ -193,6 +193,39 @@ pub fn is_http_remote_url(url: &str) -> bool {
     lower.starts_with("https://") || lower.starts_with("http://")
 }
 
+pub fn is_ssh_remote_url(url: &str) -> bool {
+    let u = url.trim();
+    if u.starts_with("git@") || u.starts_with("ssh://") {
+        return true;
+    }
+    if let Some((host, _)) = u.split_once(':') {
+        if !host.contains('/') && !host.contains('\\') && host.contains('.') && !u.starts_with("http://") && !u.starts_with("https://") {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn generate_ssh_to_https_insteadof(host: &str) -> Vec<(String, String)> {
+    let mut options = Vec::new();
+    let norm_host = if host == "ssh.github.com" { "github.com" } else { host };
+    options.push((
+        format!("url.https://{norm_host}/.insteadOf"),
+        format!("git@{norm_host}:"),
+    ));
+    options.push((
+        format!("url.https://{norm_host}/.insteadOf"),
+        format!("ssh://git@{norm_host}/"),
+    ));
+    if norm_host == "github.com" {
+        options.push((
+            "url.https://github.com/.insteadOf".to_string(),
+            "ssh://git@ssh.github.com:443/".to_string(),
+        ));
+    }
+    options
+}
+
 fn current_branch_name(repo: &str) -> Option<String> {
     cli::run(repo, &["branch", "--show-current"])
         .ok()
@@ -221,6 +254,7 @@ pub fn extract_host_from_url(url: &str) -> Option<String> {
         .strip_prefix("https://")
         .or_else(|| u.strip_prefix("http://"))
         .or_else(|| u.strip_prefix("ssh://git@"))
+        .or_else(|| u.strip_prefix("ssh://"))
     {
         let host_port = rest.split('/').next()?.trim();
         let host = host_port.split('@').next_back()?.split(':').next()?;
@@ -245,6 +279,32 @@ pub fn infer_remote_host(repo: &str, remote: Option<&str>) -> Option<String> {
     extract_host_from_url(&url)
 }
 
+pub fn is_network_remote_url(url: &str) -> bool {
+    is_http_remote_url(url) || is_ssh_remote_url(url)
+}
+
+fn resolve_creds_and_rewrite<F>(
+    snap: &RemoteConfigSnapshot,
+    rem: &str,
+    for_push: bool,
+    resolve_creds: F,
+) -> (Option<(String, String)>, Vec<(String, String)>)
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    let url = snap.url_for(rem, for_push).filter(|u| is_network_remote_url(u));
+    let creds = url.and_then(resolve_creds);
+    let mut rewrite_options = Vec::new();
+    if let (Some(u), Some(_)) = (url, &creds) {
+        if is_ssh_remote_url(u) {
+            if let Some(host) = extract_host_from_url(u) {
+                rewrite_options = generate_ssh_to_https_insteadof(&host);
+            }
+        }
+    }
+    (creds, rewrite_options)
+}
+
 pub fn fetch_with<F>(
     repo: &str,
     remote: Option<&str>,
@@ -255,14 +315,16 @@ where
 {
     let snap = RemoteConfigSnapshot::read(repo);
     let rem = snap.resolve_remote(remote, None)?;
-    let creds = snap
-        .url_for(&rem, false)
-        .filter(|u| is_http_remote_url(u))
-        .and_then(resolve_creds);
-    cli::run_with_credentials(
+    let (creds, rewrite_options) = resolve_creds_and_rewrite(&snap, &rem, false, resolve_creds);
+    let borrowed_opts: Vec<(&str, &str)> = rewrite_options
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    cli::run_with_credentials_and_options(
         repo,
         &["fetch", &rem],
         creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        &borrowed_opts,
     )
 }
 
@@ -286,14 +348,16 @@ where
     }
     let mut outputs = Vec::with_capacity(snap.remote_order.len());
     for rem in &snap.remote_order {
-        let creds = snap
-            .url_for(rem, false)
-            .filter(|u| is_http_remote_url(u))
-            .and_then(&resolve_creds);
-        let out = cli::run_with_credentials(
+        let (creds, rewrite_options) = resolve_creds_and_rewrite(&snap, rem, false, &resolve_creds);
+        let borrowed_opts: Vec<(&str, &str)> = rewrite_options
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let out = cli::run_with_credentials_and_options(
             repo,
             &["fetch", "--prune", rem],
             creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+            &borrowed_opts,
         )?;
         let trimmed = out.trim();
         if !trimmed.is_empty() {
@@ -315,20 +379,22 @@ where
     let cur_branch = current_branch_name(repo);
     let snap = RemoteConfigSnapshot::read(repo);
     let rem = snap.resolve_remote(remote, branch.or(cur_branch.as_deref()))?;
-    let creds = snap
-        .url_for(&rem, false)
-        .filter(|u| is_http_remote_url(u))
-        .and_then(resolve_creds);
+    let (creds, rewrite_options) = resolve_creds_and_rewrite(&snap, &rem, false, resolve_creds);
+    let borrowed_opts: Vec<(&str, &str)> = rewrite_options
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     let mut args = vec!["pull", rem.as_str()];
     let valid_branch;
     if let Some(b) = branch.filter(|s| !s.trim().is_empty()) {
         valid_branch = validate_arg(b, "Nama branch")?;
         args.push(valid_branch);
     }
-    cli::run_with_credentials(
+    cli::run_with_credentials_and_options(
         repo,
         &args,
         creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
+        &borrowed_opts,
     )
 }
 
@@ -373,23 +439,36 @@ where
     let snap = RemoteConfigSnapshot::read(repo);
     let rem = snap.resolve_remote(remote, Some(&target_branch))?;
     let has_upstream = snap.has_upstream(&target_branch);
-    let creds = snap
-        .url_for(&rem, true)
-        .filter(|u| is_http_remote_url(u))
-        .and_then(resolve_creds);
+    let (creds, rewrite_options) = resolve_creds_and_rewrite(&snap, &rem, true, resolve_creds);
+    let borrowed_opts: Vec<(&str, &str)> = rewrite_options
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     let creds_ref = creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str()));
     match (force_lease, has_upstream) {
-        (false, true) => cli::run_with_credentials(repo, &["push", &rem, &target_branch], creds_ref),
-        (false, false) => cli::run_with_credentials(repo, &["push", "-u", &rem, &target_branch], creds_ref),
-        (true, true) => cli::run_with_credentials(
+        (false, true) => cli::run_with_credentials_and_options(
+            repo,
+            &["push", &rem, &target_branch],
+            creds_ref,
+            &borrowed_opts,
+        ),
+        (false, false) => cli::run_with_credentials_and_options(
+            repo,
+            &["push", "-u", &rem, &target_branch],
+            creds_ref,
+            &borrowed_opts,
+        ),
+        (true, true) => cli::run_with_credentials_and_options(
             repo,
             &["push", "--force-with-lease", &rem, &target_branch],
             creds_ref,
+            &borrowed_opts,
         ),
-        (true, false) => cli::run_with_credentials(
+        (true, false) => cli::run_with_credentials_and_options(
             repo,
             &["push", "--force-with-lease", "-u", &rem, &target_branch],
             creds_ref,
+            &borrowed_opts,
         ),
     }
 }
@@ -604,6 +683,14 @@ pub fn clone_repository(
     }
 
     let mut cmd = crate::system::command_no_window("git");
+    if let Some(host) = extract_host_from_url(url) {
+        if is_ssh_remote_url(url) && creds.is_some() {
+            let rewrite_options = generate_ssh_to_https_insteadof(&host);
+            for (k, v) in rewrite_options {
+                cmd.args(["-c", &format!("{k}={v}")]);
+            }
+        }
+    }
     cmd.args(["clone", "--", url, target]);
     let _guard = cli::apply_git_askpass(&mut cmd, creds)?;
     let output = cmd

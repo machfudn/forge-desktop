@@ -50,32 +50,67 @@ impl Drop for AskpassGuard {
     }
 }
 
+pub fn apply_git_base_env(cmd: &mut Command) {
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    cmd.env("SSH_ASKPASS_REQUIRE", "never");
+
+    // Default safe SSH options if not customized by user:
+    // BatchMode=yes prevents hanging on interactive passphrase/fingerprint prompts
+    // ConnectTimeout=15 prevents hanging indefinitely on unroutable / dropped packets
+    if std::env::var("GIT_SSH_COMMAND").is_err() {
+        cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=15");
+    }
+
+    // Explicitly pass proxy and SSH auth socket variables from process environment
+    let proxy_vars = [
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "NO_PROXY",
+        "no_proxy",
+        "SSH_AUTH_SOCK",
+        "GIT_SSH",
+        "GIT_SSH_COMMAND",
+    ];
+    for var in proxy_vars {
+        if let Ok(val) = std::env::var(var) {
+            cmd.env(var, val);
+        }
+    }
+}
+
 pub fn apply_git_askpass(
     cmd: &mut Command,
     creds: Option<(&str, &str)>,
 ) -> Result<Option<AskpassGuard>, String> {
+    apply_git_base_env(cmd);
     let Some((username, token)) = creds else {
         return Ok(None);
     };
     let guard = AskpassGuard::new()?;
     cmd.env("GIT_ASKPASS", guard.path())
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("SSH_ASKPASS_REQUIRE", "never")
         .env("FORGE_GIT_ASKPASS_USER", username)
         .env("FORGE_GIT_ASKPASS_TOKEN", token);
     Ok(Some(guard))
 }
 
-pub fn run_raw_with_credentials(
+pub fn run_raw_with_credentials_and_options(
     dir: &str,
     args: &[&str],
     creds: Option<(&str, &str)>,
+    config_options: &[(&str, &str)],
 ) -> Result<String, String> {
     let p = Path::new(dir);
     if !p.exists() {
         return Err("Direktori tidak ditemukan".into());
     }
     let mut cmd = crate::system::command_no_window("git");
+    for (k, v) in config_options {
+        cmd.args(["-c", &format!("{k}={v}")]);
+    }
     cmd.args(["-C", dir]).args(args);
     let _guard = apply_git_askpass(&mut cmd, creds)?;
     let output = cmd
@@ -94,8 +129,28 @@ pub fn run_raw_with_credentials(
         .to_owned())
 }
 
+pub fn run_raw_with_credentials(
+    dir: &str,
+    args: &[&str],
+    creds: Option<(&str, &str)>,
+) -> Result<String, String> {
+    run_raw_with_credentials_and_options(dir, args, creds, &[])
+}
+
 pub fn run_raw(dir: &str, args: &[&str]) -> Result<String, String> {
     run_raw_with_credentials(dir, args, None)
+}
+
+pub fn run_with_credentials_and_options(
+    repo: &str,
+    args: &[&str],
+    creds: Option<(&str, &str)>,
+    config_options: &[(&str, &str)],
+) -> Result<String, String> {
+    if !Path::new(repo).join(".git").exists() {
+        return Err("Folder bukan repository Git".into());
+    }
+    run_raw_with_credentials_and_options(repo, args, creds, config_options)
 }
 
 pub fn run_with_credentials(
@@ -103,10 +158,7 @@ pub fn run_with_credentials(
     args: &[&str],
     creds: Option<(&str, &str)>,
 ) -> Result<String, String> {
-    if !Path::new(repo).join(".git").exists() {
-        return Err("Folder bukan repository Git".into());
-    }
-    run_raw_with_credentials(repo, args, creds)
+    run_with_credentials_and_options(repo, args, creds, &[])
 }
 
 pub fn run(repo: &str, args: &[&str]) -> Result<String, String> {
@@ -117,7 +169,9 @@ pub fn run_bytes(repo: &str, args: &[&str]) -> Result<Vec<u8>, String> {
     if !Path::new(repo).join(".git").exists() {
         return Err("Folder bukan repository Git".into());
     }
-    let output = crate::system::command_no_window("git")
+    let mut cmd = crate::system::command_no_window("git");
+    apply_git_base_env(&mut cmd);
+    let output = cmd
         .args(["-C", repo])
         .args(args)
         .output()
