@@ -395,10 +395,13 @@
     "prCommentPlaceholder": "Tulis komentar review (didukung Markdown)...",
     "prReplyPlaceholder": "Tulis balasan...",
     "prAddCommentTitle": "Tambah komentar ke baris {line}",
-    "prViewCommentsTitle": "Lihat {count} komentar"
+    "prViewCommentsTitle": "Lihat {count} komentar",
+    "largeDiffWarning": "Diff ini sangat besar ({count} baris). Menampilkan seluruh baris dapat memperlambat aplikasi.",
+    "loadAnywayBtn": "Tetap Tampilkan Seluruh Diff"
   },
   "history": {
     "empty": "Belum ada riwayat commit di branch ini.",
+    "loadMoreCommits": "Muat 100 Commit Lebih Banyak",
     "colBranchTag": "BRANCH / TAG",
     "colGraph": "GRAFIK",
     "colSha": "SHA",

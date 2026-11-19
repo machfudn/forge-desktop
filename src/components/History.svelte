@@ -45,6 +45,8 @@
     onOpenInEditor?: (filePath: string) => void;
     onInspectFile?: (filePath: string, mode: "blame" | "history") => void;
     onAiExplainCommit?: (sha: string, summary: string) => void;
+    onLoadMoreCommits?: () => void;
+    hasMoreCommits?: boolean;
     onStatus?: (msg: string, isError?: boolean) => void;
   }
 
@@ -81,6 +83,8 @@
     onOpenInEditor,
     onInspectFile,
     onAiExplainCommit,
+    onLoadMoreCommits,
+    hasMoreCommits = false,
     onStatus,
   }: Props = $props();
   let selectedSha = $state<string | null>(null);
@@ -2029,6 +2033,18 @@
           </div>
         {/if}
       {/each}
+      {#if hasMoreCommits && onLoadMoreCommits}
+        <div class="history-load-more-row" style="padding: 12px; text-align: center;">
+          <button
+            type="button"
+            class="btn-secondary btn-sm"
+            onclick={onLoadMoreCommits}
+            style="width: 100%; max-width: 320px; margin: 0 auto;"
+          >
+            {t("history.loadMoreCommits")}
+          </button>
+        </div>
+      {/if}
     {/if}
     </div>
 

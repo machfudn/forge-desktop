@@ -416,10 +416,13 @@
     "prCommentPlaceholder": "Leave a review comment (Markdown supported)...",
     "prReplyPlaceholder": "Write a reply...",
     "prAddCommentTitle": "Add comment to line {line}",
-    "prViewCommentsTitle": "View {count} comment(s)"
+    "prViewCommentsTitle": "View {count} comment(s)",
+    "largeDiffWarning": "This diff is very large ({count} lines). Rendering all lines may slow down the app.",
+    "loadAnywayBtn": "Load Full Diff Anyway"
   },
   "history": {
     "empty": "No commit history on this branch yet.",
+    "loadMoreCommits": "Load 100 More Commits",
     "colBranchTag": "BRANCH / TAG",
     "colGraph": "GRAPH",
     "colSha": "SHA",

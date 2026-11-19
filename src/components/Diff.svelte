@@ -70,6 +70,11 @@
   let imageViewMode = $state<"2-up" | "swipe" | "onion">("2-up");
   let swipePercent = $state(50);
   let onionOpacity = $state(50);
+  let forceRenderLargeDiff = $state(false);
+  $effect(() => {
+    filePath;
+    forceRenderLargeDiff = false;
+  });
   $effect(() => {
     if (!isMarkdown && viewMode === "markdown") {
       viewMode = "unified";
@@ -552,6 +557,7 @@
   let safeDiffText = $derived(diffText ?? "");
   let lines = $derived(parseLines(safeDiffText, filePath));
   let splitRows = $derived(parseSplit(safeDiffText, filePath));
+  let isVeryLargeDiff = $derived(lines.length > 2500);
   let stats = $derived({
     adds: lines.filter((l) => l.kind === "add").length,
     dels: lines.filter((l) => l.kind === "del").length,
@@ -903,6 +909,15 @@
   {:else if lines.length === 0}
     <div class="empty-state">
       <span>{t("diff.emptyDiff")}</span>
+    </div>
+  {:else if isVeryLargeDiff && !forceRenderLargeDiff}
+    <div class="empty-state" style="padding: 24px 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center;">
+      <span style="font-weight: 600; color: var(--text-primary); font-size: 13px;">
+        {t("diff.largeDiffWarning", { count: lines.length })}
+      </span>
+      <button type="button" class="btn-primary btn-sm" onclick={() => (forceRenderLargeDiff = true)}>
+        {t("diff.loadAnywayBtn")}
+      </button>
     </div>
   {:else if viewMode === "unified"}
     {#if onStageLines && selectedLineCount > 0}

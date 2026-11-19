@@ -15,6 +15,7 @@ export interface RepoStatus {
   in_cherry_pick: boolean;
   in_revert: boolean;
   has_commits: boolean;
+  is_detached: boolean;
 }
 
 export type RepoPathState = "git" | "non_git" | "missing";

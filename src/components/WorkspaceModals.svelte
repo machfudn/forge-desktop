@@ -609,9 +609,10 @@
     try {
       await gitService.gitStashPop(activeRepo);
       onStatus(t("wsModal.stash.poppedStatus"));
-      await onLoadRepo(activeRepo);
     } catch (err) {
       onStatus(String(err), true);
+    } finally {
+      await onLoadRepo(activeRepo);
     }
   }
 

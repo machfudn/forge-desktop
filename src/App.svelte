@@ -89,6 +89,8 @@
   };
 
   let commits = $state<CommitInfo[]>([]);
+  let commitHistoryLimit = $state(100);
+  let hasMoreCommits = $derived(commits.length >= commitHistoryLimit);
   let branches = $state<BranchInfo[]>([]);
   let tags = $state<string[]>([]);
   let aheadBehind = $state<AheadBehind>({ ...EMPTY_AHEAD_BEHIND });
@@ -636,7 +638,10 @@
       const branchChanged = currentStatus?.branch !== status.branch;
       const commitStateChanged = currentStatus?.has_commits !== status.has_commits;
       const mergeOrRebaseChanged =
-        currentStatus?.in_merge !== status.in_merge || currentStatus?.in_rebase !== status.in_rebase;
+        currentStatus?.in_merge !== status.in_merge ||
+        currentStatus?.in_rebase !== status.in_rebase ||
+        currentStatus?.in_cherry_pick !== status.in_cherry_pick ||
+        currentStatus?.in_revert !== status.in_revert;
 
       if (filesChanged || branchChanged || commitStateChanged || mergeOrRebaseChanged) {
         currentStatus = status;
@@ -676,7 +681,9 @@
 
       const isValidBranch =
         Boolean(status.branch) &&
+        !status.is_detached &&
         status.branch !== "HEAD terlepas" &&
+        !status.branch.includes("detached") &&
         !status.branch.startsWith("(");
 
       if (branchChanged || commitStateChanged || force) {
@@ -688,7 +695,7 @@
           gitService.listTags(repo),
           gitService.getCommitHistory(
             repo,
-            100,
+            commitHistoryLimit,
             allBranches,
             selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
           ),
@@ -701,7 +708,7 @@
       } else if (activeView === "history" || filesChanged) {
         const nextCommits = await gitService.getCommitHistory(
           repo,
-          100,
+          commitHistoryLimit,
           allBranches,
           selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
         );
@@ -1040,6 +1047,7 @@
         currentImageDiff = null;
       }
       if (isNewRepo) {
+        commitHistoryLimit = 100;
         branches = [];
         pullRequests = [];
         issues = [];
@@ -1055,6 +1063,8 @@
 
       const isValidBranch =
         Boolean(status.branch) &&
+        !status.is_detached &&
+        !status.branch.includes("detached") &&
         status.branch !== "HEAD terlepas" &&
         !status.branch.startsWith("(");
 
@@ -1066,7 +1076,7 @@
         gitService.listTags(repoPath),
         gitService.getCommitHistory(
           repoPath,
-          100,
+          commitHistoryLimit,
           allBranches,
           selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
         ),
@@ -1282,13 +1292,28 @@
       try {
         commits = await gitService.getCommitHistory(
           activeRepo,
-          100,
+          commitHistoryLimit,
           filter.all,
           filter.selected.length > 0 ? filter.selected : undefined
         );
       } catch (err) {
         setStatus(String(err), true);
       }
+    }
+  }
+
+  async function handleLoadMoreCommits() {
+    if (!activeRepo || isLoading) return;
+    commitHistoryLimit += 100;
+    try {
+      commits = await gitService.getCommitHistory(
+        activeRepo,
+        commitHistoryLimit,
+        allBranches,
+        selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
+      );
+    } catch (err) {
+      setStatus(String(err), true);
     }
   }
 
@@ -1513,7 +1538,7 @@
         const [nextCommits, nextBranches, nextTags] = await Promise.all([
           gitService.getCommitHistory(
             activeRepo,
-            100,
+            commitHistoryLimit,
             allBranches,
             selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
           ),
@@ -1971,6 +1996,7 @@
       await loadRepo(activeRepo);
       setStatus(res || t("app.status.pullDone"));
     } catch (err) {
+      await loadRepo(activeRepo);
       const errStr = String(err);
       const opened = await checkAndOpenSshSwitchModal(errStr, handlePull);
       if (!opened) {
@@ -2103,7 +2129,7 @@
           const [nextTags, nextCommits] = await Promise.all([
             gitService.listTags(activeRepo),
             activeView === "history"
-              ? gitService.getCommitHistory(activeRepo, 100, allBranches)
+              ? gitService.getCommitHistory(activeRepo, commitHistoryLimit, allBranches)
               : Promise.resolve(null),
           ]);
           tags = nextTags;
@@ -3450,7 +3476,7 @@
       {/if}
       {#if activeView === "history"}
         <section class="content-panel is-full-width">
-          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onRenameTag={handleOpenRenameTag} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} />
+          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onRenameTag={handleOpenRenameTag} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onLoadMoreCommits={handleLoadMoreCommits} {hasMoreCommits} />
         </section>
       {/if}
     </main>
@@ -3603,13 +3629,13 @@
     onCheckoutPr={handleCheckoutPr}
     onReloadRepo={() => loadRepo(activeRepo)}
     onReloadHistory={async () => {
-      commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
+      commits = await gitService.getCommitHistory(activeRepo, commitHistoryLimit, allBranches);
     }}
     onReloadTags={async () => {
       const [nextTags, nextCommits] = await Promise.all([
         gitService.listTags(activeRepo),
         activeView === "history"
-          ? gitService.getCommitHistory(activeRepo, 100, allBranches)
+          ? gitService.getCommitHistory(activeRepo, commitHistoryLimit, allBranches)
           : Promise.resolve(null),
       ]);
       tags = nextTags;
