@@ -459,6 +459,9 @@
     };
   });
   let autofetchTimer: number | null = null;
+  let localSyncTimer: number | null = null;
+  let isWindowFocused = $state(true);
+  let isSyncRunning = false;
 
   function setStatus(msg: string, isError = false) {
     statusMessage = msg;
@@ -574,6 +577,18 @@
     }
   }
 
+  function setupLocalSync() {
+    if (localSyncTimer !== null) {
+      clearInterval(localSyncTimer);
+      localSyncTimer = null;
+    }
+    if (!activeRepo) return;
+    const intervalMs = isWindowFocused ? 2500 : 15000;
+    localSyncTimer = window.setInterval(() => {
+      void syncRepoState(false);
+    }, intervalMs);
+  }
+
   function setupAutofetch(secs: number) {
     if (autofetchTimer !== null) {
       clearInterval(autofetchTimer);
@@ -587,17 +602,150 @@
         isAutofetchRunning = true;
         try {
           await gitService.gitFetch(activeRepo);
-          const status = await gitService.inspectRepository(activeRepo);
-          currentStatus = status;
-          if (status.branch && status.branch !== "HEAD terlepas" && !status.branch.startsWith("(")) {
-            aheadBehind = await gitService.getBranchAheadBehind(activeRepo, status.branch);
-          }
+          await syncRepoState(false);
         } catch {
-          // Silent background fetch
+          // Silent background network fetch
         } finally {
           isAutofetchRunning = false;
         }
       }, normalizedSecs * 1000);
+    }
+  }
+
+  async function syncRepoState(force = false) {
+    if (!activeRepo || isLoading || isSyncRunning) return;
+    if (activeModal === "reword" || activeModal === "rebase" || activeModal === "squash") return;
+
+    isSyncRunning = true;
+    try {
+      const repo = activeRepo;
+      const status = await gitService.inspectRepository(repo);
+      if (activeRepo !== repo) return;
+
+      const prevFiles = currentStatus?.files || [];
+      const filesChanged =
+        force ||
+        !currentStatus ||
+        prevFiles.length !== status.files.length ||
+        prevFiles.some((cf, i) => {
+          const nf = status.files[i];
+          return !nf || cf.path !== nf.path || cf.status_code !== nf.status_code || cf.staged !== nf.staged;
+        });
+
+      const branchChanged = currentStatus?.branch !== status.branch;
+      const commitStateChanged = currentStatus?.has_commits !== status.has_commits;
+      const mergeOrRebaseChanged =
+        currentStatus?.in_merge !== status.in_merge || currentStatus?.in_rebase !== status.in_rebase;
+
+      if (filesChanged || branchChanged || commitStateChanged || mergeOrRebaseChanged) {
+        currentStatus = status;
+
+        if (selectedFile) {
+          const stillExists = status.files.find((f) => f.path === selectedFile!.path);
+          if (stillExists) {
+            selectedFile = stillExists;
+            await loadDiffForFile(stillExists);
+          } else {
+            selectedFile = status.files.length > 0 ? status.files[0] : null;
+            if (selectedFile) {
+              await loadDiffForFile(selectedFile);
+            } else {
+              currentDiff = "";
+              currentImageDiff = null;
+            }
+          }
+        } else if (status.files.length > 0) {
+          selectedFile = status.files[0];
+          await loadDiffForFile(selectedFile);
+        } else {
+          currentDiff = "";
+          currentImageDiff = null;
+        }
+      } else if (selectedFile && activeView === "changes") {
+        // Even if the file list didn't change, re-check diff content for the active file
+        try {
+          const nextDiff = await gitService.getFileDiff(repo, selectedFile.path, selectedFile.staged, ignoreWhitespace);
+          if (currentDiff !== nextDiff) {
+            currentDiff = nextDiff;
+          }
+        } catch {
+          // Silent diff error
+        }
+      }
+
+      const isValidBranch =
+        Boolean(status.branch) &&
+        status.branch !== "HEAD terlepas" &&
+        !status.branch.startsWith("(");
+
+      if (branchChanged || commitStateChanged || force) {
+        const [nextAb, nextBranches, nextTags, nextCommits] = await Promise.all([
+          isValidBranch
+            ? gitService.getBranchAheadBehind(repo, status.branch)
+            : Promise.resolve({ ...EMPTY_AHEAD_BEHIND, has_remote: hasRemote, is_unborn: !status.has_commits }),
+          gitService.listBranches(repo),
+          gitService.listTags(repo),
+          gitService.getCommitHistory(
+            repo,
+            100,
+            allBranches,
+            selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
+          ),
+        ]);
+        if (activeRepo !== repo) return;
+        aheadBehind = nextAb;
+        branches = nextBranches;
+        tags = nextTags;
+        commits = nextCommits;
+      } else if (activeView === "history" || filesChanged) {
+        const nextCommits = await gitService.getCommitHistory(
+          repo,
+          100,
+          allBranches,
+          selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
+        );
+        if (activeRepo !== repo) return;
+        const commitsDiffer =
+          nextCommits.length !== commits.length ||
+          (nextCommits.length > 0 && commits.length > 0 && nextCommits[0].sha !== commits[0].sha);
+
+        if (commitsDiffer) {
+          commits = nextCommits;
+          if (isValidBranch) {
+            aheadBehind = await gitService.getBranchAheadBehind(repo, status.branch);
+          }
+        }
+      }
+    } catch {
+      // Silent background sync
+    } finally {
+      isSyncRunning = false;
+    }
+  }
+
+  function handleWindowFocus() {
+    isWindowFocused = true;
+    setupLocalSync();
+    if (activeRepo) {
+      void syncRepoState(true);
+    }
+  }
+
+  function handleWindowBlur() {
+    isWindowFocused = false;
+    setupLocalSync();
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === "visible") {
+      isWindowFocused = true;
+      setupLocalSync();
+      if (activeRepo) {
+        void syncRepoState(true);
+      }
+    } else {
+      isWindowFocused = false;
+      setupLocalSync();
     }
   }
 
@@ -719,19 +867,23 @@
   }
 
   async function loadDiffForFile(file: FileEntry) {
-    currentImageDiff = null;
     const isImg = /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(file.path);
     if (isImg) {
       try {
-        currentImageDiff = await gitService.getImageDiff(activeRepo, file.path);
+        const nextImgDiff = await gitService.getImageDiff(activeRepo, file.path);
+        currentImageDiff = nextImgDiff;
         currentDiff = "";
         return;
       } catch {
         currentImageDiff = null;
       }
     }
+    currentImageDiff = null;
     try {
-      currentDiff = await gitService.getFileDiff(activeRepo, file.path, file.staged, ignoreWhitespace);
+      const nextDiff = await gitService.getFileDiff(activeRepo, file.path, file.staged, ignoreWhitespace);
+      if (currentDiff !== nextDiff) {
+        currentDiff = nextDiff;
+      }
     } catch {
       currentDiff = "";
     }
@@ -859,6 +1011,14 @@
           initDirCommit = false;
           initDirCommitMsg = "chore: initial commit";
           setStatus(t("app.status.folderNotGit", { name: pathBaseName(repoPath) }));
+          if (localSyncTimer !== null) {
+            clearInterval(localSyncTimer);
+            localSyncTimer = null;
+          }
+          if (autofetchTimer !== null) {
+            clearInterval(autofetchTimer);
+            autofetchTimer = null;
+          }
           return;
         }
       } catch {
@@ -871,9 +1031,13 @@
 
       activeRepo = repoPath;
       currentStatus = status;
-      selectedFile = status.files.length > 0 ? status.files[0] : null;
-      currentDiff = "";
-      currentImageDiff = null;
+      const prevSelectedPath = !isNewRepo ? selectedFile?.path : null;
+      const preservedFile = prevSelectedPath ? status.files.find((f) => f.path === prevSelectedPath) : null;
+      selectedFile = preservedFile || (status.files.length > 0 ? status.files[0] : null);
+      if (isNewRepo) {
+        currentDiff = "";
+        currentImageDiff = null;
+      }
       if (isNewRepo) {
         branches = [];
         pullRequests = [];
@@ -897,16 +1061,14 @@
         isValidBranch
           ? gitService.getBranchAheadBehind(repoPath, status.branch)
           : Promise.resolve({ ...EMPTY_AHEAD_BEHIND, is_unborn: !status.has_commits }),
-        status.files.length > 0 ? loadDiffForFile(status.files[0]) : Promise.resolve(),
+        selectedFile ? loadDiffForFile(selectedFile) : Promise.resolve(),
         gitService.listTags(repoPath),
-        activeView === "history"
-          ? gitService.getCommitHistory(
-              repoPath,
-              100,
-              allBranches,
-              selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
-            )
-          : Promise.resolve(null),
+        gitService.getCommitHistory(
+          repoPath,
+          100,
+          allBranches,
+          selectedHistoryBranches.length > 0 ? selectedHistoryBranches : undefined
+        ),
         gitService.listRemotes(repoPath),
         gitService.listBranches(repoPath),
         refreshAccounts(repoPath),
@@ -970,6 +1132,7 @@
       }
 
       setupAutofetch(autofetchSeconds);
+      setupLocalSync();
       setStatus(
         t("app.status.repoOpened", {
           name: pathBaseName(repoPath),
@@ -1069,9 +1232,6 @@
       const res = await gitService.mergeBranch(activeRepo, branchName);
       setStatus(res || t("app.status.mergedBranch", { branch: branchName }));
       await loadRepo(activeRepo);
-      if (activeView === "history") {
-        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
-      }
     } catch (err) {
       setStatus(String(err), true);
     } finally {
@@ -1086,9 +1246,6 @@
       const res = await gitService.rebaseBranch(activeRepo, baseRef);
       setStatus(res || t("app.status.rebasedBranch", { branch: baseRef }));
       await loadRepo(activeRepo);
-      if (activeView === "history") {
-        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
-      }
     } catch (err) {
       setStatus(String(err), true);
     } finally {
@@ -1171,9 +1328,6 @@
       await gitService.commitChanges(activeRepo, summary, description, amend);
       setStatus(amend ? t("app.status.commitAmended") : t("app.status.commitCreated"));
       await loadRepo(activeRepo);
-      if (activeView === "history") {
-        commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
-      }
     } catch (err) {
       setStatus(String(err), true);
     }
@@ -1188,9 +1342,6 @@
           await gitService.undoLastCommit(activeRepo);
           setStatus(t("app.status.undoCommitDone"));
           await loadRepo(activeRepo);
-          if (activeView === "history") {
-            commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
-          }
         } catch (err) {
           setStatus(String(err), true);
         }
@@ -1587,6 +1738,7 @@
       localStorage.setItem("forge_target_package_mode", targetPackageMode);
       applyTheme(activeTheme);
       setupAutofetch(autofetchSeconds);
+      setupLocalSync();
       if (prevChannel !== updateChannel || prevTargetMode !== targetPackageMode) {
         void handleCheckUpdates(updateChannel, targetPackageMode);
       }
@@ -1841,9 +1993,6 @@
           const res = await gitService.revertCommit(activeRepo, sha);
           setStatus(res || t("app.status.revertDone"));
           await loadRepo(activeRepo);
-          if (activeView === "history") {
-            commits = await gitService.getCommitHistory(activeRepo, 80);
-          }
         } catch (err) {
           setStatus(String(err), true);
         }
@@ -1890,9 +2039,6 @@
           const res = await gitService.resetToCommit(activeRepo, sha, false);
           setStatus(res || t("app.status.resetDone"));
           await loadRepo(activeRepo);
-          if (activeView === "history") {
-            commits = await gitService.getCommitHistory(activeRepo, 100, allBranches);
-          }
         } catch (err) {
           setStatus(String(err), true);
         }
@@ -2187,6 +2333,9 @@
     window.addEventListener("keydown", handleWorkspaceSettingsKeydown);
     window.addEventListener("click", handleWorkspaceSettingsOutside);
     document.addEventListener("contextmenu", onDocContextMenu);
+    window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("blur", handleWindowBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     const initApp = async () => {
       let initialRepo = "";
       try {
@@ -2237,9 +2386,16 @@
       window.removeEventListener("keydown", handleWorkspaceSettingsKeydown);
       window.removeEventListener("click", handleWorkspaceSettingsOutside);
       document.removeEventListener("contextmenu", onDocContextMenu);
+      window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("blur", handleWindowBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (autofetchTimer !== null) {
         clearInterval(autofetchTimer);
         autofetchTimer = null;
+      }
+      if (localSyncTimer !== null) {
+        clearInterval(localSyncTimer);
+        localSyncTimer = null;
       }
     };
   });
