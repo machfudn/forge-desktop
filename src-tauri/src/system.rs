@@ -647,9 +647,13 @@ fn probe_editor_path(id: &str) -> Option<PathBuf> {
                     return Some(a2);
                 }
                 if let Some(home) = std::env::var_os("HOME") {
-                    let a3 = PathBuf::from(home).join("Applications/Antigravity IDE.app");
+                    let a3 = PathBuf::from(&home).join("Applications/Antigravity IDE.app");
                     if a3.exists() {
                         return Some(a3);
+                    }
+                    let a4 = PathBuf::from(&home).join("Applications/Antigravity.app");
+                    if a4.exists() {
+                        return Some(a4);
                     }
                 }
             }
@@ -765,9 +769,42 @@ fn probe_editor_path(id: &str) -> Option<PathBuf> {
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         match id {
-            "antigravity" | "antigravity-ide" | "agy" => find_executable("antigravity-ide")
-                .or_else(|| find_executable("antigravity"))
-                .or_else(|| find_executable("agy")),
+            "antigravity" | "antigravity-ide" | "agy" => {
+                if let Some(p) = find_executable("antigravity-ide")
+                    .or_else(|| find_executable("antigravity"))
+                    .or_else(|| find_executable("agy"))
+                {
+                    return Some(p);
+                }
+                if let Some(home) = std::env::var_os("HOME") {
+                    let h = PathBuf::from(home);
+                    for candidate in [
+                        h.join(".local/bin/antigravity-ide"),
+                        h.join(".local/bin/antigravity"),
+                        h.join(".local/bin/agy"),
+                        h.join("bin/antigravity-ide"),
+                        h.join("bin/antigravity"),
+                    ] {
+                        if candidate.is_file() {
+                            return Some(candidate);
+                        }
+                    }
+                }
+                for candidate in [
+                    PathBuf::from("/opt/Antigravity/antigravity"),
+                    PathBuf::from("/opt/antigravity/antigravity"),
+                    PathBuf::from("/opt/Antigravity IDE/antigravity-ide"),
+                    PathBuf::from("/opt/antigravity-ide/antigravity-ide"),
+                    PathBuf::from("/usr/local/bin/antigravity-ide"),
+                    PathBuf::from("/usr/local/bin/antigravity"),
+                    PathBuf::from("/usr/local/bin/agy"),
+                ] {
+                    if candidate.is_file() {
+                        return Some(candidate);
+                    }
+                }
+                None
+            }
             "code" => find_executable("code"),
             "cursor" => find_executable("cursor"),
             "windsurf" => find_executable("windsurf"),
@@ -1190,6 +1227,11 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
                 if Command::new("open").args(["-a", app_name]).arg(p).spawn().is_ok() {
                     return Ok(());
                 }
+                if app_name == "Antigravity IDE" {
+                    if Command::new("open").args(["-a", "Antigravity"]).arg(p).spawn().is_ok() {
+                        return Ok(());
+                    }
+                }
             }
         }
         return Err(format!(
@@ -1220,6 +1262,14 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
         if let Some(fallback_cmd) = linux_fallback {
             if Command::new(fallback_cmd).arg(p).spawn().is_ok() {
                 return Ok(());
+            }
+            if matches!(editor, "antigravity" | "antigravity-ide" | "agy") {
+                if Command::new("antigravity").arg(p).spawn().is_ok() {
+                    return Ok(());
+                }
+                if Command::new("agy").arg(p).spawn().is_ok() {
+                    return Ok(());
+                }
             }
         }
         Err(format!(
