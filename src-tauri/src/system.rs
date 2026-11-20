@@ -1,4 +1,5 @@
-use std::path::Path;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub fn command_no_window<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
@@ -256,6 +257,545 @@ fn resolve_windows_txt_default_exe() -> Option<String> {
     parse_registry_command_exe(&raw_cmd).filter(|exe| Path::new(exe).is_file())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableEditor {
+    pub id: String,
+    pub label: String,
+    pub path: Option<String>,
+    pub is_installed: bool,
+    pub is_detected: bool,
+    pub supports_folders: bool,
+}
+
+pub fn find_executable(name_or_path: &str) -> Option<PathBuf> {
+    let p = Path::new(name_or_path);
+    if p.is_absolute() {
+        if p.is_file() {
+            return Some(p.to_path_buf());
+        }
+        return None;
+    }
+
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(name_or_path);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let lower = name_or_path.to_ascii_lowercase();
+                if !lower.ends_with(".exe") && !lower.ends_with(".cmd") && !lower.ends_with(".bat") {
+                    let with_exe = dir.join(format!("{name_or_path}.exe"));
+                    if with_exe.is_file() {
+                        return Some(with_exe);
+                    }
+                    let with_cmd = dir.join(format!("{name_or_path}.cmd"));
+                    if with_cmd.is_file() {
+                        return Some(with_cmd);
+                    }
+                    let with_bat = dir.join(format!("{name_or_path}.bat"));
+                    if with_bat.is_file() {
+                        return Some(with_bat);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn find_jetbrains_exe(prefix: &str, exe_name: &str) -> Option<PathBuf> {
+    if let Some(prog_files) = std::env::var_os("ProgramFiles").map(PathBuf::from) {
+        let jb_dir = prog_files.join("JetBrains");
+        if jb_dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&jb_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+                    if path.is_dir() && name.starts_with(prefix) {
+                        let exe = path.join("bin").join(exe_name);
+                        if exe.is_file() {
+                            return Some(exe);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn probe_editor_path(id: &str) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let local_app = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        let prog_files = std::env::var_os("ProgramFiles").map(PathBuf::from);
+        let prog_files_x86 = std::env::var_os("ProgramFiles(x86)").map(PathBuf::from);
+
+        match id {
+            "code" => {
+                if let Some(p) = find_executable("code.cmd")
+                    .or_else(|| find_executable("code.exe"))
+                    .or_else(|| find_executable("code"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c1 = d.join(r"Programs\Microsoft VS Code\bin\code.cmd");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Programs\Microsoft VS Code\Code.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                }
+                if let Some(d) = &prog_files {
+                    let c1 = d.join(r"Microsoft VS Code\bin\code.cmd");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Microsoft VS Code\Code.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                }
+            }
+            "cursor" => {
+                if let Some(p) = find_executable("cursor.cmd")
+                    .or_else(|| find_executable("cursor.exe"))
+                    .or_else(|| find_executable("cursor"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c1 = d.join(r"Programs\cursor\resources\app\bin\cursor.cmd");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Programs\cursor\Cursor.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                }
+                if let Some(d) = &prog_files {
+                    let c1 = d.join(r"cursor\Cursor.exe");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                }
+            }
+            "windsurf" => {
+                if let Some(p) = find_executable("windsurf.cmd")
+                    .or_else(|| find_executable("windsurf.exe"))
+                    .or_else(|| find_executable("windsurf"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c1 = d.join(r"Programs\Windsurf\bin\windsurf.cmd");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Programs\Windsurf\Windsurf.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                }
+            }
+            "zed" => {
+                if let Some(p) = find_executable("zed.exe").or_else(|| find_executable("zed")) {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c1 = d.join(r"Programs\Zed\bin\Zed.exe");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Programs\Zed\Zed.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                }
+            }
+            "subl" => {
+                if let Some(p) = find_executable("subl.exe")
+                    .or_else(|| find_executable("sublime_text.exe"))
+                    .or_else(|| find_executable("subl"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &prog_files {
+                    let c1 = d.join(r"Sublime Text\subl.exe");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Sublime Text\sublime_text.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                    let c3 = d.join(r"Sublime Text 3\subl.exe");
+                    if c3.is_file() {
+                        return Some(c3);
+                    }
+                }
+                if let Some(d) = &prog_files_x86 {
+                    let c1 = d.join(r"Sublime Text\subl.exe");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                }
+            }
+            "notepad++" => {
+                if let Some(p) = find_executable("notepad++.exe").or_else(|| find_executable("notepad++")) {
+                    return Some(p);
+                }
+                if let Some(d) = &prog_files {
+                    let c = d.join(r"Notepad++\notepad++.exe");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+                if let Some(d) = &prog_files_x86 {
+                    let c = d.join(r"Notepad++\notepad++.exe");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+            }
+            "idea" => {
+                if let Some(p) = find_executable("idea.cmd")
+                    .or_else(|| find_executable("idea64.exe"))
+                    .or_else(|| find_executable("idea"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c = d.join(r"JetBrains\Toolbox\scripts\idea.cmd");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+                if let Some(p) = find_jetbrains_exe("intellij idea", "idea64.exe") {
+                    return Some(p);
+                }
+            }
+            "webstorm" => {
+                if let Some(p) = find_executable("webstorm.cmd")
+                    .or_else(|| find_executable("webstorm64.exe"))
+                    .or_else(|| find_executable("webstorm"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c = d.join(r"JetBrains\Toolbox\scripts\webstorm.cmd");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+                if let Some(p) = find_jetbrains_exe("webstorm", "webstorm64.exe") {
+                    return Some(p);
+                }
+            }
+            "pycharm" => {
+                if let Some(p) = find_executable("pycharm.cmd")
+                    .or_else(|| find_executable("pycharm64.exe"))
+                    .or_else(|| find_executable("pycharm"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c = d.join(r"JetBrains\Toolbox\scripts\pycharm.cmd");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+                if let Some(p) = find_jetbrains_exe("pycharm", "pycharm64.exe") {
+                    return Some(p);
+                }
+            }
+            "rustrover" => {
+                if let Some(p) = find_executable("rustrover.cmd")
+                    .or_else(|| find_executable("rustrover64.exe"))
+                    .or_else(|| find_executable("rustrover"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c = d.join(r"JetBrains\Toolbox\scripts\rustrover.cmd");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+                if let Some(p) = find_jetbrains_exe("rustrover", "rustrover64.exe") {
+                    return Some(p);
+                }
+            }
+            "goland" => {
+                if let Some(p) = find_executable("goland.cmd")
+                    .or_else(|| find_executable("goland64.exe"))
+                    .or_else(|| find_executable("goland"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c = d.join(r"JetBrains\Toolbox\scripts\goland.cmd");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+                if let Some(p) = find_jetbrains_exe("goland", "goland64.exe") {
+                    return Some(p);
+                }
+            }
+            "codium" => {
+                if let Some(p) = find_executable("codium.cmd")
+                    .or_else(|| find_executable("codium.exe"))
+                    .or_else(|| find_executable("codium"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c = d.join(r"Programs\VSCodium\VSCodium.exe");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+                if let Some(d) = &prog_files {
+                    let c = d.join(r"VSCodium\VSCodium.exe");
+                    if c.is_file() {
+                        return Some(c);
+                    }
+                }
+            }
+            "nvim" => {
+                return find_executable("nvim.exe")
+                    .or_else(|| find_executable("nvim-qt.exe"))
+                    .or_else(|| find_executable("nvim"));
+            }
+            "notepad" => {
+                let default_np = PathBuf::from(r"C:\Windows\system32\notepad.exe");
+                if default_np.is_file() {
+                    return Some(default_np);
+                }
+                return find_executable("notepad.exe");
+            }
+            _ => {}
+        }
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        match id {
+            "code" => {
+                if let Some(p) = find_executable("code") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/Visual Studio Code.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+                if let Some(home) = std::env::var_os("HOME") {
+                    let a2 = PathBuf::from(home).join("Applications/Visual Studio Code.app");
+                    if a2.exists() {
+                        return Some(a2);
+                    }
+                }
+            }
+            "cursor" => {
+                if let Some(p) = find_executable("cursor") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/Cursor.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+                if let Some(home) = std::env::var_os("HOME") {
+                    let a2 = PathBuf::from(home).join("Applications/Cursor.app");
+                    if a2.exists() {
+                        return Some(a2);
+                    }
+                }
+            }
+            "windsurf" => {
+                if let Some(p) = find_executable("windsurf") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/Windsurf.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+            }
+            "zed" => {
+                if let Some(p) = find_executable("zed") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/Zed.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+            }
+            "subl" => {
+                if let Some(p) = find_executable("subl") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/Sublime Text.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+            }
+            "idea" => {
+                if let Some(p) = find_executable("idea") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/IntelliJ IDEA.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+                let a2 = PathBuf::from("/Applications/IntelliJ IDEA CE.app");
+                if a2.exists() {
+                    return Some(a2);
+                }
+            }
+            "webstorm" => {
+                if let Some(p) = find_executable("webstorm") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/WebStorm.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+            }
+            "pycharm" => {
+                if let Some(p) = find_executable("pycharm") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/PyCharm.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+                let a2 = PathBuf::from("/Applications/PyCharm CE.app");
+                if a2.exists() {
+                    return Some(a2);
+                }
+            }
+            "codium" => {
+                if let Some(p) = find_executable("codium") {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/VSCodium.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+            }
+            "nvim" => {
+                return find_executable("nvim").or_else(|| find_executable("nvim-qt"));
+            }
+            _ => {}
+        }
+        None
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        match id {
+            "code" => find_executable("code"),
+            "cursor" => find_executable("cursor"),
+            "windsurf" => find_executable("windsurf"),
+            "zed" => find_executable("zeditor").or_else(|| find_executable("zed")),
+            "subl" => find_executable("subl").or_else(|| find_executable("sublime_text")),
+            "gedit" => find_executable("gnome-text-editor").or_else(|| find_executable("gedit")),
+            "kate" => find_executable("kate"),
+            "idea" => find_executable("idea"),
+            "webstorm" => find_executable("webstorm"),
+            "pycharm" => find_executable("pycharm"),
+            "rustrover" => find_executable("rustrover"),
+            "goland" => find_executable("goland"),
+            "codium" => find_executable("codium"),
+            "nvim" => find_executable("nvim"),
+            _ => None,
+        }
+    }
+}
+
+pub fn detect_available_editors() -> Vec<AvailableEditor> {
+    let mut detected = Vec::new();
+
+    // 1. System Default
+    #[cfg(target_os = "windows")]
+    let (sys_supports_folders, sys_path) = if let Some(txt_exe) = resolve_windows_txt_default_exe() {
+        (is_folder_capable_editor_exe(&txt_exe), Some(txt_exe))
+    } else {
+        (false, Some(r"C:\Windows\system32\notepad.exe".to_string()))
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let (sys_supports_folders, sys_path) = (true, None);
+
+    detected.push(AvailableEditor {
+        id: "system".into(),
+        label: "Default Aplikasi Sistem".into(),
+        path: sys_path,
+        is_installed: true,
+        is_detected: true,
+        supports_folders: sys_supports_folders,
+    });
+
+    struct PresetSpec {
+        id: &'static str,
+        label: &'static str,
+        supports_folders: bool,
+    }
+
+    let presets = [
+        PresetSpec { id: "code", label: "Visual Studio Code", supports_folders: true },
+        PresetSpec { id: "cursor", label: "Cursor", supports_folders: true },
+        PresetSpec { id: "windsurf", label: "Windsurf", supports_folders: true },
+        PresetSpec { id: "zed", label: "Zed", supports_folders: true },
+        PresetSpec { id: "subl", label: "Sublime Text", supports_folders: true },
+        PresetSpec { id: "notepad++", label: "Notepad++", supports_folders: false },
+        PresetSpec { id: "idea", label: "IntelliJ IDEA", supports_folders: true },
+        PresetSpec { id: "webstorm", label: "WebStorm", supports_folders: true },
+        PresetSpec { id: "pycharm", label: "PyCharm", supports_folders: true },
+        PresetSpec { id: "rustrover", label: "RustRover", supports_folders: true },
+        PresetSpec { id: "goland", label: "GoLand", supports_folders: true },
+        PresetSpec { id: "codium", label: "VSCodium", supports_folders: true },
+        PresetSpec { id: "nvim", label: "Neovim", supports_folders: true },
+        PresetSpec { id: "notepad", label: "Notepad", supports_folders: false },
+        PresetSpec { id: "gedit", label: "GNOME Text Editor / gedit", supports_folders: false },
+        PresetSpec { id: "kate", label: "Kate", supports_folders: false },
+    ];
+
+    for spec in presets {
+        let found_path = probe_editor_path(spec.id);
+        let is_inst = found_path.is_some();
+        let path_str = found_path.map(|p| p.to_string_lossy().to_string());
+
+        detected.push(AvailableEditor {
+            id: spec.id.into(),
+            label: spec.label.into(),
+            path: path_str,
+            is_installed: is_inst,
+            is_detected: is_inst,
+            supports_folders: spec.supports_folders,
+        });
+    }
+
+    // Keep System Default at index 0, sort the rest so that installed ones come first
+    let mut rest = detected.split_off(1);
+    rest.sort_by(|a, b| match (a.is_installed, b.is_installed) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => std::cmp::Ordering::Equal,
+    });
+    detected.extend(rest);
+
+    detected
+}
+
 #[cfg(target_os = "windows")]
 fn is_folder_capable_editor_exe(exe_path: &str) -> bool {
     let name = Path::new(exe_path)
@@ -276,6 +816,13 @@ fn is_folder_capable_editor_exe(exe_path: &str) -> bool {
             | "codium.exe"
             | "devenv.exe"
             | "idea64.exe"
+            | "webstorm64.exe"
+            | "pycharm64.exe"
+            | "rustrover64.exe"
+            | "goland64.exe"
+            | "clion64.exe"
+            | "phpstorm64.exe"
+            | "studio64.exe"
     )
 }
 
@@ -335,6 +882,9 @@ fn windows_known_editor_paths(editor: &str) -> Vec<std::path::PathBuf> {
 fn open_with_system_default(p: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
         if p.is_file() && is_windows_executable_or_script(p) {
             if let Some(txt_exe) = resolve_windows_txt_default_exe() {
                 if Command::new(&txt_exe).arg(p).spawn().is_ok() {
@@ -354,6 +904,27 @@ fn open_with_system_default(p: &Path) -> Result<(), String> {
                     && Command::new(&txt_exe).arg(p).spawn().is_ok()
                 {
                     return Ok(());
+                }
+            }
+            // Smart auto-fallback for folders: if default text editor cannot open folders,
+            // try to launch the first installed folder-capable editor (e.g. Zed, VS Code, Cursor)
+            for editor in detect_available_editors() {
+                if editor.supports_folders && editor.is_installed && editor.id != "system" {
+                    if let Some(ref path_str) = editor.path {
+                        let candidate = PathBuf::from(path_str);
+                        if candidate.is_file() {
+                            let mut cmd = Command::new(&candidate);
+                            cmd.arg(p);
+                            if path_str.to_ascii_lowercase().ends_with(".cmd")
+                                || path_str.to_ascii_lowercase().ends_with(".bat")
+                            {
+                                cmd.creation_flags(CREATE_NO_WINDOW);
+                            }
+                            if cmd.spawn().is_ok() {
+                                return Ok(());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -413,15 +984,49 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
             );
         }
 
+        // 1. If path or executable with directory separator was explicitly provided
         if editor.contains('/') || editor.contains('\\') {
-            if Command::new(editor).arg(p).spawn().is_ok() {
+            let direct = Path::new(editor);
+            if direct.is_file() {
+                let mut cmd = Command::new(direct);
+                cmd.arg(p);
+                if editor.to_ascii_lowercase().ends_with(".cmd")
+                    || editor.to_ascii_lowercase().ends_with(".bat")
+                {
+                    cmd.creation_flags(CREATE_NO_WINDOW);
+                }
+                if cmd.spawn().is_ok() {
+                    return Ok(());
+                }
+            } else if Command::new(editor).arg(p).spawn().is_ok() {
                 return Ok(());
             }
             return Err(format!(
-                "Editor '{editor}' tidak ditemukan atau gagal dijalankan. Periksa pengaturan Editor Eksternal."
+                "Editor kustom '{editor}' tidak ditemukan atau gagal dijalankan. Periksa pengaturan Editor Eksternal."
             ));
         }
 
+        // 2. Try detected editor path from discovery engine
+        let available = detect_available_editors();
+        if let Some(matched) = available.iter().find(|e| e.id.eq_ignore_ascii_case(editor)) {
+            if let Some(ref path_str) = matched.path {
+                let candidate = PathBuf::from(path_str);
+                if candidate.is_file() {
+                    let mut cmd = Command::new(&candidate);
+                    cmd.arg(p);
+                    if path_str.to_ascii_lowercase().ends_with(".cmd")
+                        || path_str.to_ascii_lowercase().ends_with(".bat")
+                    {
+                        cmd.creation_flags(CREATE_NO_WINDOW);
+                    }
+                    if cmd.spawn().is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // 3. Fallbacks: direct command, .cmd, .exe, windows_known_editor_paths
         if Command::new(editor).arg(p).spawn().is_ok() {
             return Ok(());
         }
@@ -444,8 +1049,20 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
                 return Ok(());
             }
         }
+
+        let installed_labels: Vec<String> = available
+            .iter()
+            .filter(|e| e.is_installed && e.id != "system" && e.id != "notepad")
+            .map(|e| e.label.clone())
+            .collect();
+        let hint = if !installed_labels.is_empty() {
+            format!(" Editor yang terdeteksi di sistem: {}.", installed_labels.join(", "))
+        } else {
+            String::new()
+        };
+
         return Err(format!(
-            "Editor '{editor}' tidak ditemukan atau gagal dijalankan. Periksa pengaturan Editor Eksternal."
+            "Editor '{editor}' tidak ditemukan atau gagal dijalankan.{hint} Periksa pengaturan Editor Eksternal."
         ));
     }
 
@@ -457,6 +1074,18 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
                 return Ok(());
             }
         } else {
+            let available = detect_available_editors();
+            if let Some(matched) = available.iter().find(|e| e.id.eq_ignore_ascii_case(editor)) {
+                if let Some(ref path_str) = matched.path {
+                    if path_str.ends_with(".app") {
+                        if Command::new("open").args(["-a", path_str]).arg(p).spawn().is_ok() {
+                            return Ok(());
+                        }
+                    } else if Command::new(path_str).arg(p).spawn().is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
             if Command::new(editor).arg(p).spawn().is_ok() {
                 return Ok(());
             }
@@ -466,6 +1095,10 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
                 "windsurf" => Some("Windsurf"),
                 "zed" => Some("Zed"),
                 "subl" => Some("Sublime Text"),
+                "idea" => Some("IntelliJ IDEA"),
+                "webstorm" => Some("WebStorm"),
+                "pycharm" => Some("PyCharm"),
+                "codium" => Some("VSCodium"),
                 _ => None,
             };
             if let Some(app_name) = mac_app {
@@ -481,12 +1114,21 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
+        let available = detect_available_editors();
+        if let Some(matched) = available.iter().find(|e| e.id.eq_ignore_ascii_case(editor)) {
+            if let Some(ref path_str) = matched.path {
+                if Command::new(path_str).arg(p).spawn().is_ok() {
+                    return Ok(());
+                }
+            }
+        }
         if Command::new(editor).arg(p).spawn().is_ok() {
             return Ok(());
         }
         let linux_fallback = match editor {
             "gedit" => Some("gnome-text-editor"),
             "zed" => Some("zeditor"),
+            "subl" => Some("sublime_text"),
             _ => None,
         };
         if let Some(fallback_cmd) = linux_fallback {
@@ -579,5 +1221,27 @@ mod tests {
     fn formats_windows_explorer_select_arg() {
         let arg = format_windows_explorer_select_arg(Path::new("C:/Development/my repo/file.ts")).unwrap();
         assert_eq!(arg, r#"/select,"C:\Development\my repo\file.ts""#);
+    }
+
+    #[test]
+    fn test_detect_available_editors_returns_system_and_presets() {
+        let editors = detect_available_editors();
+        assert!(!editors.is_empty(), "Daftar editor tidak boleh kosong");
+        assert_eq!(editors[0].id, "system", "Elemen pertama harus selalu system");
+        assert!(editors[0].is_installed);
+        assert!(editors.iter().any(|e| e.id == "code"));
+        assert!(editors.iter().any(|e| e.id == "zed"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_detect_available_editors_identifies_installed_zed() {
+        let editors = detect_available_editors();
+        if let Some(zed) = editors.iter().find(|e| e.id == "zed") {
+            if zed.is_installed {
+                assert!(zed.path.is_some());
+                assert!(zed.supports_folders);
+            }
+        }
     }
 }

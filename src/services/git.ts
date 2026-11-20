@@ -1052,6 +1052,19 @@ export async function getAvailableShells(): Promise<AvailableShell[]> {
   return invoke<AvailableShell[]>("get_available_shells");
 }
 
+export interface AvailableEditor {
+  id: string;
+  label: string;
+  path: string | null;
+  is_installed: boolean;
+  is_detected: boolean;
+  supports_folders: boolean;
+}
+
+export async function getAvailableEditors(): Promise<AvailableEditor[]> {
+  return invoke<AvailableEditor[]>("get_available_editors");
+}
+
 export async function gitBisectStart(
   repo: string,
   badSha: string,

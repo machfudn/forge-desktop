@@ -1331,6 +1331,11 @@ pub async fn get_available_shells() -> Result<Vec<crate::terminal::AvailableShel
 }
 
 #[tauri::command]
+pub async fn get_available_editors() -> Result<Vec<crate::system::AvailableEditor>, String> {
+    run_blocking(|| Ok(crate::system::detect_available_editors())).await
+}
+
+#[tauri::command]
 pub async fn git_bisect_start(
     repo: String,
     bad_sha: String,

@@ -327,38 +327,7 @@ fn strip_win_verbatim(p: &Path) -> String {
     s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
 }
 
-fn find_executable(name_or_path: &str) -> Option<PathBuf> {
-    let p = Path::new(name_or_path);
-    if p.is_absolute() {
-        if p.is_file() {
-            return Some(p.to_path_buf());
-        }
-        return None;
-    }
-
-    if let Some(path_var) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&path_var) {
-            let candidate = dir.join(name_or_path);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-            #[cfg(target_os = "windows")]
-            {
-                if !name_or_path.to_lowercase().ends_with(".exe") {
-                    let with_exe = dir.join(format!("{name_or_path}.exe"));
-                    if with_exe.is_file() {
-                        return Some(with_exe);
-                    }
-                    let with_cmd = dir.join(format!("{name_or_path}.cmd"));
-                    if with_cmd.is_file() {
-                        return Some(with_cmd);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
+use crate::system::find_executable;
 
 pub fn detect_available_shells() -> Vec<AvailableShell> {
     let mut detected = Vec::new();
