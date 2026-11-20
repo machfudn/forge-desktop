@@ -769,12 +769,30 @@ pub fn sync_fork(
     creds: Option<(&str, &str)>,
 ) -> Result<String, String> {
     let remote = upstream_remote.unwrap_or("upstream").trim();
-    let b = branch.unwrap_or("main").trim();
-    if remote.is_empty() || remote.starts_with('-') || b.is_empty() || b.starts_with('-') {
-        return Err("Parameter remote atau branch tidak valid".into());
+    if remote.is_empty() || remote.starts_with('-') {
+        return Err("Parameter remote tidak valid".into());
     }
-    cli::run_with_credentials(repo, &["fetch", remote, b], creds)?;
-    let upstream_ref = format!("{remote}/{b}");
+
+    let remotes = list_remotes(repo).unwrap_or_default();
+    if !remotes.iter().any(|r| r.name == remote) {
+        return Err(format!(
+            "Remote '{remote}' belum dikonfigurasi pada repository ini. Pastikan remote '{remote}' sudah ditambahkan."
+        ));
+    }
+
+    let current_br = cli::run(repo, &["branch", "--show-current"]).ok();
+    let target_branch = branch
+        .filter(|b| !b.trim().is_empty())
+        .or_else(|| current_br.as_deref().filter(|b| !b.trim().is_empty()))
+        .unwrap_or("main")
+        .trim();
+
+    if target_branch.starts_with('-') {
+        return Err("Parameter branch tidak valid".into());
+    }
+
+    cli::run_with_credentials(repo, &["fetch", remote, target_branch], creds)?;
+    let upstream_ref = format!("{remote}/{target_branch}");
     cli::run(repo, &["merge", "--ff-only", &upstream_ref]).or_else(|_| {
         cli::run(
             repo,
@@ -958,6 +976,34 @@ branch.feat.v1.remote origin
         assert!(ab.has_upstream);
         assert_eq!(ab.upstream.as_deref(), Some("upstream/main"));
         assert_eq!(ab.unpushed_commits, 0);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_sync_fork_missing_remote_fails_gracefully() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-sync-fork-missing-{nanos}"));
+        let local = root.join("local");
+        std::fs::create_dir_all(&local).unwrap();
+
+        let run_git = |cwd: &std::path::Path, args: &[&str]| {
+            let out = crate::system::command_no_window("git")
+                .args(args)
+                .current_dir(cwd)
+                .output()
+                .unwrap();
+            assert!(out.status.success());
+        };
+
+        run_git(&local, &["init", "-b", "main"]);
+        let local_str = local.to_str().unwrap();
+
+        let res = sync_fork(local_str, Some("upstream"), None, None);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err.contains("belum dikonfigurasi") || err.contains("tidak ditemukan"));
 
         let _ = std::fs::remove_dir_all(&root);
     }
