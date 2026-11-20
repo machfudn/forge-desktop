@@ -954,26 +954,42 @@
         {#if item.isHunkHeader}
           <div class="diff-line-row meta-row">
             <span class="diff-code">{@html item.html}</span>
-            {#if item.hunkPatch && onStageHunk}
-              <button
-                type="button"
-                class="btn-secondary btn-xs {isStaged ? 'btn-danger' : ''}"
-                style={!isStaged ? "border-color: var(--diff-add-text); color: var(--diff-add-text);" : ""}
-                onclick={() => onStageHunk(item.hunkPatch!, isStaged)}
-                title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
-              >
-                {isStaged ? t("diff.unstageHunkBtn") : t("diff.stageHunkBtn")}
-              </button>
-            {/if}
-            {#if item.hunkPatch && onDiscardHunk && !isStaged}
-              <button
-                type="button"
-                class="btn-secondary btn-xs btn-danger"
-                onclick={() => onDiscardHunk(item.hunkPatch!)}
-                title={t("diff.discardHunkTitle")}
-              >
-                {t("diff.discardHunkBtn")}
-              </button>
+            {#if (item.hunkPatch && onStageHunk) || (item.hunkPatch && onDiscardHunk && !isStaged)}
+              <div class="diff-hunk-actions">
+                {#if item.hunkPatch && onStageHunk}
+                  <button
+                    type="button"
+                    class="diff-hunk-btn {isStaged ? 'is-unstage' : 'is-stage'}"
+                    onclick={() => onStageHunk(item.hunkPatch!, isStaged)}
+                    title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
+                  >
+                    {#if isStaged}
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M2 7.75A.75.75 0 0 1 2.75 7h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 7.75Z" />
+                      </svg>
+                      <span>{t("diff.unstageHunkBtn")}</span>
+                    {:else}
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+                      </svg>
+                      <span>{t("diff.stageHunkBtn")}</span>
+                    {/if}
+                  </button>
+                {/if}
+                {#if item.hunkPatch && onDiscardHunk && !isStaged}
+                  <button
+                    type="button"
+                    class="diff-hunk-btn is-discard"
+                    onclick={() => onDiscardHunk(item.hunkPatch!)}
+                    title={t("diff.discardHunkTitle")}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                      <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a1.75 1.75 0 0 0 1.744 1.575h2.2a1.75 1.75 0 0 0 1.744-1.575l.66-6.6a.75.75 0 1 0-1.492-.15l-.66 6.6a.25.25 0 0 1-.249.225h-2.2a.25.25 0 0 1-.249-.225l-.66-6.6a.75.75 0 0 0-1.492.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+                    </svg>
+                    <span>{t("diff.discardHunkBtn")}</span>
+                  </button>
+                {/if}
+              </div>
             {/if}
           </div>
         {:else}
@@ -1132,26 +1148,42 @@
         {#if row.isHunkHeader}
           <div class="diff-line-row meta-row">
             <span class="diff-code">{@html row.leftHtml}</span>
-            {#if row.hunkPatch && onStageHunk}
-              <button
-                type="button"
-                class="btn-secondary btn-xs {isStaged ? 'btn-danger' : ''}"
-                style={!isStaged ? "border-color: var(--diff-add-text); color: var(--diff-add-text);" : ""}
-                onclick={() => onStageHunk(row.hunkPatch!, isStaged)}
-                title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
-              >
-                {isStaged ? t("diff.unstageHunkBtn") : t("diff.stageHunkBtn")}
-              </button>
-            {/if}
-            {#if row.hunkPatch && onDiscardHunk && !isStaged}
-              <button
-                type="button"
-                class="btn-secondary btn-xs btn-danger"
-                onclick={() => onDiscardHunk(row.hunkPatch!)}
-                title={t("diff.discardHunkTitle")}
-              >
-                {t("diff.discardHunkBtn")}
-              </button>
+            {#if (row.hunkPatch && onStageHunk) || (row.hunkPatch && onDiscardHunk && !isStaged)}
+              <div class="diff-hunk-actions">
+                {#if row.hunkPatch && onStageHunk}
+                  <button
+                    type="button"
+                    class="diff-hunk-btn {isStaged ? 'is-unstage' : 'is-stage'}"
+                    onclick={() => onStageHunk(row.hunkPatch!, isStaged)}
+                    title={isStaged ? t("diff.unstageHunkTitle") : t("diff.stageHunkTitle")}
+                  >
+                    {#if isStaged}
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M2 7.75A.75.75 0 0 1 2.75 7h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 7.75Z" />
+                      </svg>
+                      <span>{t("diff.unstageHunkBtn")}</span>
+                    {:else}
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+                      </svg>
+                      <span>{t("diff.stageHunkBtn")}</span>
+                    {/if}
+                  </button>
+                {/if}
+                {#if row.hunkPatch && onDiscardHunk && !isStaged}
+                  <button
+                    type="button"
+                    class="diff-hunk-btn is-discard"
+                    onclick={() => onDiscardHunk(row.hunkPatch!)}
+                    title={t("diff.discardHunkTitle")}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                      <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a1.75 1.75 0 0 0 1.744 1.575h2.2a1.75 1.75 0 0 0 1.744-1.575l.66-6.6a.75.75 0 1 0-1.492-.15l-.66 6.6a.25.25 0 0 1-.249.225h-2.2a.25.25 0 0 1-.249-.225l-.66-6.6a.75.75 0 0 0-1.492.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+                    </svg>
+                    <span>{t("diff.discardHunkBtn")}</span>
+                  </button>
+                {/if}
+              </div>
             {/if}
           </div>
         {:else}
