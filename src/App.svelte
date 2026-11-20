@@ -2593,62 +2593,6 @@
       ? activeModal
       : null
   );
-  const paletteCommands = $derived.by<PaletteCommand[]>(() => {
-    const cmds: PaletteCommand[] = [
-      { id: "open-repo", category: "Repo", label: t("app.menu.openRepo"), shortcut: "Ctrl+O", action: openOpenModal },
-      { id: "clone-repo", category: "Repo", label: t("app.menu.cloneUrl"), action: () => { activeModal = "clone"; } },
-      { id: "init-repo", category: "Repo", label: t("app.menu.initRepo"), action: () => { activeModal = "init"; } },
-      { id: "ask-ai", category: "AI", label: t("palette.askAi"), action: () => { aiModalState = { task: "custom_ask", prompt: "", context: "" }; } },
-      { id: "settings", category: "App", label: t("app.menu.settings"), action: openSettingsModal },
-      { id: "accounts", category: "App", label: t("app.menu.manageGithubAccounts"), action: () => { activeModal = "auth"; } },
-    ];
-    if (activeRepo && currentStatus) {
-      cmds.push(
-        { id: "view-changes", category: "View", label: t("app.tabChanges"), action: () => switchView("changes") },
-        { id: "view-history", category: "View", label: t("app.tabHistory"), action: () => switchView("history") },
-        { id: "toggle-terminal", category: "Tools", label: t("terminal.toggleCommand"), shortcut: "Ctrl+`", action: () => { terminalOpen = !terminalOpen; } },
-        { id: "open-reflog", category: "Tools", label: t("wsTools.tabReflog"), action: () => { workspaceToolsTab = "reflog"; } },
-        { id: "open-submodules", category: "Tools", label: t("wsTools.tabSubmodules"), action: () => { workspaceToolsTab = "submodules"; } },
-        { id: "open-worktrees", category: "Tools", label: t("tools.worktreeTitle"), action: () => { activeModal = "worktree"; } },
-        { id: "open-branches", category: "Git", label: t("ctx.branch.manage"), action: openBranchModal },
-        { id: "open-bisect", category: "Git", label: t("bisect.toolsMenu"), action: () => { activeModal = "bisect"; } },
-        { id: "open-stash", category: "Git", label: t("app.manageStash"), action: () => { activeModal = "stash"; } },
-        { id: "ai-review", category: "AI", label: t("palette.aiReview"), action: () => { aiModalState = { task: "review_changes", prompt: "Review staged & unstaged changes", context: "" }; } },
-        { id: "ai-commit", category: "AI", label: t("palette.aiGenerateCommit"), action: () => void handleAiGenerateCommit() },
-        { id: "git-fetch", category: "Git", label: t("app.fetch"), action: handleFetch },
-        { id: "git-pull", category: "Git", label: t("app.pull"), action: handlePull },
-        { id: "git-push", category: "Git", label: t("app.push"), action: handlePush }
-      );
-      const conflicted = currentStatus.files.find((f) => f.is_conflict);
-      if (conflicted) {
-        cmds.push({
-          id: "resolve-conflict",
-          category: "Git",
-          label: `${t("conflict.resolveBtn")}: ${conflicted.path}`,
-          action: () => { conflictFilePath = conflicted.path; },
-        });
-      }
-      if (selectedFile) {
-        const fp = selectedFile.path;
-        cmds.push(
-          { id: "file-blame", category: "Inspect", label: `Blame: ${fp}`, action: () => { inspectFileState = { path: fp, mode: "blame" }; } },
-          { id: "file-history", category: "Inspect", label: `File History: ${fp}`, action: () => { inspectFileState = { path: fp, mode: "history" }; } }
-        );
-      }
-      for (const b of branches.filter((x) => !x.is_current).slice(0, 15)) {
-        cmds.push({
-          id: `checkout-${b.name}`,
-          category: "Branch",
-          label: `${t("palette.checkoutPrefix")} ${b.name}`,
-          action: async () => {
-            await gitService.switchBranch(activeRepo, b.name);
-            await loadRepo(activeRepo);
-          },
-        });
-      }
-    }
-    return cmds;
-  });
   type WorkspacePanelId = "file" | "commit" | "diff";
   type WorkspaceLayout = "group-left" | "group-right";
   type WorkspacePanel = { id: WorkspacePanelId; visible: boolean; order: number };
@@ -2750,6 +2694,317 @@
       ? (workspaceLayout === "group-left" ? '"group . diff"' : '"diff . group"')
       : groupPanelsVisible ? '"group"' : diffVisible ? '"diff"' : '"empty"'
   };`);
+
+  function switchTheme(theme: string) {
+    activeTheme = theme;
+    localStorage.setItem("forge_theme", theme);
+    applyTheme(theme);
+    setStatus(`Theme: ${theme}`);
+  }
+
+  function switchLocale(loc: Locale) {
+    activeLocale = loc;
+    setLocale(loc);
+    setStatus(`Language: ${loc === "id" ? "Bahasa Indonesia" : "English"}`);
+  }
+
+  async function handleQuickStash() {
+    if (!activeRepo) return;
+    try {
+      isLoading = true;
+      setStatus(t("branchModal.stashingStatus"));
+      await gitService.gitStashSave(activeRepo);
+      await loadRepo(activeRepo);
+      setStatus(t("wsModal.stash.savedStatus"));
+    } catch (err) {
+      setStatus(String(err), true);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleQuickStashPop() {
+    if (!activeRepo) return;
+    try {
+      isLoading = true;
+      setStatus("Applying stash...");
+      await gitService.gitStashPop(activeRepo);
+      await loadRepo(activeRepo);
+      setStatus(t("wsModal.stash.poppedStatus"));
+    } catch (err) {
+      setStatus(String(err), true);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  const paletteCommands = $derived.by<PaletteCommand[]>(() => {
+    const cmds: PaletteCommand[] = [
+      { id: "open-repo", category: "Repo", label: t("app.menu.openRepo"), shortcut: "Ctrl+O", action: openOpenModal },
+      { id: "clone-repo", category: "Repo", label: t("app.menu.cloneUrl"), action: () => { activeModal = "clone"; } },
+      { id: "init-repo", category: "Repo", label: t("app.menu.initRepo"), action: () => { activeModal = "init"; } },
+      { id: "publish-repo", category: "Repo", label: t("app.publishToGithub"), action: () => { activeModal = "publish"; } },
+      { id: "ask-ai", category: "AI", label: t("palette.askAi"), action: () => { aiModalState = { task: "custom_ask", prompt: "", context: "" }; } },
+      { id: "settings", category: "Settings", label: t("app.menu.settings"), shortcut: "Ctrl+,", action: openSettingsModal },
+      { id: "accounts", category: "Settings", label: t("app.menu.manageGithubAccounts"), action: () => { activeModal = "auth"; } },
+      { id: "diag", category: "Settings", label: "System Diagnostics Report", action: () => { activeModal = "diag"; } },
+      { id: "logs", category: "Settings", label: "Application Action Logs", action: () => { activeModal = "logs"; } },
+
+      // Theme direct switches
+      { id: "theme-dark", category: "Theme", label: t("palette.themeSwitch", { name: "Dark (Standard)" }), badge: activeTheme === "dark" ? t("palette.badgeActive") : undefined, action: () => switchTheme("dark") },
+      { id: "theme-light", category: "Theme", label: t("palette.themeSwitch", { name: "Light (Standard)" }), badge: activeTheme === "light" ? t("palette.badgeActive") : undefined, action: () => switchTheme("light") },
+      { id: "theme-neo-dark", category: "Theme", label: t("palette.themeSwitch", { name: "Neo-Brutalism Dark" }), badge: activeTheme === "neobrutalism-dark" ? t("palette.badgeActive") : undefined, action: () => switchTheme("neobrutalism-dark") },
+      { id: "theme-neo-light", category: "Theme", label: t("palette.themeSwitch", { name: "Neo-Brutalism Light" }), badge: activeTheme === "neobrutalism-light" ? t("palette.badgeActive") : undefined, action: () => switchTheme("neobrutalism-light") },
+      { id: "theme-riso-dark", category: "Theme", label: t("palette.themeSwitch", { name: "Risograph Dark" }), badge: activeTheme === "riso-dark" ? t("palette.badgeActive") : undefined, action: () => switchTheme("riso-dark") },
+      { id: "theme-riso-light", category: "Theme", label: t("palette.themeSwitch", { name: "Risograph Light" }), badge: activeTheme === "riso-light" ? t("palette.badgeActive") : undefined, action: () => switchTheme("riso-light") },
+      { id: "theme-blueprint-dark", category: "Theme", label: t("palette.themeSwitch", { name: "Blueprint Dark" }), badge: activeTheme === "blueprint-dark" ? t("palette.badgeActive") : undefined, action: () => switchTheme("blueprint-dark") },
+      { id: "theme-blueprint-light", category: "Theme", label: t("palette.themeSwitch", { name: "Blueprint Light" }), badge: activeTheme === "blueprint-light" ? t("palette.badgeActive") : undefined, action: () => switchTheme("blueprint-light") },
+      { id: "theme-system", category: "Theme", label: t("palette.themeSwitch", { name: "System Default" }), badge: activeTheme === "system" ? t("palette.badgeActive") : undefined, action: () => switchTheme("system") },
+
+      // Language switches
+      { id: "lang-id", category: "Settings", label: t("palette.langSwitch", { name: "Bahasa Indonesia" }), badge: activeLocale === "id" ? t("palette.badgeActive") : undefined, action: () => switchLocale("id") },
+      { id: "lang-en", category: "Settings", label: t("palette.langSwitch", { name: "English" }), badge: activeLocale === "en" ? t("palette.badgeActive") : undefined, action: () => switchLocale("en") },
+    ];
+
+    // Recent repos
+    for (const rPath of recentRepos) {
+      if (rPath !== activeRepo) {
+        cmds.push({
+          id: `recent-repo-${rPath}`,
+          category: "Repo",
+          label: t("palette.switchRepo", { name: pathBaseName(rPath) }),
+          description: rPath,
+          badge: t("palette.badgeLocal"),
+          keywords: ["switch", "repo", "recent", pathBaseName(rPath), rPath],
+          action: () => void loadRepo(rPath),
+        });
+      }
+    }
+
+    if (activeRepo) {
+      cmds.push(
+        { id: "reveal-repo", category: "Repo", label: t("ctx.repo.openInFileManager"), description: activeRepo, action: openInFileManager },
+        { id: "terminal-repo", category: "Repo", label: t("ctx.repo.openInTerminal"), description: activeRepo, action: openInTerminal },
+        { id: "editor-repo", category: "Repo", label: t("app.openInEditorTitle", { editor: externalEditorLabel }), description: activeRepo, action: openInEditor },
+        { id: "copy-repo-path", category: "Repo", label: "Copy Repository Path", description: activeRepo, action: async () => { await navigator.clipboard.writeText(activeRepo); setStatus("Copied repository path to clipboard"); } },
+        { id: "refresh-repo", category: "Repo", label: t("common.refresh"), shortcut: "F5", action: () => void loadRepo(activeRepo) }
+      );
+    }
+
+    if (activeRepo && currentStatus) {
+      cmds.push(
+        { id: "view-changes", category: "View", label: t("app.tabChanges"), action: () => switchView("changes") },
+        { id: "view-history", category: "View", label: t("app.tabHistory"), action: () => switchView("history") },
+        { id: "toggle-terminal", category: "Tools", label: t("terminal.toggleCommand"), shortcut: "Ctrl+`", action: () => { terminalOpen = !terminalOpen; } },
+        { id: "toggle-panel-file", category: "View", label: "Toggle File List Panel", action: () => toggleWorkspacePanel("file") },
+        { id: "toggle-panel-commit", category: "View", label: "Toggle Commit Message Panel", action: () => toggleWorkspacePanel("commit") },
+        { id: "toggle-panel-diff", category: "View", label: "Toggle Diff Panel", action: () => toggleWorkspacePanel("diff") },
+        { id: "reset-workspace-panels", category: "View", label: "Reset Workspace Panels Layout", action: resetWorkspacePanels },
+        { id: "open-reflog", category: "Tools", label: t("wsTools.tabReflog"), action: () => { workspaceToolsTab = "reflog"; } },
+        { id: "open-submodules", category: "Tools", label: t("wsTools.tabSubmodules"), action: () => { workspaceToolsTab = "submodules"; } },
+        { id: "open-worktrees", category: "Tools", label: t("tools.worktreeTitle"), action: () => { activeModal = "worktree"; } },
+        { id: "open-branches", category: "Branch", label: t("ctx.branch.manage"), action: openBranchModal },
+        { id: "open-bisect", category: "Git", label: t("bisect.toolsMenu"), action: () => { activeModal = "bisect"; } },
+        { id: "open-stash", category: "Git", label: t("app.manageStash"), action: () => { activeModal = "stash"; } },
+        { id: "stash-quick", category: "Git", label: "Quick Stash Changes (git stash)", action: handleQuickStash },
+        { id: "stash-pop", category: "Git", label: "Apply Latest Stash (git stash pop)", action: handleQuickStashPop },
+        { id: "open-tags", category: "Git", label: "Manage Tags...", action: () => { activeModal = "tag"; } },
+        { id: "create-tag-head", category: "Git", label: t("app.menu.createTagHead"), action: () => openCreateTagModal(null) },
+        { id: "open-pr-issues", category: "Tools", label: t("app.prIssuesBtn"), action: () => { activeModal = "pr"; } },
+        { id: "ai-review", category: "AI", label: t("palette.aiReview"), action: () => { aiModalState = { task: "review_changes", prompt: "Review staged & unstaged changes", context: "" }; } },
+        { id: "ai-commit", category: "AI", label: t("palette.aiGenerateCommit"), action: () => void handleAiGenerateCommit() },
+        {
+          id: "ai-explain-diff",
+          category: "AI",
+          label: t("palette.aiExplainDiff"),
+          action: () => {
+            if (selectedFile) {
+              handleAiExplainDiff(selectedFile.path, currentDiff);
+            } else {
+              aiModalState = { task: "custom_ask", prompt: "Review and explain the current diff", context: "" };
+            }
+          },
+        },
+        { id: "git-fetch", category: "Git", label: t("app.fetch"), shortcut: "Ctrl+Shift+F", action: handleFetch },
+        { id: "git-pull", category: "Git", label: t("app.pull"), shortcut: "Ctrl+Shift+P", action: handlePull },
+        { id: "git-push", category: "Git", label: t("app.push"), shortcut: "Ctrl+Shift+U", action: handlePush },
+        { id: "git-force-push", category: "Git", label: t("app.forcePushMenu"), description: "--force-with-lease", danger: true, action: handleForcePush },
+        { id: "git-manage-remotes", category: "Git", label: t("app.manageRemotesMenu"), action: () => { activeModal = "remote"; } }
+      );
+
+      if (hasUpstreamRemote) {
+        cmds.push({ id: "sync-fork", category: "Git", label: t("app.syncForkMenu"), action: handleSyncFork });
+      }
+
+      const conflicted = currentStatus.files.find((f) => f.is_conflict);
+      if (conflicted) {
+        cmds.push({
+          id: "resolve-conflict",
+          category: "Git",
+          label: `${t("conflict.resolveBtn")}: ${conflicted.path}`,
+          description: conflicted.path,
+          badge: t("palette.badgeConflict"),
+          action: () => { conflictFilePath = conflicted.path; },
+        });
+      }
+
+      // Changed Files (Deep File Search)
+      if (currentStatus.files.length > 0) {
+        cmds.push(
+          { id: "stage-all-files", category: "File", label: t("palette.stageAll"), action: handleStageAll },
+          { id: "unstage-all-files", category: "File", label: t("palette.unstageAll"), action: handleUnstageAll },
+          { id: "discard-all-files", category: "File", label: t("palette.discardAll"), danger: true, action: handleDiscardAll }
+        );
+
+        for (const f of currentStatus.files) {
+          const baseName = pathBaseName(f.path);
+          const isUntracked = f.status_code === "?" || f.status_code.includes("?");
+          const fBadge = f.is_conflict
+            ? t("palette.badgeConflict")
+            : f.staged
+            ? t("palette.badgeStaged")
+            : isUntracked
+            ? t("palette.badgeUntracked")
+            : t("palette.badgeModified");
+
+          cmds.push(
+            {
+              id: `file-select-${f.path}`,
+              category: "File",
+              label: t("palette.selectFile", { path: baseName }),
+              description: f.path,
+              badge: fBadge,
+              keywords: ["file", "diff", f.path, baseName, f.staged ? "staged" : "unstaged"],
+              action: () => {
+                switchView("changes");
+                void selectFile(f);
+              },
+            },
+            {
+              id: `file-stage-${f.path}`,
+              category: "File",
+              label: f.staged ? t("palette.unstageFile", { path: baseName }) : t("palette.stageFile", { path: baseName }),
+              description: f.path,
+              badge: f.staged ? t("palette.badgeStaged") : undefined,
+              keywords: [f.staged ? "unstage" : "stage", f.path, baseName],
+              action: () => void toggleStage(f),
+            },
+            {
+              id: `file-discard-${f.path}`,
+              category: "File",
+              label: t("palette.discardFile", { path: baseName }),
+              description: f.path,
+              badge: "Discard",
+              danger: true,
+              keywords: ["discard", "revert", f.path, baseName],
+              action: () => handleDiscardFile(f),
+            },
+            {
+              id: `file-blame-${f.path}`,
+              category: "File",
+              label: `Blame: ${baseName}`,
+              description: f.path,
+              keywords: ["blame", f.path, baseName],
+              action: () => { inspectFileState = { path: f.path, mode: "blame" }; },
+            },
+            {
+              id: `file-history-${f.path}`,
+              category: "File",
+              label: `File History: ${baseName}`,
+              description: f.path,
+              keywords: ["history", "log", f.path, baseName],
+              action: () => { inspectFileState = { path: f.path, mode: "history" }; },
+            },
+            {
+              id: `file-editor-${f.path}`,
+              category: "File",
+              label: `Open in Editor: ${baseName}`,
+              description: f.path,
+              keywords: ["edit", "code", f.path, baseName],
+              action: () => void openInEditorFile(f.path),
+            }
+          );
+        }
+      }
+
+      // Branches (Deep Branch Search)
+      for (const b of branches) {
+        const isCurrent = b.is_current;
+        const isRemote = b.name.startsWith("origin/") || b.name.startsWith("upstream/") || b.name.includes("/");
+        const bBadge = isCurrent
+          ? t("palette.badgeActive")
+          : isRemote
+          ? t("palette.badgeRemote")
+          : t("palette.badgeLocal");
+
+        cmds.push({
+          id: `branch-checkout-${b.name}`,
+          category: "Branch",
+          label: isCurrent ? b.name : `${t("palette.checkoutPrefix")} ${b.name}`,
+          description: isCurrent ? "Current active branch" : isRemote ? "Remote branch" : "Local branch",
+          badge: bBadge,
+          keywords: ["branch", "checkout", "switch", b.name],
+          action: async () => {
+            if (isCurrent) return;
+            await gitService.switchBranch(activeRepo, b.name);
+            await loadRepo(activeRepo);
+          },
+        });
+      }
+
+      // Recent Commits (Deep Commit Search)
+      for (const c of commits.slice(0, 30)) {
+        const shortSha = c.short_sha || c.sha.slice(0, 7);
+        const dateStr = c.date;
+        cmds.push(
+          {
+            id: `commit-view-${c.sha}`,
+            category: "Commit",
+            label: c.summary,
+            description: `${shortSha} • ${c.author} • ${dateStr}`,
+            badge: shortSha,
+            keywords: ["commit", shortSha, c.sha, c.author, c.summary],
+            action: () => {
+              switchView("history");
+            },
+          },
+          {
+            id: `commit-copy-${c.sha}`,
+            category: "Commit",
+            label: t("palette.copyCommitSha", { sha: shortSha }),
+            description: c.summary,
+            badge: "SHA",
+            keywords: ["copy", "sha", shortSha, c.sha],
+            action: async () => {
+              await navigator.clipboard.writeText(c.sha);
+              setStatus(`Copied commit SHA ${shortSha} to clipboard`);
+            },
+          },
+          {
+            id: `commit-cherrypick-${c.sha}`,
+            category: "Commit",
+            label: t("palette.cherryPick", { sha: shortSha }),
+            description: c.summary,
+            badge: "Cherry-pick",
+            keywords: ["cherry-pick", shortSha, c.sha, c.summary],
+            action: () => void handleCherryPick(c.sha),
+          },
+          {
+            id: `commit-revert-${c.sha}`,
+            category: "Commit",
+            label: t("palette.revertCommit", { sha: shortSha }),
+            description: c.summary,
+            badge: "Revert",
+            danger: true,
+            keywords: ["revert", shortSha, c.sha, c.summary],
+            action: () => handleRevert(c.sha),
+          }
+        );
+      }
+    }
+
+    return cmds;
+  });
  </script>
 
 {#snippet workspacePanel(panelId: WorkspacePanelId, index: number)}
