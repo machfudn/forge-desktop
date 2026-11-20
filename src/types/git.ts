@@ -14,6 +14,7 @@ export interface RepoStatus {
   in_rebase: boolean;
   in_cherry_pick: boolean;
   in_revert: boolean;
+  in_bisect: boolean;
   has_commits: boolean;
   is_detached: boolean;
 }

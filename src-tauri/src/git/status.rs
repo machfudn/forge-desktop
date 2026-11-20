@@ -21,6 +21,7 @@ pub struct RepoStatus {
     pub in_rebase: bool,
     pub in_cherry_pick: bool,
     pub in_revert: bool,
+    pub in_bisect: bool,
     pub has_commits: bool,
     pub is_detached: bool,
 }
@@ -166,6 +167,7 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
             let in_cherry_pick = git_dir.join("CHERRY_PICK_HEAD").exists()
                 || git_dir.join("sequencer").join("todo").exists();
             let in_revert = git_dir.join("REVERT_HEAD").exists();
+            let in_bisect = git_dir.join("BISECT_START").exists() || git_dir.join("BISECT_LOG").exists();
             return Ok(RepoStatus {
                 branch: br.trim().to_string(),
                 files,
@@ -174,6 +176,7 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
                 in_rebase,
                 in_cherry_pick,
                 in_revert,
+                in_bisect,
                 has_commits: has_c,
                 is_detached: is_det,
             });
@@ -195,6 +198,7 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
     let in_cherry_pick = git_dir.join("CHERRY_PICK_HEAD").exists()
         || git_dir.join("sequencer").join("todo").exists();
     let in_revert = git_dir.join("REVERT_HEAD").exists();
+    let in_bisect = git_dir.join("BISECT_START").exists() || git_dir.join("BISECT_LOG").exists();
 
     Ok(RepoStatus {
         branch,
@@ -204,6 +208,7 @@ pub fn inspect(repo: &str) -> Result<RepoStatus, String> {
         in_rebase,
         in_cherry_pick,
         in_revert,
+        in_bisect,
         has_commits,
         is_detached,
     })
