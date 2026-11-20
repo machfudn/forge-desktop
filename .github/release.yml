@@ -3,31 +3,34 @@ changelog:
     labels:
       - skip-changelog
       - ignore-for-release
-    authors:
-      - dependabot
-      - github-actions
   categories:
-    - title: Fitur Baru
+    - title: Features
       labels:
         - feat
         - feature
         - enhancement
-    - title: Perbaikan Bug
+    - title: Bug Fixes
       labels:
         - fix
         - bug
         - bugfix
-    - title: CI/CD & Build
+    - title: Performance & Refactoring
+      labels:
+        - perf
+        - refactor
+    - title: UI & Styling
+      labels:
+        - style
+    - title: Documentation
+      labels:
+        - docs
+        - documentation
+    - title: Maintenance & Dependencies
       labels:
         - ci
         - build
         - chore
-        - refactor
-        - perf
-    - title: Dokumentasi
-      labels:
-        - docs
-        - documentation
-    - title: Perubahan Lainnya
+        - dependencies
+    - title: Other Changes
       labels:
         - "*"

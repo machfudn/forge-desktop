@@ -10,11 +10,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Versi rilis (contoh: 1.2.0 atau 1.2.0-beta.1; kosong = pakai versi manifest)"
+        description: "Release version (e.g. 1.2.0 or 1.2.0-beta.1; blank = use manifest version)"
         required: false
         default: ""
       channel:
-        description: "Channel rilis"
+        description: "Release channel"
         type: choice
         options:
           - auto
@@ -22,11 +22,11 @@ on:
           - beta
         default: auto
       draft:
-        description: "Buat sebagai draft release"
+        description: "Create as draft release"
         type: boolean
         default: false
       notes:
-        description: "Catatan rilis tambahan (opsional)"
+        description: "Additional release notes (optional)"
         required: false
         default: ""
 permissions:
@@ -84,7 +84,7 @@ jobs:
           RELEASE_ROW=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$TAG_NAME\") | [.id, (.assets | length)] | @tsv" | head -n1 || true)
           IFS=$'\t' read -r EXISTING_ID EXISTING_ASSETS <<< "$RELEASE_ROW"
           if [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "branch" ] && [ -n "$EXISTING_ID" ] && [ "${EXISTING_ASSETS:-0}" -gt 0 ]; then
-            echo "Release $TAG_NAME sudah tersedia dengan ${EXISTING_ASSETS} aset (id=$EXISTING_ID). Melewati release otomatis untuk push branch $BRANCH_NAME ini."
+            echo "Release $TAG_NAME is already available with ${EXISTING_ASSETS} assets (id=$EXISTING_ID). Skipping automatic release for branch push $BRANCH_NAME."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
@@ -110,32 +110,20 @@ jobs:
             PREV_TAG=$(git -c versionsort.suffix=- tag --sort=-v:refname | grep -Fxv "$TAG_NAME" | grep -Ev -- '-' | head -n1 || true)
           fi
           if [ -n "$PREV_TAG" ]; then
+            git log "${PREV_TAG}..HEAD" --format="%h%x09%an%x09%s" > git-commits.tsv 2>/dev/null || true
             gh api "repos/${{ github.repository }}/releases/generate-notes" \
               -f tag_name="$TAG_NAME" \
               -f target_commitish="${{ github.sha }}" \
               -f previous_tag_name="$PREV_TAG" \
               --jq '.body' > generated-notes.md 2>/dev/null || true
           else
+            git log -n 50 --format="%h%x09%an%x09%s" > git-commits.tsv 2>/dev/null || true
             gh api "repos/${{ github.repository }}/releases/generate-notes" \
               -f tag_name="$TAG_NAME" \
               -f target_commitish="${{ github.sha }}" \
               --jq '.body' > generated-notes.md 2>/dev/null || true
           fi
-          if ! grep -Eq '^[*-] ' generated-notes.md 2>/dev/null; then
-            if [ -n "$PREV_TAG" ]; then
-              COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" || true)
-            else
-              COMMITS=$(git log -n 20 --pretty=format:"- %s (%h)" || true)
-            fi
-            if [ -n "$COMMITS" ]; then
-              if [ -s generated-notes.md ]; then
-                printf '%s\n\n%s\n' "$COMMITS" "$(cat generated-notes.md)" > generated-notes.md
-              else
-                printf '%s\n' "$COMMITS" > generated-notes.md
-              fi
-            fi
-          fi
-          GENERATED_NOTES_FILE=generated-notes.md node scripts/release-meta.mjs notes --out release-notes.md
+          GIT_COMMITS_FILE=git-commits.tsv GENERATED_NOTES_FILE=generated-notes.md node scripts/release-meta.mjs notes --out release-notes.md
 
       - name: Create or Reuse GitHub Release
         id: release
@@ -177,7 +165,7 @@ jobs:
               -F body=@release-notes.md >/dev/null
           fi
           if [ -z "$RELEASE_ID" ]; then
-            echo "Gagal mendapatkan release_id untuk $TAG_NAME"
+            echo "Failed to get release_id for $TAG_NAME"
             exit 1
           fi
           echo "Using release_id=$RELEASE_ID for $TAG_NAME"
@@ -270,7 +258,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           $bin = "src-tauri/target/release/forge-desktop.exe"
-          if (-not (Test-Path $bin)) { throw "Binary $bin tidak ditemukan" }
+          if (-not (Test-Path $bin)) { throw "Binary $bin not found" }
           New-Item -ItemType Directory -Force -Path dist-portable | Out-Null
           $portableExe = "dist-portable/Forge-Desktop_${env:VERSION}_windows_x64-portable.exe"
           $portableZip = "dist-portable/Forge-Desktop_${env:VERSION}_windows_x64-portable.zip"
@@ -299,7 +287,7 @@ jobs:
         run: |
           BIN="src-tauri/target/release/forge-desktop"
           if [ ! -f "$BIN" ]; then
-            echo "Binary $BIN tidak ditemukan"
+            echo "Binary $BIN not found"
             exit 1
           fi
           mkdir -p dist-portable/stage
@@ -328,7 +316,7 @@ jobs:
         run: |
           APP_DIR="src-tauri/target/universal-apple-darwin/release/bundle/macos/Forge Desktop.app"
           if [ ! -d "$APP_DIR" ]; then
-            echo "Bundle $APP_DIR tidak ditemukan"
+            echo "Bundle $APP_DIR not found"
             exit 1
           fi
           mkdir -p dist-portable
@@ -364,7 +352,7 @@ jobs:
           mkdir -p dist-release
           gh api "repos/${REPO}/releases/${RELEASE_ID}/assets?per_page=100" --jq '.[] | [.id, .name] | @tsv' | while IFS=$'\t' read -r ASSET_ID ASSET_NAME; do
             [ -n "$ASSET_ID" ] || continue
-            echo "Mengunduh ${ASSET_NAME}..."
+            echo "Downloading ${ASSET_NAME}..."
             curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/octet-stream" \
               "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}" \
               -o "dist-release/${ASSET_NAME}"
