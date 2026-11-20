@@ -40,11 +40,23 @@
 
   let copiedPath = $state<string | null>(null);
 
+  let branchesInUse = $derived(
+    new Set(worktrees.map((w) => w.branch).filter(Boolean) as string[])
+  );
+
   $effect(() => {
     if (repoPath) {
       void loadData();
     }
   });
+
+  function normalizePath(p: string): string {
+    return p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  }
+
+  function isCurrentWorkspace(wtPath: string): boolean {
+    return normalizePath(repoPath) === normalizePath(wtPath);
+  }
 
   async function loadData() {
     loading = true;
@@ -56,8 +68,19 @@
       ]);
       worktrees = wts;
       localBranches = brs.filter((b) => !b.is_remote);
-      if (localBranches.length > 0 && !newWtBranch) {
+
+      const usedBranches = new Set(wts.map((w) => w.branch).filter(Boolean) as string[]);
+      const firstAvailable = localBranches.find((b) => !usedBranches.has(b.name));
+      if (firstAvailable && (!newWtBranch || usedBranches.has(newWtBranch))) {
+        newWtBranch = firstAvailable.name;
+        newWtCreateBranch = false;
+      } else if (!firstAvailable && localBranches.length > 0) {
         newWtBranch = localBranches[0].name;
+        newWtCreateBranch = true;
+      }
+
+      if (showAddCard && !newWtPath) {
+        suggestPath(newWtCreateBranch ? (newWtCustomBranch || "feature") : newWtBranch);
       }
     } catch (err) {
       errorMsg = String(err);
@@ -66,11 +89,22 @@
     }
   }
 
+  function toggleAddCard() {
+    showAddCard = !showAddCard;
+    if (showAddCard && !newWtPath) {
+      const branchToSuggest = newWtCreateBranch
+        ? (newWtCustomBranch.trim() || "feature")
+        : (newWtBranch || "worktree");
+      suggestPath(branchToSuggest);
+    }
+  }
+
   async function handleBrowseFolder() {
     try {
       const dir = await pickDirectory({
         title: t("tools.worktreeBrowseBtn"),
         canCreateDirectories: true,
+        defaultPath: repoPath,
       });
       if (dir) {
         newWtPath = dir;
@@ -85,7 +119,7 @@
     const cleanBranch = branch.trim().replace(/[^a-zA-Z0-9._-]/g, "-");
     const sep = repoPath.includes("\\") ? "\\" : "/";
     const parts = repoPath.split(/[\\/]/).filter(Boolean);
-    const parent = parts.slice(0, -1).join(sep);
+    const parent = parts.slice(0, -1).join(sep) || (sep === "\\" ? "C:\\" : "/");
     const repoName = parts[parts.length - 1] || "worktree";
     newWtPath = `${parent}${sep}${repoName}-${cleanBranch}`;
   }
@@ -133,6 +167,24 @@
       onStatus?.(String(err), true);
     } finally {
       actionLoading = false;
+    }
+  }
+
+  async function handleReveal(path: string) {
+    try {
+      await gitService.openInFileManager(path);
+    } catch (err) {
+      errorMsg = String(err);
+      onStatus?.(String(err), true);
+    }
+  }
+
+  async function handleOpenTerminal(path: string) {
+    try {
+      await gitService.openInTerminal(path);
+    } catch (err) {
+      errorMsg = String(err);
+      onStatus?.(String(err), true);
     }
   }
 
@@ -185,12 +237,6 @@
     }
   }
 
-  function isCurrentWorkspace(wtPath: string): boolean {
-    const cleanRepo = repoPath.replace(/[\\/]+$/, "").toLowerCase();
-    const cleanWt = wtPath.replace(/[\\/]+$/, "").toLowerCase();
-    return cleanRepo === cleanWt;
-  }
-
   async function copyPath(path: string) {
     try {
       await navigator.clipboard.writeText(path);
@@ -207,16 +253,25 @@
 <div
   class="modal-overlay"
   role="presentation"
+  tabindex="-1"
   onclick={(e) => {
     if (e.target === e.currentTarget && !actionLoading) onClose();
+  }}
+  onkeydown={(e) => {
+    if (e.key === "Escape" && !actionLoading) {
+      if (lockModalTarget) lockModalTarget = null;
+      else if (deleteModalTarget) deleteModalTarget = null;
+      else onClose();
+    }
   }}
 >
   <div class="modal-dialog modal-lg worktree-modal" role="dialog" aria-modal="true" aria-label={t("tools.worktreeTitle")}>
     <div class="modal-header">
       <div class="worktree-header-info">
         <div class="worktree-title-row">
+          <!-- Semantic Git Worktree icon (branch fork) instead of hamburger menu -->
           <svg class="worktree-title-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M1.75 2.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5H1.75ZM1 6.75A.75.75 0 0 1 1.75 6h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 6.75ZM1.75 10.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5H1.75Z" />
+            <path d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM3.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" />
           </svg>
           <h3>{t("tools.worktreeTitle")}</h3>
           <span class="worktree-count-badge tabular-nums">
@@ -233,7 +288,7 @@
           type="button"
           class="btn-primary btn-xs"
           disabled={loading || actionLoading}
-          onclick={() => (showAddCard = !showAddCard)}
+          onclick={toggleAddCard}
         >
           <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="8" y1="3" x2="8" y2="13" />
@@ -244,13 +299,28 @@
 
         <button
           type="button"
+          class="btn-secondary btn-xs worktree-refresh-btn {loading ? 'is-spinning' : ''}"
+          disabled={loading || actionLoading}
+          onclick={() => void loadData()}
+          title={t("tools.worktreeRefresh")}
+          aria-label={t("tools.worktreeRefresh")}
+        >
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7 7 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7 7 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z" />
+          </svg>
+          <span>{t("tools.worktreeRefresh")}</span>
+        </button>
+
+        <button
+          type="button"
           class="btn-secondary btn-xs"
           disabled={loading || actionLoading}
           onclick={handlePruneWorktrees}
           title={t("tools.pruneBtn")}
         >
+          <!-- Fixed crisp Octicon trashcan icon -->
           <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a2.25 2.25 0 0 0 2.24 2.025h1.208a2.25 2.25 0 0 0 2.24-2.025l.66-6.6a.75.75 0 0 0-1.492-.15l-.66 6.6a.75.75 0 0 1-.748.675H8.604a.75.75 0 0 1-.748-.675l-.66-6.6a.75.75 0 0 0-1.492.15l-.208 2.075Z" />
+            <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6A1.75 1.75 0 0 0 6.898 15h2.204a1.75 1.75 0 0 0 1.742-1.725l.66-6.6a.75.75 0 0 0-1.492-.15l-.66 6.6a.25.25 0 0 1-.249.225H6.898a.25.25 0 0 1-.249-.225l-.66-6.6a.75.75 0 0 0-1.493.15ZM6.5 1.5h3a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25h-3a.25.25 0 0 0-.25.25v.25c0 .138.112.25.25.25Z" />
           </svg>
           <span>{t("tools.pruneBtn")}</span>
         </button>
@@ -272,7 +342,7 @@
     {#if errorMsg}
       <div class="modal-banner is-error">
         <span>{errorMsg}</span>
-        <button type="button" class="banner-close" onclick={() => (errorMsg = "")} aria-label="Close error">✕</button>
+        <button type="button" class="banner-close" onclick={() => (errorMsg = "")} aria-label={t("common.close")}>✕</button>
       </div>
     {/if}
 
@@ -285,6 +355,7 @@
               type="button"
               class="btn-text btn-xs"
               onclick={() => (showAddCard = false)}
+              aria-label={t("common.close")}
             >
               ✕
             </button>
@@ -309,10 +380,21 @@
                   id="wt-branch-source"
                   class="form-select"
                   bind:value={newWtBranch}
-                  onchange={() => suggestPath(newWtBranch)}
+                  onchange={() => {
+                    if (branchesInUse.has(newWtBranch)) {
+                      newWtCreateBranch = true;
+                      newWtCustomBranch = `${newWtBranch}-worktree`;
+                      suggestPath(newWtCustomBranch);
+                    } else {
+                      suggestPath(newWtBranch);
+                    }
+                  }}
                 >
                   {#each localBranches as br (br.name)}
-                    <option value={br.name}>{br.name}</option>
+                    {@const inUse = branchesInUse.has(br.name)}
+                    <option value={br.name}>
+                      {inUse ? t("tools.worktreeBranchInUse", { branch: br.name }) : br.name}
+                    </option>
                   {/each}
                 </select>
               {/if}
@@ -321,7 +403,7 @@
                   type="checkbox"
                   bind:checked={newWtCreateBranch}
                   onchange={() => {
-                    if (newWtCreateBranch) suggestPath(newWtCustomBranch);
+                    if (newWtCreateBranch) suggestPath(newWtCustomBranch || "feature");
                     else suggestPath(newWtBranch);
                   }}
                 />
@@ -382,8 +464,9 @@
         </div>
       {:else if worktrees.length === 0}
         <div class="worktree-empty-state">
-          <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M1.75 2.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5H1.75ZM1 6.75A.75.75 0 0 1 1.75 6h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 6.75ZM1.75 10.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5H1.75Z" />
+          <!-- Semantic Git Worktree icon for empty state -->
+          <svg width="32" height="32" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM3.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" />
           </svg>
           <p>{t("tools.worktreesEmpty")}</p>
         </div>
@@ -402,13 +485,13 @@
                   </span>
 
                   {#if isCurrent}
-                    <span class="badge-status badge-active" title="Active Forge Workspace">
+                    <span class="badge-status badge-active" title={t("tools.worktreeActiveWorkspaceTitle")}>
                       {t("tools.worktreeActive")}
                     </span>
                   {/if}
 
                   {#if wt.is_main}
-                    <span class="badge-status badge-main" title="Main Repository Worktree">
+                    <span class="badge-status badge-main" title={t("tools.worktreeMainRepoTitle")}>
                       {t("tools.worktreeMain")}
                     </span>
                   {/if}
@@ -425,6 +508,18 @@
                     </span>
                   {/if}
 
+                  {#if wt.is_prunable}
+                    <span
+                      class="badge-status badge-prunable"
+                      title={wt.prunable_reason ? `${t("tools.worktreePrunable")}: ${wt.prunable_reason}` : t("tools.worktreePrunable")}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" />
+                      </svg>
+                      <span>{t("tools.worktreePrunable")}</span>
+                    </span>
+                  {/if}
+
                   <span class="worktree-sha tabular-nums" title={wt.head}>
                     {wt.head.slice(0, 7)}
                   </span>
@@ -436,8 +531,8 @@
                     type="button"
                     class="btn-icon-copy"
                     onclick={() => copyPath(wt.path)}
-                    title={copiedPath === wt.path ? "Copied" : "Copy Path"}
-                    aria-label="Copy Path"
+                    title={copiedPath === wt.path ? t("tools.worktreePathCopied") : t("tools.worktreeCopyPath")}
+                    aria-label={t("tools.worktreeCopyPath")}
                   >
                     {#if copiedPath === wt.path}
                       <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -458,12 +553,16 @@
                   <button
                     type="button"
                     class="btn-primary btn-xs"
+                    disabled={actionLoading || wt.is_prunable}
                     onclick={async () => {
                       onClose();
                       await onOpenWorktreeRepo(wt.path);
                     }}
-                    title={t("tools.worktreeOpenWorkspace")}
+                    title={wt.is_prunable ? t("tools.worktreeFolderMissing") : t("tools.worktreeOpenWorkspace")}
                   >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                      <path d="M8.22 2.97a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L11.44 9H2.75a.75.75 0 0 1 0-1.5h8.69L8.22 4.03a.75.75 0 0 1 0-1.06Z" />
+                    </svg>
                     <span>{t("tools.worktreeOpenWorkspace")}</span>
                   </button>
                 {/if}
@@ -471,8 +570,9 @@
                 <button
                   type="button"
                   class="btn-secondary btn-xs"
-                  onclick={() => gitService.openInFileManager(wt.path)}
-                  title={t("tools.worktreeReveal")}
+                  disabled={actionLoading || wt.is_prunable}
+                  onclick={() => handleReveal(wt.path)}
+                  title={wt.is_prunable ? t("tools.worktreeFolderMissing") : t("tools.worktreeReveal")}
                   aria-label={t("tools.worktreeReveal")}
                 >
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -484,8 +584,9 @@
                 <button
                   type="button"
                   class="btn-secondary btn-xs"
-                  onclick={() => gitService.openInTerminal(wt.path)}
-                  title={t("tools.worktreeTerminal")}
+                  disabled={actionLoading || wt.is_prunable}
+                  onclick={() => handleOpenTerminal(wt.path)}
+                  title={wt.is_prunable ? t("tools.worktreeFolderMissing") : t("tools.worktreeTerminal")}
                   aria-label={t("tools.worktreeTerminal")}
                 >
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -503,7 +604,10 @@
                       onclick={() => handleUnlock(wt)}
                       title={t("tools.worktreeUnlockBtn")}
                     >
-                      {t("tools.worktreeUnlockBtn")}
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M10 2a3 3 0 0 0-3 3v2h5.25c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-5.5C2 6.784 2.784 6 3.75 6H5.5V5a4.5 4.5 0 0 1 9 0 .75.75 0 0 1-1.5 0 3 3 0 0 0-3-3Z" />
+                      </svg>
+                      <span>{t("tools.worktreeUnlockBtn")}</span>
                     </button>
                   {:else}
                     <button
@@ -516,7 +620,10 @@
                       }}
                       title={t("tools.worktreeLockBtn")}
                     >
-                      {t("tools.worktreeLockBtn")}
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M4 4a4 4 0 0 1 8 0v2h.25c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-5.5C2 6.784 2.784 6 3.75 6H4V4Zm2 2h4V4a2 2 0 1 0-4 0v2Z" />
+                      </svg>
+                      <span>{t("tools.worktreeLockBtn")}</span>
                     </button>
                   {/if}
 
@@ -530,7 +637,10 @@
                     }}
                     title={t("common.delete")}
                   >
-                    {t("common.delete")}
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                      <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6A1.75 1.75 0 0 0 6.898 15h2.204a1.75 1.75 0 0 0 1.742-1.725l.66-6.6a.75.75 0 0 0-1.492-.15l-.66 6.6a.25.25 0 0 1-.249.225H6.898a.25.25 0 0 1-.249-.225l-.66-6.6a.75.75 0 0 0-1.493.15ZM6.5 1.5h3a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25h-3a.25.25 0 0 0-.25.25v.25c0 .138.112.25.25.25Z" />
+                    </svg>
+                    <span>{t("common.delete")}</span>
                   </button>
                 {/if}
               </div>
@@ -543,11 +653,17 @@
 </div>
 
 {#if lockModalTarget}
-  <div class="modal-overlay modal-sub-overlay" role="presentation">
+  <div
+    class="modal-overlay modal-sub-overlay"
+    role="presentation"
+    onclick={(e) => {
+      if (e.target === e.currentTarget && !actionLoading) lockModalTarget = null;
+    }}
+  >
     <div class="modal-dialog modal-sm" role="dialog" aria-modal="true" aria-label={t("tools.worktreeLockBtn")}>
       <div class="modal-header">
         <h4>{t("tools.worktreeLockBtn")}</h4>
-        <button type="button" class="modal-close-btn" onclick={() => (lockModalTarget = null)}>✕</button>
+        <button type="button" class="modal-close-btn" onclick={() => (lockModalTarget = null)} aria-label={t("common.close")}>✕</button>
       </div>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 10px;">
         <p style="font-size: 11px; color: var(--text-muted);">
@@ -573,11 +689,17 @@
 {/if}
 
 {#if deleteModalTarget}
-  <div class="modal-overlay modal-sub-overlay" role="presentation">
+  <div
+    class="modal-overlay modal-sub-overlay"
+    role="presentation"
+    onclick={(e) => {
+      if (e.target === e.currentTarget && !actionLoading) deleteModalTarget = null;
+    }}
+  >
     <div class="modal-dialog modal-sm" role="dialog" aria-modal="true" aria-label={t("common.delete")}>
       <div class="modal-header">
         <h4>{t("common.delete")}</h4>
-        <button type="button" class="modal-close-btn" onclick={() => (deleteModalTarget = null)}>✕</button>
+        <button type="button" class="modal-close-btn" onclick={() => (deleteModalTarget = null)} aria-label={t("common.close")}>✕</button>
       </div>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 10px;">
         <p style="font-size: 11.5px; color: var(--text-primary);">
