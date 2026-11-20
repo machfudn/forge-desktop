@@ -67,6 +67,14 @@
   let seq = 0;
   let tabCounter = 1;
 
+  function loadInitialShell(): string {
+    try {
+      const stored = localStorage.getItem("forge_terminal_shell");
+      if (stored) return stored;
+    } catch {}
+    return "auto";
+  }
+
   function createSession(tabNum: number, startCwd: string): TerminalSession {
     const id = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const baseName = startCwd.split(/[/\\]/).filter(Boolean).pop() || "repo";
@@ -80,7 +88,7 @@
       cmdHistory: [],
       historyIdx: -1,
       exitCode: null,
-      shellKind: "auto",
+      shellKind: loadInitialShell(),
       startTime: null,
     };
   }
@@ -117,7 +125,7 @@
       cmdHistory: [],
       historyIdx: -1,
       exitCode: null,
-      shellKind: "auto",
+      shellKind: loadInitialShell(),
       startTime: null,
     },
   ]);
@@ -133,21 +141,50 @@
   let userScrolledUp = $state(false);
   let hasNewOutputBelow = $state(false);
   let now = $state(Date.now());
+  let detectedShells = $state<gitService.AvailableShell[]>([]);
 
   const isWindows =
     typeof navigator !== "undefined" &&
     (navigator.platform?.includes("Win") || navigator.userAgent.includes("Windows"));
 
+  // Fetch available shells dynamically from Rust backend
+  $effect(() => {
+    let active = true;
+    void gitService.getAvailableShells().then((shells) => {
+      if (active && Array.isArray(shells) && shells.length > 0) {
+        detectedShells = shells;
+      }
+    });
+    return () => {
+      active = false;
+    };
+  });
+
   function getShellDisplayName(kind: string): string {
+    const found = detectedShells.find((s) => s.id === kind);
+    if (found) {
+      return found.label;
+    }
     switch (kind) {
       case "auto":
         return isWindows ? "Auto (PowerShell)" : "Auto (bash)";
+      case "pwsh":
+        return "PowerShell 7";
       case "powershell":
-        return "PowerShell";
+        return "Windows PowerShell";
       case "cmd":
         return "Command Prompt";
       case "bash":
+      case "git-bash":
         return "Git Bash";
+      case "wsl":
+        return "WSL (Linux)";
+      case "nu":
+        return "Nushell";
+      case "zsh":
+        return "Zsh";
+      case "fish":
+        return "Fish";
       case "sh":
         return "POSIX sh";
       default:
@@ -155,13 +192,32 @@
     }
   }
 
-  const shellOptions = $derived([
-    { id: "auto", label: isWindows ? "Auto (PowerShell)" : "Auto (bash)", desc: t("terminal.shellAutoDesc") },
-    { id: "powershell", label: "PowerShell", desc: "pwsh.exe / powershell.exe" },
-    { id: "cmd", label: "Command Prompt", desc: "cmd.exe" },
-    { id: "bash", label: "Git Bash", desc: "bash.exe (MSYS2)" },
-    { id: "sh", label: "POSIX sh", desc: "sh.exe" },
-  ]);
+  const shellOptions = $derived.by(() => {
+    if (detectedShells.length > 0) {
+      return detectedShells.map((s) => ({
+        id: s.id,
+        label: s.label,
+        desc: s.path === "auto" ? t("terminal.shellAutoDesc") : s.path,
+      }));
+    }
+    return [
+      { id: "auto", label: isWindows ? "Auto (PowerShell)" : "Auto (bash)", desc: t("terminal.shellAutoDesc") },
+      { id: "pwsh", label: "PowerShell 7 (pwsh)", desc: "pwsh.exe" },
+      { id: "powershell", label: "Windows PowerShell", desc: "powershell.exe" },
+      { id: "cmd", label: "Command Prompt", desc: "cmd.exe" },
+      { id: "bash", label: "Git Bash", desc: "bash.exe (MSYS2)" },
+      { id: "wsl", label: "WSL (Linux)", desc: "wsl.exe" },
+      { id: "sh", label: "POSIX sh", desc: "sh" },
+    ];
+  });
+
+  function selectShell(shellId: string) {
+    activeSession.shellKind = shellId;
+    shellMenuOpen = false;
+    try {
+      localStorage.setItem("forge_terminal_shell", shellId);
+    } catch {}
+  }
 
   let outputEl = $state<HTMLDivElement | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
@@ -794,10 +850,7 @@
                   type="button"
                   role="menuitem"
                   class="popover-item terminal-shell-option {activeSession.shellKind === opt.id ? 'is-selected' : ''}"
-                  onclick={() => {
-                    activeSession.shellKind = opt.id;
-                    shellMenuOpen = false;
-                  }}
+                  onclick={() => selectShell(opt.id)}
                 >
                   <div class="terminal-shell-option-meta">
                     <span class="terminal-shell-option-title">{opt.label}</span>

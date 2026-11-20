@@ -1040,6 +1040,18 @@ export async function getTerminalCwd(sessionId: string, repo: string): Promise<s
   return invoke<string>("get_terminal_cwd", { sessionId, repo });
 }
 
+export interface AvailableShell {
+  id: string;
+  label: string;
+  path: string;
+  is_installed: boolean;
+  is_default: boolean;
+}
+
+export async function getAvailableShells(): Promise<AvailableShell[]> {
+  return invoke<AvailableShell[]>("get_available_shells");
+}
+
 export async function gitBisectStart(
   repo: string,
   badSha: string,
