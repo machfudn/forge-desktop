@@ -654,7 +654,8 @@
         currentStatus?.in_merge !== status.in_merge ||
         currentStatus?.in_rebase !== status.in_rebase ||
         currentStatus?.in_cherry_pick !== status.in_cherry_pick ||
-        currentStatus?.in_revert !== status.in_revert;
+        currentStatus?.in_revert !== status.in_revert ||
+        currentStatus?.in_bisect !== status.in_bisect;
 
       if (filesChanged || branchChanged || commitStateChanged || mergeOrRebaseChanged) {
         currentStatus = status;
@@ -1494,6 +1495,16 @@
     try {
       await gitService.continueRevert(activeRepo);
       setStatus(t("changes.revertContinued"));
+      await loadRepo(activeRepo);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  async function handleAbortBisect() {
+    try {
+      await gitService.gitBisectReset(activeRepo);
+      setStatus(t("bisect.resetStatus"));
       await loadRepo(activeRepo);
     } catch (err) {
       setStatus(String(err), true);
@@ -2723,9 +2734,9 @@
   {@const connectedBottom = panelId === "file" && next === "commit"}
   <article class="workspace-panel-card {panelId === 'commit' ? 'workspace-commit-card' : ''} {connectedTop ? 'is-connected-top' : ''} {connectedBottom ? 'is-connected-bottom' : ''}" style={panelId === "commit" ? `--commit-panel-h: ${commitPanelHeight}px;` : undefined} data-panel={panelId} role="listitem" draggable={panelId !== "diff"} ondragstart={() => panelDragStart(panelId)} ondragover={(event) => event.preventDefault()} ondrop={(event) => { event.stopPropagation(); panelDrop(panelId); }}>
     {#if panelId === "file"}
-      <Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="files" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onContinueMerge={handleContinueMerge} onAbortRebase={handleAbortRebase} onContinueRebase={handleContinueRebase} onAbortCherryPick={handleAbortCherryPick} onContinueCherryPick={handleContinueCherryPick} onAbortRevert={handleAbortRevert} onContinueRevert={handleContinueRevert} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} />
+      <Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="files" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onContinueMerge={handleContinueMerge} onAbortRebase={handleAbortRebase} onContinueRebase={handleContinueRebase} onAbortCherryPick={handleAbortCherryPick} onContinueCherryPick={handleContinueCherryPick} onAbortRevert={handleAbortRevert} onContinueRevert={handleContinueRevert} onOpenBisect={() => { activeModal = "bisect"; }} onAbortBisect={handleAbortBisect} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} />
     {:else if panelId === "commit"}
-      <div class="commit-panel-content" style={`height: ${commitPanelHeight}px; flex-basis: ${commitPanelHeight}px;`}><Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="commit" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onContinueMerge={handleContinueMerge} onAbortRebase={handleAbortRebase} onContinueRebase={handleContinueRebase} onAbortCherryPick={handleAbortCherryPick} onContinueCherryPick={handleContinueCherryPick} onAbortRevert={handleAbortRevert} onContinueRevert={handleContinueRevert} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} /></div>
+      <div class="commit-panel-content" style={`height: ${commitPanelHeight}px; flex-basis: ${commitPanelHeight}px;`}><Changes repoPath={activeRepo} {externalEditorLabel} status={currentStatus!} panelMode="commit" {selectedFile} onSelectFile={selectFile} onToggleStage={toggleStage} onStageAll={handleStageAll} onUnstageAll={handleUnstageAll} onDiscardSelected={handleDiscardSelected} onCommit={handleCommit} onUndoCommit={handleUndoCommit} onAbortMerge={handleAbortMerge} onContinueMerge={handleContinueMerge} onAbortRebase={handleAbortRebase} onContinueRebase={handleContinueRebase} onAbortCherryPick={handleAbortCherryPick} onContinueCherryPick={handleContinueCherryPick} onAbortRevert={handleAbortRevert} onContinueRevert={handleContinueRevert} onOpenBisect={() => { activeModal = "bisect"; }} onAbortBisect={handleAbortBisect} onDiscardFile={handleDiscardFile} onDiscardAll={handleDiscardAll} onAddToGitignore={handleAddToGitignore} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onOpenConflictEditor={(fp) => (conflictFilePath = fp)} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiGenerateCommit={handleAiGenerateCommit} onOpenStash={() => (activeModal = "stash")} onStatus={setStatus} /></div>
       {:else if panelId === "diff"}
         {#if selectedFile}<Diff repoPath={activeRepo} {externalEditorLabel} filePath={selectedFile.path} diffText={currentDiff} imageDiffData={currentImageDiff} {ignoreWhitespace} isLfs={selectedFile.is_lfs} isStaged={selectedFile.staged} onToggleWhitespace={toggleWhitespace} onAddToGitignore={handleAddToGitignore} onStageHunk={handleStageHunk} onStageLines={handleStageLines} onDiscardHunk={handleDiscardHunk} onDiscardLines={handleDiscardLines} onInspectFile={(fp: string, mode: "blame" | "history") => (inspectFileState = { path: fp, mode })} onAiExplainDiff={handleAiExplainDiff} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onStatus={setStatus} prComments={prReviewComments} activePrNumber={activePrReviewNumber} onCreatePrComment={handleCreatePrComment} />{:else}<div class="empty-state">{t("diff.emptyDiff")}</div>{/if}
       {/if}

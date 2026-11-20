@@ -244,6 +244,9 @@
     "continueRevert": "Continue Revert",
     "revertAborted": "Revert aborted",
     "revertContinued": "Revert continued successfully",
+    "inBisect": "Git Bisect in Progress",
+    "openBisectWizard": "Open Wizard",
+    "abortBisect": "Abort Bisect",
     "conflictsRemaining": "Resolve all file conflicts first",
     "headerTitle": "File Changes ({total})",
     "headerTitleStaged": "File Changes ({total} · {staged} staged)",
@@ -1323,7 +1326,15 @@
     "stepStatus": "Bisect step recorded",
     "resetStatus": "Git bisect reset to original HEAD",
     "selectBothCommits": "Please select both a good and bad commit.",
-    "toolsMenu": "Git Bisect Wizard..."
+    "toolsMenu": "Git Bisect Wizard...",
+    "copySha": "Copy SHA",
+    "copiedSha": "Copied!",
+    "toggleManual": "Enter manual SHA/tag",
+    "toggleSelect": "Pick from commit history",
+    "logTitle": "Bisect Log & Steps",
+    "logEmpty": "No steps recorded yet",
+    "pickCommit": "Pick from commits",
+    "customRef": "Custom ref or HEAD"
   }
   ,"workspaceSettings": {
     "title": "Panel layout",

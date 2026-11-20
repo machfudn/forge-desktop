@@ -244,6 +244,9 @@
     "continueRevert": "Lanjutkan Revert",
     "revertAborted": "Revert dibatalkan",
     "revertContinued": "Revert berhasil dilanjutkan",
+    "inBisect": "Proses Git Bisect Aktif",
+    "openBisectWizard": "Buka Wizard",
+    "abortBisect": "Batalkan Bisect",
     "conflictsRemaining": "Selesaikan semua konflik file terlebih dahulu",
     "headerTitle": "Perubahan File ({total})",
     "headerTitleStaged": "Perubahan File ({total} · {staged} staged)",
@@ -1302,7 +1305,15 @@
     "stepStatus": "Langkah bisect dicatat",
     "resetStatus": "Git bisect direset ke HEAD awal",
     "selectBothCommits": "Pilih commit good dan bad terlebih dahulu.",
-    "toolsMenu": "Wizard Git Bisect..."
+    "toolsMenu": "Wizard Git Bisect...",
+    "copySha": "Salin SHA",
+    "copiedSha": "Tersalin!",
+    "toggleManual": "Ketik manual SHA/tag",
+    "toggleSelect": "Pilih dari riwayat commit",
+    "logTitle": "Log & Langkah Bisect",
+    "logEmpty": "Belum ada langkah tercatat",
+    "pickCommit": "Pilih dari commit",
+    "customRef": "Ref kustom atau HEAD"
   }
   ,"workspaceSettings": {
     "title": "Tata letak panel",

@@ -30,6 +30,8 @@
     onContinueCherryPick?: () => void;
     onAbortRevert?: () => void;
     onContinueRevert?: () => void;
+    onOpenBisect?: () => void;
+    onAbortBisect?: () => void;
     onDiscardFile?: (file: FileEntry) => void;
     onDiscardAll?: () => void;
     onAddToGitignore?: (pattern: string) => void;
@@ -64,6 +66,8 @@
     onContinueCherryPick,
     onAbortRevert,
     onContinueRevert,
+    onOpenBisect,
+    onAbortBisect,
     onDiscardFile,
     onDiscardAll,
     onAddToGitignore,
@@ -533,6 +537,27 @@
         {#if onAbortRevert}
           <button type="button" onclick={onAbortRevert} class="btn-secondary btn-xs btn-danger">
             {t("changes.abortRevert")}
+          </button>
+        {/if}
+      </div>
+    </div>
+  {:else if status.in_bisect}
+    <div class="alert-banner">
+      <span>{t("changes.inBisect")}</span>
+      <div class="alert-actions">
+        {#if onOpenBisect}
+          <button
+            type="button"
+            onclick={onOpenBisect}
+            class="btn-secondary btn-xs btn-primary-tint"
+            title={t("changes.openBisectWizard")}
+          >
+            {t("changes.openBisectWizard")}
+          </button>
+        {/if}
+        {#if onAbortBisect}
+          <button type="button" onclick={onAbortBisect} class="btn-secondary btn-xs btn-danger">
+            {t("changes.abortBisect")}
           </button>
         {/if}
       </div>
