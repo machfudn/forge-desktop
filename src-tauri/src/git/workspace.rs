@@ -60,10 +60,9 @@ pub fn list_reflog(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, String>
         repo,
         &[
             "reflog",
-            "--date=relative",
             "-n",
             &lim,
-            "--pretty=format:%H%x1f%h%x1f%gD%x1f%gs%x1f%gd%x1f%an",
+            "--pretty=format:%H%x1f%h%x1f%gd%x1f%gs%x1f%cr%x1f%an",
         ],
     );
     match res {
