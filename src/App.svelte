@@ -96,6 +96,7 @@
   let aheadBehind = $state<AheadBehind>({ ...EMPTY_AHEAD_BEHIND });
   let repoRemotes = $state<RemoteInfo[]>([]);
   let hasRemote = $state(false);
+  let hasUpstreamRemote = $derived(repoRemotes.some((r) => r.name === "upstream"));
   let pendingInitRepo = $state("");
   let initDirBranch = $state("main");
   let initDirGitignore = $state("None");
@@ -2092,7 +2093,7 @@
     try {
       isLoading = true;
       setStatus(t("app.status.syncingFork"));
-      const res = await gitService.syncFork(activeRepo);
+      const res = await gitService.syncFork(activeRepo, "upstream", currentStatus?.branch);
       await loadRepo(activeRepo);
       setStatus(res || t("app.status.syncForkDone"));
       sendNotification(
@@ -2913,16 +2914,18 @@
                   <span>{t("app.forcePushMenu")}</span>
                   <span class="popover-item-hint">--force-with-lease</span>
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  class="popover-item"
-                  disabled={!currentStatus.has_commits}
-                  onclick={handleSyncFork}
-                >
-                  <span>{t("app.syncForkMenu")}</span>
-                  <span class="popover-item-hint">upstream</span>
-                </button>
+                {#if hasUpstreamRemote}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="popover-item"
+                    disabled={!currentStatus.has_commits}
+                    onclick={handleSyncFork}
+                  >
+                    <span>{t("app.syncForkMenu")}</span>
+                    <span class="popover-item-hint">upstream</span>
+                  </button>
+                {/if}
               </div>
             {/if}
           </div>
@@ -3164,6 +3167,8 @@
                 type="button"
                 role="menuitem"
                 class="popover-item"
+                disabled={!currentStatus.has_commits}
+                title={!currentStatus.has_commits ? t("app.noCommitsYet") : undefined}
                 onclick={() => {
                   toolsMenuOpen = false;
                   openCreateTagModal(null);
@@ -3212,6 +3217,8 @@
                 type="button"
                 role="menuitem"
                 class="popover-item"
+                disabled={!currentStatus?.has_commits}
+                title={!currentStatus?.has_commits ? t("app.noCommitsYet") : undefined}
                 onclick={() => {
                   toolsMenuOpen = false;
                   activeModal = "worktree";
@@ -3223,6 +3230,8 @@
                 type="button"
                 role="menuitem"
                 class="popover-item"
+                disabled={!currentStatus?.has_commits}
+                title={!currentStatus?.has_commits ? t("app.noCommitsYet") : undefined}
                 onclick={() => {
                   toolsMenuOpen = false;
                   activeModal = "bisect";
