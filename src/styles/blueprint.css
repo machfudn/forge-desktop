@@ -206,9 +206,26 @@
   border-top: 1px solid var(--border-default);
 }
 
-[data-style="blueprint"] :is(.workspace-panel-card, .settings-shell, .welcome-panel, .settings-pkg-card, .ai-answer-box) {
+[data-style="blueprint"] :is(.workspace-panel-card, .settings-shell, .welcome-panel, .settings-pkg-card, .ai-answer-box, .editor-status-card) {
   border: 1px solid var(--border-default);
   box-shadow: none;
+}
+
+[data-style="blueprint"] .editor-path-box {
+  border: 1px solid var(--border-default);
+  background-color: var(--bg-canvas);
+  font-family: var(--font-mono);
+}
+
+[data-style="blueprint"] .editor-quick-pill {
+  border: 1px solid var(--border-default);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+[data-style="blueprint"] .editor-quick-pill.is-active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 [data-style="blueprint"] :is(.welcome-panel, .workspace-panel-card) {

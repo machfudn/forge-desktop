@@ -216,8 +216,16 @@
     subl: "Sublime Text",
     "notepad++": "Notepad++",
     notepad: "Notepad",
-    gedit: "gedit",
+    gedit: "GNOME Text Editor",
     kate: "Kate",
+    idea: "IntelliJ IDEA",
+    webstorm: "WebStorm",
+    pycharm: "PyCharm",
+    rustrover: "RustRover",
+    goland: "GoLand",
+    codium: "VSCodium",
+    nvim: "Neovim",
+    "android-studio": "Android Studio",
   };
   let externalEditorLabel = $derived(
     externalEditor === "system"

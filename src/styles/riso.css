@@ -217,10 +217,26 @@
   .palette-dialog,
   .popover-menu,
   .welcome-panel,
-  .settings-pkg-card
+  .settings-pkg-card,
+  .editor-status-card
 ) {
   border: 2px solid var(--riso-ink);
   box-shadow: var(--riso-offset-panel);
+}
+
+[data-style="riso"] .editor-path-box {
+  border: 1.5px solid var(--riso-ink);
+  background-color: var(--bg-app);
+}
+
+[data-style="riso"] .editor-quick-pill {
+  border: 1.5px solid var(--riso-ink);
+  font-weight: 700;
+}
+
+[data-style="riso"] .editor-quick-pill.is-active {
+  background-color: var(--accent-primary);
+  color: var(--riso-on-accent);
 }
 
 [data-style="riso"] .modal-header {

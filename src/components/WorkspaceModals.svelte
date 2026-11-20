@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
   import * as gitService from "../services/git";
+  import type { AvailableEditor } from "../services/git";
   import type {
     AccountHealth,
     AccountOverview,
@@ -272,6 +273,34 @@
   let aiTestResult = $state<{ ok: boolean; msg: string } | null>(null);
   let aiKeyringFallbackPending = $state(false);
   let isLoadingAi = $state(false);
+  let availableEditors = $state<AvailableEditor[]>([]);
+  let isLoadingEditors = $state(false);
+
+  const detectedEditors = $derived(
+    availableEditors.filter((e) => e.id !== "system" && e.is_installed)
+  );
+  const otherEditors = $derived(
+    availableEditors.filter((e) => e.id !== "system" && !e.is_installed)
+  );
+  const currentSelectedEditorInfo = $derived(
+    availableEditors.find((e) => e.id === draftEditorPreset) || null
+  );
+
+  async function loadAvailableEditors() {
+    if (isLoadingEditors) return;
+    isLoadingEditors = true;
+    try {
+      const list = await gitService.getAvailableEditors();
+      if (Array.isArray(list) && list.length > 0) {
+        availableEditors = list;
+      }
+    } catch (err) {
+      console.warn("Gagal mendeteksi editor eksternal:", err);
+    } finally {
+      isLoadingEditors = false;
+    }
+  }
+
   const EXTERNAL_EDITOR_PRESETS = $derived([
     { value: "system", label: t("wsModal.settings.editorSystem") },
     { value: "code", label: "Visual Studio Code (code)" },
@@ -433,9 +462,10 @@
         draftConfirmForcePush = initialConfirmForcePush;
         draftDesktopNotif = initialDesktopNotif;
         const savedEditor = (initialExternalEditor || "system").trim();
-        const isPreset = EXTERNAL_EDITOR_PRESETS.some(
-          (p) => p.value !== "custom" && p.value === savedEditor
-        );
+        const isPreset =
+          EXTERNAL_EDITOR_PRESETS.some(
+            (p) => p.value !== "custom" && p.value === savedEditor
+          ) || availableEditors.some((e) => e.id === savedEditor);
         if (isPreset) {
           draftEditorPreset = savedEditor;
           draftCustomEditor = "";
@@ -443,6 +473,7 @@
           draftEditorPreset = "custom";
           draftCustomEditor = savedEditor;
         }
+        void loadAvailableEditors();
         draftUpdateChannel = initialUpdateChannel;
         draftTargetPackageMode = initialTargetPackageMode;
         aiApiKeyInput = "";
@@ -2724,13 +2755,51 @@
                 <div class="settings-row">
                   <label class="form-label" for="external-editor-select">{t("wsModal.settings.textEditorLabel")}</label>
                   <select id="external-editor-select" class="form-select" bind:value={draftEditorPreset}>
-                    {#each EXTERNAL_EDITOR_PRESETS as preset (preset.value)}
-                      <option value={preset.value}>{preset.label}</option>
-                    {/each}
+                    <option value="system">{t("wsModal.settings.editorSystem")}</option>
+                    {#if detectedEditors.length > 0}
+                      <optgroup label={t("wsModal.settings.editorGroupDetected")}>
+                        {#each detectedEditors as editor (editor.id)}
+                          <option value={editor.id}>{editor.label}</option>
+                        {/each}
+                      </optgroup>
+                    {/if}
+                    {#if otherEditors.length > 0}
+                      <optgroup label={t("wsModal.settings.editorGroupOther")}>
+                        {#each otherEditors as editor (editor.id)}
+                          <option value={editor.id}>{editor.label}</option>
+                        {/each}
+                      </optgroup>
+                    {:else if availableEditors.length === 0}
+                      {#each EXTERNAL_EDITOR_PRESETS.filter((p) => p.value !== "system" && p.value !== "custom") as preset (preset.value)}
+                        <option value={preset.value}>{preset.label}</option>
+                      {/each}
+                    {/if}
+                    <option value="custom">{t("wsModal.settings.editorCustom")}</option>
                   </select>
                 </div>
+
+                {#if detectedEditors.length > 0}
+                  <div class="editor-quick-section">
+                    <span class="editor-quick-label">{t("wsModal.settings.editorQuickSelect")}</span>
+                    <div class="editor-quick-pills" role="group" aria-label={t("wsModal.settings.editorQuickSelect")}>
+                      {#each detectedEditors as editor (editor.id)}
+                        <button
+                          type="button"
+                          class="editor-quick-pill {draftEditorPreset === editor.id ? 'is-active' : ''}"
+                          onclick={() => (draftEditorPreset = editor.id)}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M11.251.068a.5.5 0 0 1 .265.565l-1.5 5.5h3.484a.5.5 0 0 1 .386.818L6.886 15.951a.5.5 0 0 1-.87-.419l1.5-5.5H4a.5.5 0 0 1-.386-.818L10.614.135a.5.5 0 0 1 .637-.067z"/>
+                          </svg>
+                          <span>{editor.label}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
                 {#if draftEditorPreset === "custom"}
-                  <div class="form-field">
+                  <div class="form-field" style="margin-top: 8px;">
                     <label class="form-label" for="custom-editor-input">{t("wsModal.settings.customEditorLabel")}</label>
                     <div style="display: flex; gap: 6px;">
                       <input
@@ -2747,9 +2816,88 @@
                     </div>
                   </div>
                 {/if}
-                <p class="settings-hint">
-                  {draftEditorPreset === "system" ? t("wsModal.settings.editorSystemDesc") : t("wsModal.settings.editorCustomDesc")}
-                </p>
+
+                <div class="editor-status-card">
+                  {#if draftEditorPreset === "system"}
+                    <div class="editor-card-head">
+                      <div class="editor-card-meta">
+                        <span class="editor-card-icon">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M2.5 3A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3h-11zm0 1h11a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-7a.5.5 0 0 1 .5-.5z"/>
+                          </svg>
+                        </span>
+                        <span class="editor-card-title">{t("wsModal.settings.editorSystem")}</span>
+                      </div>
+                      <span class="badge-status badge-success">✓ {t("wsModal.settings.editorStatusInstalled")}</span>
+                    </div>
+                    <p class="editor-card-desc">{t("wsModal.settings.editorSystemDesc")}</p>
+                    {#if currentSelectedEditorInfo?.path}
+                      <div class="editor-path-box">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                          <path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v10.749c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/>
+                        </svg>
+                        <span>{currentSelectedEditorInfo.path}</span>
+                      </div>
+                    {/if}
+                    {#if currentSelectedEditorInfo && !currentSelectedEditorInfo.supports_folders}
+                      <p class="editor-cap-tag is-file-only">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                          <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                          <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+                        </svg>
+                        <span>{t("wsModal.settings.editorSystemNoteFolder")}</span>
+                      </p>
+                    {/if}
+                  {:else if draftEditorPreset === "custom"}
+                    <div class="editor-card-head">
+                      <div class="editor-card-meta">
+                        <span class="editor-card-icon">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
+                          </svg>
+                        </span>
+                        <span class="editor-card-title">{t("wsModal.settings.editorCustom")}</span>
+                      </div>
+                    </div>
+                    <p class="editor-card-desc">{t("wsModal.settings.editorCustomDesc")}</p>
+                  {:else}
+                    <div class="editor-card-head">
+                      <div class="editor-card-meta">
+                        <span class="editor-card-icon">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+                          </svg>
+                        </span>
+                        <span class="editor-card-title">{currentSelectedEditorInfo?.label || draftEditorPreset}</span>
+                      </div>
+                      {#if currentSelectedEditorInfo?.is_installed}
+                        <span class="badge-status badge-success">✓ {t("wsModal.settings.editorStatusInstalled")}</span>
+                      {:else}
+                        <span class="badge-status badge-warning">⚠ {t("wsModal.settings.editorStatusNotInstalled")}</span>
+                      {/if}
+                    </div>
+                    {#if currentSelectedEditorInfo?.is_installed}
+                      {#if currentSelectedEditorInfo.path}
+                        <div class="editor-path-box">
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+                          </svg>
+                          <span>{currentSelectedEditorInfo.path}</span>
+                        </div>
+                      {/if}
+                      <div class="editor-card-meta">
+                        <span class="editor-cap-tag {currentSelectedEditorInfo.supports_folders ? 'is-folder' : 'is-file-only'}">
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a1.99 1.99 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3zm-8.322.12C1.72 3.042 1.95 3 2.19 3h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139z"/>
+                          </svg>
+                          <span>{currentSelectedEditorInfo.supports_folders ? t("wsModal.settings.editorSupportsFolder") : t("wsModal.settings.editorFileOnly")}</span>
+                        </span>
+                      </div>
+                    {:else}
+                      <p class="editor-card-desc">{t("wsModal.settings.editorNotInstalledHint")}</p>
+                    {/if}
+                  {/if}
+                </div>
               </div>
             {:else if settingsTab === "safety"}
               <div class="settings-panel-header">

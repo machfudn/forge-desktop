@@ -240,9 +240,26 @@
   color: #0b0b0b;
 }
 
-[data-style="neobrutalism"] .settings-pkg-card {
+[data-style="neobrutalism"] :is(.settings-pkg-card, .editor-status-card) {
   border: 2px solid var(--neo-ink);
   box-shadow: var(--neo-shadow-sm);
+}
+
+[data-style="neobrutalism"] .editor-path-box {
+  border: 1.5px solid var(--neo-ink);
+  background-color: var(--bg-app);
+}
+
+[data-style="neobrutalism"] .editor-quick-pill {
+  border: 1.5px solid var(--neo-ink);
+  box-shadow: 1px 1px 0 var(--neo-ink);
+  font-weight: 700;
+}
+
+[data-style="neobrutalism"] .editor-quick-pill.is-active {
+  background-color: var(--bg-selected);
+  border-color: var(--neo-ink);
+  color: var(--text-primary);
 }
 
 [data-style="neobrutalism"] .settings-pkg-card.is-selected {
