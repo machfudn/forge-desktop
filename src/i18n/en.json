@@ -11,7 +11,8 @@
     "confirmContinue": "Yes, Continue",
     "none": "None",
     "detachedHead": "Detached HEAD",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "refresh": "Refresh"
   },
   "app": {
     "ready": "Ready",
@@ -1100,6 +1101,10 @@
     "tabWorktrees": "Worktrees",
     "reflogDesc": "Recover lost commits or undo destructive branch moves via git reflog.",
     "reflogEmpty": "No reflog entries available.",
+    "reflogNoMatch": "No reflog entries match your filter.",
+    "reflogSearchPlaceholder": "Filter reflog by message, SHA, selector, or author...",
+    "reflogConfirmHardReset": "Are you sure you want to hard reset to {sha}? All uncommitted changes will be permanently discarded.",
+    "reflogConfirmHardResetTitle": "Confirm Hard Reset",
     "softResetBtn": "Soft Reset",
     "hardResetBtn": "Hard Reset",
     "reflogResetDone": "Reset to {sha}",
@@ -1138,7 +1143,16 @@
     "worktreeConfirmDelete": "Are you sure you want to remove worktree: {path}?",
     "worktreeForceDelete": "Force delete uncommitted changes",
     "worktreeLockedMsg": "Worktree locked.",
-    "worktreeUnlockedMsg": "Worktree unlocked."
+    "worktreeUnlockedMsg": "Worktree unlocked.",
+    "worktreeRefresh": "Refresh",
+    "worktreeCopyPath": "Copy Path",
+    "worktreePathCopied": "Copied",
+    "worktreeActiveWorkspaceTitle": "Active Forge Workspace",
+    "worktreeMainRepoTitle": "Main Repository Worktree",
+    "worktreePrunable": "Missing Folder",
+    "worktreeBranchInUse": "{branch} (already checked out)",
+    "worktreeFolderMissing": "Worktree folder does not exist on disk",
+    "worktreeOpenManager": "Open Full Manager"
   },
   "wsTools": {
     "menuLabel": "Reflog, Submodules & Worktrees",

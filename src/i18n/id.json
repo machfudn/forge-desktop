@@ -11,7 +11,8 @@
     "confirmContinue": "Ya, Lanjutkan",
     "none": "Tidak Ada",
     "detachedHead": "HEAD terlepas",
-    "loading": "Memuat..."
+    "loading": "Memuat...",
+    "refresh": "Segarkan"
   },
   "app": {
     "ready": "Siap",
@@ -1079,6 +1080,10 @@
     "tabWorktrees": "Worktree",
     "reflogDesc": "Pulihkan commit yang hilang atau batalkan perpindahan branch lewat git reflog.",
     "reflogEmpty": "Tidak ada entri reflog.",
+    "reflogNoMatch": "Tidak ada riwayat reflog yang cocok dengan pencarian.",
+    "reflogSearchPlaceholder": "Cari reflog berdasarkan pesan, SHA, selector, atau author...",
+    "reflogConfirmHardReset": "Yakin ingin hard reset ke {sha}? Semua perubahan yang belum di-commit akan dihapus secara permanen.",
+    "reflogConfirmHardResetTitle": "Konfirmasi Hard Reset",
     "softResetBtn": "Soft Reset",
     "hardResetBtn": "Hard Reset",
     "reflogResetDone": "Berhasil reset ke {sha}",
@@ -1117,7 +1122,16 @@
     "worktreeConfirmDelete": "Yakin ingin menghapus worktree: {path}?",
     "worktreeForceDelete": "Paksa hapus perubahan yang belum di-commit",
     "worktreeLockedMsg": "Worktree berhasil dikunci.",
-    "worktreeUnlockedMsg": "Kunci worktree berhasil dibuka."
+    "worktreeUnlockedMsg": "Kunci worktree berhasil dibuka.",
+    "worktreeRefresh": "Segarkan",
+    "worktreeCopyPath": "Salin Path",
+    "worktreePathCopied": "Tersalin",
+    "worktreeActiveWorkspaceTitle": "Workspace Forge Aktif",
+    "worktreeMainRepoTitle": "Worktree Repositori Utama",
+    "worktreePrunable": "Folder Hilang",
+    "worktreeBranchInUse": "{branch} (sudah digunakan)",
+    "worktreeFolderMissing": "Folder worktree tidak ditemukan di disk",
+    "worktreeOpenManager": "Buka Manajer Penuh"
   },
   "wsTools": {
     "menuLabel": "Reflog, Submodul & Worktree",
