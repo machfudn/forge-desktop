@@ -303,6 +303,7 @@
 
   const EXTERNAL_EDITOR_PRESETS = $derived([
     { value: "system", label: t("wsModal.settings.editorSystem") },
+    { value: "antigravity", label: "Antigravity IDE (antigravity)" },
     { value: "code", label: "Visual Studio Code (code)" },
     { value: "cursor", label: "Cursor (cursor)" },
     { value: "windsurf", label: "Windsurf (windsurf)" },

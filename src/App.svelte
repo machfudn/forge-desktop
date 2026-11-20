@@ -209,6 +209,9 @@
   let isInstallingUpdate = $state(false);
   let updateError = $state("");
   const EDITOR_LABELS: Record<string, string> = {
+    antigravity: "Antigravity IDE",
+    "antigravity-ide": "Antigravity IDE",
+    agy: "Antigravity IDE",
     code: "Visual Studio Code",
     cursor: "Cursor",
     windsurf: "Windsurf",

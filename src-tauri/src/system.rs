@@ -335,6 +335,47 @@ fn probe_editor_path(id: &str) -> Option<PathBuf> {
         let prog_files_x86 = std::env::var_os("ProgramFiles(x86)").map(PathBuf::from);
 
         match id {
+            "antigravity" | "antigravity-ide" | "agy" => {
+                if let Some(p) = find_executable("antigravity-ide.cmd")
+                    .or_else(|| find_executable("antigravity-ide.exe"))
+                    .or_else(|| find_executable("antigravity-ide"))
+                    .or_else(|| find_executable("antigravity.exe"))
+                    .or_else(|| find_executable("antigravity"))
+                    .or_else(|| find_executable("agy.cmd"))
+                    .or_else(|| find_executable("agy.exe"))
+                    .or_else(|| find_executable("agy"))
+                {
+                    return Some(p);
+                }
+                if let Some(d) = &local_app {
+                    let c1 = d.join(r"Programs\Antigravity IDE\bin\antigravity-ide.cmd");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Programs\Antigravity IDE\Antigravity IDE.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                    let c3 = d.join(r"Programs\antigravity\Antigravity.exe");
+                    if c3.is_file() {
+                        return Some(c3);
+                    }
+                }
+                if let Some(d) = &prog_files {
+                    let c1 = d.join(r"Antigravity IDE\bin\antigravity-ide.cmd");
+                    if c1.is_file() {
+                        return Some(c1);
+                    }
+                    let c2 = d.join(r"Antigravity IDE\Antigravity IDE.exe");
+                    if c2.is_file() {
+                        return Some(c2);
+                    }
+                    let c3 = d.join(r"antigravity\Antigravity.exe");
+                    if c3.is_file() {
+                        return Some(c3);
+                    }
+                }
+            }
             "code" => {
                 if let Some(p) = find_executable("code.cmd")
                     .or_else(|| find_executable("code.exe"))
@@ -590,6 +631,28 @@ fn probe_editor_path(id: &str) -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         match id {
+            "antigravity" | "antigravity-ide" | "agy" => {
+                if let Some(p) = find_executable("antigravity-ide")
+                    .or_else(|| find_executable("antigravity"))
+                    .or_else(|| find_executable("agy"))
+                {
+                    return Some(p);
+                }
+                let a1 = PathBuf::from("/Applications/Antigravity IDE.app");
+                if a1.exists() {
+                    return Some(a1);
+                }
+                let a2 = PathBuf::from("/Applications/Antigravity.app");
+                if a2.exists() {
+                    return Some(a2);
+                }
+                if let Some(home) = std::env::var_os("HOME") {
+                    let a3 = PathBuf::from(home).join("Applications/Antigravity IDE.app");
+                    if a3.exists() {
+                        return Some(a3);
+                    }
+                }
+            }
             "code" => {
                 if let Some(p) = find_executable("code") {
                     return Some(p);
@@ -702,6 +765,9 @@ fn probe_editor_path(id: &str) -> Option<PathBuf> {
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         match id {
+            "antigravity" | "antigravity-ide" | "agy" => find_executable("antigravity-ide")
+                .or_else(|| find_executable("antigravity"))
+                .or_else(|| find_executable("agy")),
             "code" => find_executable("code"),
             "cursor" => find_executable("cursor"),
             "windsurf" => find_executable("windsurf"),
@@ -751,6 +817,7 @@ pub fn detect_available_editors() -> Vec<AvailableEditor> {
     }
 
     let presets = [
+        PresetSpec { id: "antigravity", label: "Antigravity IDE", supports_folders: true },
         PresetSpec { id: "code", label: "Visual Studio Code", supports_folders: true },
         PresetSpec { id: "cursor", label: "Cursor", supports_folders: true },
         PresetSpec { id: "windsurf", label: "Windsurf", supports_folders: true },
@@ -809,6 +876,11 @@ fn is_folder_capable_editor_exe(exe_path: &str) -> bool {
             | "code - insiders.exe"
             | "cursor.exe"
             | "windsurf.exe"
+            | "antigravity.exe"
+            | "antigravity ide.exe"
+            | "antigravity-ide.cmd"
+            | "agy.cmd"
+            | "agy.exe"
             | "zed.exe"
             | "subl.exe"
             | "sublime_text.exe"
@@ -834,6 +906,18 @@ fn windows_known_editor_paths(editor: &str) -> Vec<std::path::PathBuf> {
     let prog_files_x86 = std::env::var_os("ProgramFiles(x86)").map(std::path::PathBuf::from);
 
     match editor.to_ascii_lowercase().as_str() {
+        "antigravity" | "antigravity-ide" | "agy" => {
+            if let Some(d) = &local_app {
+                out.push(d.join(r"Programs\Antigravity IDE\bin\antigravity-ide.cmd"));
+                out.push(d.join(r"Programs\Antigravity IDE\Antigravity IDE.exe"));
+                out.push(d.join(r"Programs\antigravity\Antigravity.exe"));
+            }
+            if let Some(d) = &prog_files {
+                out.push(d.join(r"Antigravity IDE\bin\antigravity-ide.cmd"));
+                out.push(d.join(r"Antigravity IDE\Antigravity IDE.exe"));
+                out.push(d.join(r"antigravity\Antigravity.exe"));
+            }
+        }
         "code" => {
             if let Some(d) = &local_app {
                 out.push(d.join(r"Programs\Microsoft VS Code\Code.exe"));
@@ -1090,6 +1174,7 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
                 return Ok(());
             }
             let mac_app = match editor.to_ascii_lowercase().as_str() {
+                "antigravity" | "antigravity-ide" | "agy" => Some("Antigravity IDE"),
                 "code" => Some("Visual Studio Code"),
                 "cursor" => Some("Cursor"),
                 "windsurf" => Some("Windsurf"),
@@ -1129,6 +1214,7 @@ pub fn open_in_editor(path: &str, editor_name: Option<&str>) -> Result<(), Strin
             "gedit" => Some("gnome-text-editor"),
             "zed" => Some("zeditor"),
             "subl" => Some("sublime_text"),
+            "antigravity" | "agy" => Some("antigravity-ide"),
             _ => None,
         };
         if let Some(fallback_cmd) = linux_fallback {
@@ -1229,8 +1315,21 @@ mod tests {
         assert!(!editors.is_empty(), "Daftar editor tidak boleh kosong");
         assert_eq!(editors[0].id, "system", "Elemen pertama harus selalu system");
         assert!(editors[0].is_installed);
+        assert!(editors.iter().any(|e| e.id == "antigravity"));
         assert!(editors.iter().any(|e| e.id == "code"));
         assert!(editors.iter().any(|e| e.id == "zed"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_detect_available_editors_identifies_installed_antigravity() {
+        let editors = detect_available_editors();
+        if let Some(ag) = editors.iter().find(|e| e.id == "antigravity") {
+            if ag.is_installed {
+                assert!(ag.path.is_some());
+                assert!(ag.supports_folders);
+            }
+        }
     }
 
     #[cfg(target_os = "windows")]
