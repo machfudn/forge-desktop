@@ -162,6 +162,7 @@ pub fn run() {
             commands::run_terminal_command,
             commands::kill_terminal_command,
             commands::get_terminal_cwd,
+            commands::get_available_shells,
             commands::git_bisect_start,
             commands::git_bisect_step,
             commands::git_bisect_reset,
