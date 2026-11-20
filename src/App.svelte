@@ -2407,6 +2407,31 @@
     }
   }
 
+  function popoverBoundary(node: HTMLElement) {
+    const adjust = () => {
+      const rect = node.getBoundingClientRect();
+      const pad = 8;
+      const parentRect = node.parentElement?.getBoundingClientRect();
+      if (!parentRect) return;
+
+      if (rect.left < pad) {
+        node.style.left = `${pad - parentRect.left}px`;
+        node.style.right = "auto";
+      } else if (rect.right > window.innerWidth - pad) {
+        node.style.right = `${parentRect.right - (window.innerWidth - pad)}px`;
+        node.style.left = "auto";
+      }
+    };
+
+    adjust();
+    window.addEventListener("resize", adjust);
+    return {
+      destroy() {
+        window.removeEventListener("resize", adjust);
+      },
+    };
+  }
+
   onMount(() => {
     try {
       const saved = localStorage.getItem("forge_recent_repos");
@@ -2886,7 +2911,7 @@
             </div>
 
             {#if syncMenuOpen}
-              <div class="popover-menu" role="menu">
+              <div class="popover-menu sync-popover" role="menu" use:popoverBoundary>
                 <button
                   type="button"
                   role="menuitem"
@@ -3020,7 +3045,7 @@
               </svg>
             </button>
             {#if workspaceSettingsOpen}
-              <div class="popover-menu workspace-settings-popover" role="menu" aria-label={t("workspaceSettings.title")}>
+              <div class="popover-menu workspace-settings-popover" role="menu" aria-label={t("workspaceSettings.title")} use:popoverBoundary>
                 <div class="workspace-settings-head">
                   <span class="workspace-settings-title">{t("workspaceSettings.title")}</span>
                   <button type="button" class="link-btn workspace-settings-reset" onclick={resetWorkspacePanels}>
@@ -3121,7 +3146,7 @@
         </button>
 
         {#if toolsMenuOpen}
-          <div class="popover-menu" role="menu">
+          <div class="popover-menu" role="menu" use:popoverBoundary>
             <button type="button" role="menuitem" class="popover-item" onclick={openOpenModal}>
               <span>{t("app.menu.openRepo")}</span>
               <span class="popover-item-hint">Ctrl+O</span>

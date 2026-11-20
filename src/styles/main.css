@@ -391,9 +391,11 @@ a {
   z-index: 60;
 }
 
-.popover-menu.left {
+.popover-menu.left,
+.popover-menu.sync-popover {
   right: auto;
   left: 0;
+  max-width: calc(100vw - 20px);
 }
 
 .popover-item {
