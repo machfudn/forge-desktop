@@ -63,7 +63,7 @@
       "initRepo": "Initialize New Repo...",
       "manageRemotes": "Manage Remotes...",
       "createTagHead": "Create Git Tag (HEAD)...",
-      "githubAccountNamed": "Git Account (@{login})",
+      "githubAccountNamed": "Account: @{login}",
       "manageGithubAccounts": "Manage Git Accounts...",
       "accountsCountOne": "{count} account",
       "accountsCountMany": "{count} accounts",

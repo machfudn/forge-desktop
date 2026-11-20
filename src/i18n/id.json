@@ -63,7 +63,7 @@
       "initRepo": "Inisialisasi Repo Baru...",
       "manageRemotes": "Kelola Remote...",
       "createTagHead": "Buat Git Tag (HEAD)...",
-      "githubAccountNamed": "Akun Git (@{login})",
+      "githubAccountNamed": "Akun: @{login}",
       "manageGithubAccounts": "Kelola Akun Git...",
       "accountsCountOne": "{count} akun",
       "accountsCountMany": "{count} akun",

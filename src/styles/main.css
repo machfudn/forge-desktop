@@ -3499,14 +3499,15 @@ select optgroup {
 .menu-account-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
+  flex: 1;
 }
 
 .menu-account-avatar,
 .menu-account-avatar-fallback {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 1px solid var(--border-default);
   flex-shrink: 0;
@@ -3520,10 +3521,60 @@ select optgroup {
 .menu-account-avatar-fallback {
   display: grid;
   place-items: center;
-  font-size: 8.5px;
+  font-size: 9.5px;
   font-weight: 700;
   background-color: var(--accent-blue-subtle);
   color: var(--text-accent);
+}
+
+.menu-account-login {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-account-tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+  background-color: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  line-height: 1.3;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.menu-account-empty-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.menu-account-count-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1.5px 6.5px;
+  border-radius: 9999px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  line-height: 1.3;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  transition: all 0.15s ease;
+}
+
+.popover-item:hover .menu-account-count-badge {
+  border-color: var(--border-hover, var(--border-default));
+  color: var(--text-primary);
+  background-color: var(--bg-subtle, var(--bg-tertiary));
 }
 
 .welcome-account-btn {

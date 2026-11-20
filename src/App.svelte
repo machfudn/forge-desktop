@@ -3235,7 +3235,7 @@
             <button
               type="button"
               role="menuitem"
-              class="popover-item"
+              class="popover-item menu-account-item"
               onclick={() => {
                 toolsMenuOpen = false;
                 activeModal = "auth";
@@ -3255,13 +3255,21 @@
                       {activeRepoAccount.login.slice(0, 1).toUpperCase()}
                     </span>
                   {/if}
-                  <span>{t("app.menu.githubAccountNamed", { login: activeRepoAccount.login })}</span>
+                  <span class="menu-account-login">
+                    {t("app.menu.githubAccountNamed", { login: activeRepoAccount.login })}
+                  </span>
+                  {#if activeRepoAccount.label}
+                    <span class="menu-account-tag">{activeRepoAccount.label}</span>
+                  {/if}
                 {:else}
+                  <svg class="menu-account-empty-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.004 6.004 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
+                  </svg>
                   <span>{t("app.menu.manageGithubAccounts")}</span>
                 {/if}
               </span>
               {#if accountOverview.accounts.length > 0}
-                <span class="popover-item-hint" style="color: var(--diff-add-text);">
+                <span class="menu-account-count-badge">
                   {accountOverview.accounts.length === 1
                     ? t("app.menu.accountsCountOne", { count: accountOverview.accounts.length })
                     : t("app.menu.accountsCountMany", { count: accountOverview.accounts.length })}
