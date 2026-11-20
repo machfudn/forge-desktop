@@ -129,9 +129,39 @@
   let searchQuery = $state("");
   let copiedCwd = $state(false);
   let copiedOutput = $state(false);
+  let shellMenuOpen = $state(false);
   let userScrolledUp = $state(false);
   let hasNewOutputBelow = $state(false);
   let now = $state(Date.now());
+
+  const isWindows =
+    typeof navigator !== "undefined" &&
+    (navigator.platform?.includes("Win") || navigator.userAgent.includes("Windows"));
+
+  function getShellDisplayName(kind: string): string {
+    switch (kind) {
+      case "auto":
+        return isWindows ? "Auto (PowerShell)" : "Auto (bash)";
+      case "powershell":
+        return "PowerShell";
+      case "cmd":
+        return "Command Prompt";
+      case "bash":
+        return "Git Bash";
+      case "sh":
+        return "POSIX sh";
+      default:
+        return kind;
+    }
+  }
+
+  const shellOptions = $derived([
+    { id: "auto", label: isWindows ? "Auto (PowerShell)" : "Auto (bash)", desc: t("terminal.shellAutoDesc") },
+    { id: "powershell", label: "PowerShell", desc: "pwsh.exe / powershell.exe" },
+    { id: "cmd", label: "Command Prompt", desc: "cmd.exe" },
+    { id: "bash", label: "Git Bash", desc: "bash.exe (MSYS2)" },
+    { id: "sh", label: "POSIX sh", desc: "sh.exe" },
+  ]);
 
   let outputEl = $state<HTMLDivElement | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
@@ -278,6 +308,7 @@
 
   function toggleMaximize() {
     isMaximized = !isMaximized;
+    queueMicrotask(() => inputEl?.focus());
   }
 
   // Tab management
@@ -456,6 +487,16 @@
   }
 
   function handleContainerKeydown(e: KeyboardEvent) {
+    if (e.key === "F11" || ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "M" || e.key === "m"))) {
+      e.preventDefault();
+      toggleMaximize();
+      return;
+    }
+    if (e.key === "Escape" && isMaximized && !searchOpen) {
+      e.preventDefault();
+      toggleMaximize();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key === "PageDown") {
       e.preventDefault();
       const currIdx = sessions.findIndex((s) => s.id === activeId);
@@ -603,7 +644,8 @@
   {/if}
 
   <!-- Terminal Header Toolbar -->
-  <div class="terminal-header">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="terminal-header" ondblclick={toggleMaximize}>
     <div class="terminal-header-left">
       <!-- Tabs strip -->
       <div class="terminal-tabs-strip" role="tablist">
@@ -614,6 +656,7 @@
             aria-selected={s.id === activeId}
             class="terminal-tab {s.id === activeId ? 'is-active' : ''}"
             onclick={() => switchTab(s.id)}
+            ondblclick={(e) => e.stopPropagation()}
             onkeydown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
@@ -692,185 +735,240 @@
 
     <!-- Header Actions Right -->
     <div class="terminal-header-right">
-      <!-- Process Status Badge -->
-      {#if activeSession.running}
-        <div class="terminal-status-badge is-running" title="Command running">
-          <span class="terminal-tab-dot is-running"></span>
-          <span>{activeSession.activeCmd.split(/\s+/)[0]} {formatElapsed(activeSession.startTime)}</span>
-        </div>
-      {:else if activeSession.exitCode !== null}
-        <div
-          class="terminal-status-badge {activeSession.exitCode === 0 ? '' : 'is-error'}"
-          title="Last exit code: {activeSession.exitCode}"
-        >
-          <span>Exit {activeSession.exitCode}</span>
-        </div>
-      {/if}
+      <div class="terminal-actions-group">
+        <!-- Process Status Badge -->
+        {#if activeSession.running}
+          <div class="terminal-status-badge is-running" title="Command running">
+            <span class="terminal-tab-dot is-running"></span>
+            <span>{activeSession.activeCmd.split(/\s+/)[0]} {formatElapsed(activeSession.startTime)}</span>
+          </div>
+        {:else if activeSession.exitCode !== null}
+          <div
+            class="terminal-status-badge {activeSession.exitCode === 0 ? '' : 'is-error'}"
+            title="Last exit code: {activeSession.exitCode}"
+          >
+            <span>Exit {activeSession.exitCode}</span>
+          </div>
+        {/if}
 
-      <!-- Shell selection -->
-      <select
-        class="form-select terminal-shell-select"
-        value={activeSession.shellKind}
-        onchange={(e) => {
-          activeSession.shellKind = (e.currentTarget as HTMLSelectElement).value;
-        }}
-        aria-label={t("terminal.shellLabel")}
-      >
-        <option value="auto">Auto Shell</option>
-        <option value="powershell">PowerShell</option>
-        <option value="cmd">CMD</option>
-        <option value="bash">Bash</option>
-        <option value="sh">sh</option>
-      </select>
+        <!-- Shell selection -->
+        <div class="terminal-shell-wrapper menu-wrapper">
+          <button
+            type="button"
+            class="terminal-shell-btn {shellMenuOpen ? 'is-active' : ''}"
+            onclick={() => (shellMenuOpen = !shellMenuOpen)}
+            title="{t('terminal.shellLabel')}: {getShellDisplayName(activeSession.shellKind)}"
+            aria-expanded={shellMenuOpen}
+            aria-haspopup="menu"
+          >
+            <svg class="terminal-shell-icon" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M2.5 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 .75.75v9a.75.75 0 0 1-.75.75h-9.5a.75.75 0 0 1-.75-.75v-9Zm1.5.75v7.5h8v-7.5h-8Zm1.72 2.22a.75.75 0 0 1 1.06 0l1.5 1.5a.75.75 0 0 1 0 1.06l-1.5 1.5a.75.75 0 1 1-1.06-1.06L6.44 8 5.72 7.28a.75.75 0 0 1 0-1.06Zm3.28 4.28a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5Z"/>
+            </svg>
+            <span class="terminal-shell-tag">{t("terminal.shellLabel")}:</span>
+            <span class="terminal-shell-name">{getShellDisplayName(activeSession.shellKind)}</span>
+            <svg class="terminal-shell-chevron" width="8" height="8" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M4.427 6.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427Z"/>
+            </svg>
+          </button>
 
-      <!-- Kill Process button -->
-      {#if activeSession.running}
+          {#if shellMenuOpen}
+            <div
+              class="terminal-shell-backdrop"
+              onclick={() => (shellMenuOpen = false)}
+              aria-hidden="true"
+            ></div>
+            <div
+              class="popover-menu terminal-shell-popover"
+              role="menu"
+              aria-label={t("terminal.shellSelectTitle")}
+              tabindex="-1"
+              onkeydown={(e) => {
+                if (e.key === "Escape") shellMenuOpen = false;
+              }}
+            >
+              <div class="terminal-shell-popover-header">
+                <span>{t("terminal.shellSelectTitle")}</span>
+              </div>
+              {#each shellOptions as opt}
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="popover-item terminal-shell-option {activeSession.shellKind === opt.id ? 'is-selected' : ''}"
+                  onclick={() => {
+                    activeSession.shellKind = opt.id;
+                    shellMenuOpen = false;
+                  }}
+                >
+                  <div class="terminal-shell-option-meta">
+                    <span class="terminal-shell-option-title">{opt.label}</span>
+                    {#if opt.desc}
+                      <span class="terminal-shell-option-desc">{opt.desc}</span>
+                    {/if}
+                  </div>
+                  {#if activeSession.shellKind === opt.id}
+                    <svg class="terminal-shell-check" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                      <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
+                    </svg>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <!-- Kill Process button -->
+        {#if activeSession.running}
+          <button
+            type="button"
+            class="terminal-btn btn-danger icon-only"
+            onclick={handleKill}
+            title="{t('terminal.killBtn')} (Ctrl+C)"
+            aria-label={t("terminal.killBtn")}
+          >
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <rect x="2" y="2" width="12" height="12" rx="2" />
+            </svg>
+          </button>
+        {/if}
+
+        <!-- Search toggle button -->
         <button
           type="button"
-          class="terminal-btn btn-danger"
-          onclick={handleKill}
-          title="Kill active process (Ctrl+C)"
+          class="terminal-btn icon-only {searchOpen ? 'is-highlighted' : ''}"
+          onclick={toggleSearch}
+          title="Search output (Ctrl+F)"
+          aria-label="Search output"
         >
           <svg
-            width="10"
-            height="10"
+            width="12"
+            height="12"
             viewBox="0 0 16 16"
-            fill="currentColor"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
             aria-hidden="true"
           >
-            <rect x="2" y="2" width="12" height="12" rx="2" />
+            <circle cx="7" cy="7" r="4.5" />
+            <line x1="10.5" y1="10.5" x2="14" y2="14" />
           </svg>
-          <span class="terminal-btn-label">{t("terminal.killBtn")}</span>
         </button>
-      {/if}
 
-      <!-- Search toggle button -->
-      <button
-        type="button"
-        class="terminal-btn {searchOpen ? 'is-highlighted' : ''}"
-        onclick={toggleSearch}
-        title="Search output (Ctrl+F)"
-        aria-label="Search output"
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
+        <!-- Copy output button -->
+        <button
+          type="button"
+          class="terminal-btn icon-only"
+          onclick={copyOutputBuffer}
+          title={copiedOutput ? t("terminal.copiedOutput") : t("terminal.copyOutput")}
+          aria-label={copiedOutput ? t("terminal.copiedOutput") : t("terminal.copyOutput")}
         >
-          <circle cx="7" cy="7" r="4.5" />
-          <line x1="10.5" y1="10.5" x2="14" y2="14" />
-        </svg>
-      </button>
+          {#if copiedOutput}
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+              style="color: var(--diff-add-text);"
+            >
+              <path
+                d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+              />
+            </svg>
+          {:else}
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"
+              /><path
+                d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"
+              />
+            </svg>
+          {/if}
+        </button>
 
-      <!-- Copy output button -->
-      <button
-        type="button"
-        class="terminal-btn"
-        onclick={copyOutputBuffer}
-        title={t("terminal.copyOutput")}
-      >
-        {#if copiedOutput}
+        <!-- Clear buffer button -->
+        <button
+          type="button"
+          class="terminal-btn icon-only"
+          onclick={() => (activeSession.chunks = [])}
+          title="{t('terminal.clearBtn')} (Ctrl+L)"
+          aria-label={t("terminal.clearBtn")}
+        >
           <svg
             width="11"
             height="11"
             viewBox="0 0 16 16"
             fill="currentColor"
             aria-hidden="true"
-            style="color: var(--diff-add-text);"
           >
             <path
-              d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+              d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a1.75 1.75 0 0 0 1.744 1.575h2.2a1.75 1.75 0 0 0 1.744-1.575l.66-6.6a.75.75 0 1 0-1.492-.15l-.66 6.6a.25.25 0 0 1-.249.225h-2.2a.25.25 0 0 1-.249-.225l-.66-6.6a.75.75 0 0 0-1.492.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"
             />
           </svg>
-          <span class="terminal-btn-label">{t("terminal.copiedOutput")}</span>
-        {:else}
+        </button>
+      </div>
+
+      <!-- Window controls (always visible, pinned right) -->
+      <div class="terminal-window-controls">
+        <div class="terminal-header-divider"></div>
+
+        <!-- Maximize / Restore button -->
+        <button
+          type="button"
+          class="terminal-btn icon-only"
+          onclick={toggleMaximize}
+          title={isMaximized ? t("terminal.restore") : t("terminal.maximize")}
+          aria-label={isMaximized ? t("terminal.restore") : t("terminal.maximize")}
+        >
+          {#if isMaximized}
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path
+                d="M6 1.75a.75.75 0 0 0-1.5 0v2.75H1.75a.75.75 0 0 0 0 1.5h3.5A.75.75 0 0 0 6 5.25V1.75ZM10 1.75a.75.75 0 0 1 1.5 0v2.75h2.75a.75.75 0 0 1 0 1.5h-3.5A.75.75 0 0 1 10 5.25V1.75ZM10 14.25a.75.75 0 0 0 1.5 0v-2.75h2.75a.75.75 0 0 0 0-1.5h-3.5a.75.75 0 0 0-.75.75v3.5ZM6 14.25a.75.75 0 0 1-1.5 0v-2.75H1.75a.75.75 0 0 1 0-1.5h3.5a.75.75 0 0 1 .75.75v3.5Z"
+              />
+            </svg>
+          {:else}
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path
+                d="M1.75 1a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0V2.5h2.75a.75.75 0 0 0 0-1.5H1.75ZM10.75 1a.75.75 0 0 0 0 1.5h2.75v2.75a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 14.25 1h-3.5ZM14.25 15a.75.75 0 0 0 .75-.75v-3.5a.75.75 0 0 0-1.5 0v2.75h-2.75a.75.75 0 0 0 0 1.5h3.5ZM5.25 15a.75.75 0 0 0 0-1.5H2.5v-2.75a.75.75 0 0 0-1.5 0v3.5c0 .414.336.75.75.75h3.5Z"
+              />
+            </svg>
+          {/if}
+        </button>
+
+        <!-- Close drawer button -->
+        <button
+          type="button"
+          class="terminal-btn icon-only"
+          onclick={onClose}
+          title={t("common.close")}
+          aria-label={t("common.close")}
+        >
           <svg
-            width="11"
-            height="11"
+            width="12"
+            height="12"
             viewBox="0 0 16 16"
             fill="currentColor"
             aria-hidden="true"
           >
             <path
-              d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"
-            /><path
-              d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"
+              d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"
             />
           </svg>
-          <span class="terminal-btn-label">{t("terminal.copyOutput")}</span>
-        {/if}
-      </button>
-
-      <!-- Clear buffer button -->
-      <button
-        type="button"
-        class="terminal-btn"
-        onclick={() => (activeSession.chunks = [])}
-        title="Clear output (Ctrl+L)"
-      >
-        <svg
-          width="11"
-          height="11"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path
-            d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a1.75 1.75 0 0 0 1.744 1.575h2.2a1.75 1.75 0 0 0 1.744-1.575l.66-6.6a.75.75 0 1 0-1.492-.15l-.66 6.6a.25.25 0 0 1-.249.225h-2.2a.25.25 0 0 1-.249-.225l-.66-6.6a.75.75 0 0 0-1.492.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"
-          />
-        </svg>
-        <span class="terminal-btn-label">{t("terminal.clearBtn")}</span>
-      </button>
-
-      <!-- Maximize / Restore button -->
-      <button
-        type="button"
-        class="terminal-btn icon-only"
-        onclick={toggleMaximize}
-        title={isMaximized ? t("terminal.restore") : t("terminal.maximize")}
-        aria-label={isMaximized ? t("terminal.restore") : t("terminal.maximize")}
-      >
-        {#if isMaximized}
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path
-              d="M4 2.5A1.5 1.5 0 0 1 5.5 1h6A1.5 1.5 0 0 1 13 2.5V8a1.5 1.5 0 0 1-1.5 1.5H11v2a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 2 11.5V6a1.5 1.5 0 0 1 1.5-1.5H5V2.5A1.5 1.5 0 0 1 4 2.5Zm1.5 3V8a1.5 1.5 0 0 1 1.5 1.5H9.5V2.5H5.5v3ZM3.5 6v5.5h6V6h-6Z"
-            />
-          </svg>
-        {:else}
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path
-              d="M3 2.5A1.5 1.5 0 0 1 4.5 1h7A1.5 1.5 0 0 1 13 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5v-11Zm1.5 0v11h7v-11h-7Z"
-            />
-          </svg>
-        {/if}
-      </button>
-
-      <!-- Close drawer button -->
-      <button
-        type="button"
-        class="terminal-btn icon-only"
-        onclick={onClose}
-        title={t("common.close")}
-        aria-label={t("common.close")}
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path
-            d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"
-          />
-        </svg>
-      </button>
+        </button>
+      </div>
     </div>
   </div>
 

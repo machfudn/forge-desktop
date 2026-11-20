@@ -120,6 +120,8 @@
   let inspectFileState = $state<{ path: string; mode: "blame" | "history" } | null>(null);
   let workspaceToolsTab = $state<"reflog" | "submodules" | "worktrees" | null>(null);
   let terminalOpen = $state(false);
+  let appHeaderHeight = $state(46);
+  let appFooterHeight = $state(26);
   let sshSwitchModalState = $state<{
     open: boolean;
     repo: string;
@@ -2722,8 +2724,11 @@
       <div class="commit-panel-resizer {isResizingCommit ? 'is-resizing' : ''}" role="separator" aria-orientation="horizontal" aria-label={t("changes.commitMessageTitle")} aria-valuemin={COMMIT_MIN} aria-valuemax={COMMIT_MAX} aria-valuenow={commitPanelHeight} tabindex="0" onpointerdown={startCommitResize} onkeydown={handleCommitResizerKeydown}></div>
     {/if}
   {/snippet}
-<div class="app-container">
-  <header class="app-header">
+<div
+  class="app-container"
+  style="--app-header-h: {appHeaderHeight}px; --app-footer-h: {appFooterHeight}px;"
+>
+  <header class="app-header" bind:offsetHeight={appHeaderHeight}>
     <div class="header-left">
       <button
         type="button"
@@ -3491,7 +3496,7 @@
     />
   {/if}
 
-  <footer class="app-footer">
+  <footer class="app-footer" bind:offsetHeight={appFooterHeight}>
     <div class="footer-status {statusIsError ? 'is-error' : ''}" title={statusMessage}>
       <span
         style="width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background-color: {statusIsError ? 'var(--diff-del-text)' : isLoading ? 'var(--warn-text)' : 'var(--diff-add-text)'};"
