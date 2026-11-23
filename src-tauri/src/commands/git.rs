@@ -975,6 +975,7 @@ pub async fn check_app_update(
 pub async fn install_app_update(
     channel: Option<String>,
     target_mode: Option<String>,
+    auto_exit: Option<bool>,
     app: tauri::AppHandle,
     accounts: State<'_, AccountManager>,
 ) -> Result<UpdateApplyResult, String> {
@@ -984,7 +985,7 @@ pub async fn install_app_update(
     let ch = UpdateChannel::parse(channel.as_deref());
     let target = updater::TargetPackageMode::parse(target_mode.as_deref());
     let res = run_blocking(move || updater::download_and_install_update(ch, target, token.as_deref())).await?;
-    if res.restart_pending {
+    if res.restart_pending && auto_exit.unwrap_or(false) {
         let handle = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(350));
@@ -992,6 +993,11 @@ pub async fn install_app_update(
         });
     }
     Ok(res)
+}
+
+#[tauri::command]
+pub fn restart_app_now(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]

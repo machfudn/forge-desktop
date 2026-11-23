@@ -986,7 +986,7 @@ fn apply_windows_update(
   [string]$StageDir
 )
 $ErrorActionPreference = 'Stop'
-for ($i = 0; $i -lt 80; $i++) {
+for ($i = 0; $i -lt 720; $i++) {
   if (-not (Get-Process -Id $TargetPid -ErrorAction SilentlyContinue)) { break }
   Start-Sleep -Milliseconds 250
 }
@@ -1324,7 +1324,7 @@ NEW_APP="$2"
 TARGET_APP="$3"
 STAGE_DIR="$4"
 i=0
-while kill -0 "$PID" 2>/dev/null && [ "$i" -lt 80 ]; do
+while kill -0 "$PID" 2>/dev/null && [ "$i" -lt 720 ]; do
   sleep 0.25
   i=$((i + 1))
 done
