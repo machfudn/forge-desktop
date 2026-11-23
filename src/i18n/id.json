@@ -663,7 +663,8 @@
       "initializingStatus": "Menginisialisasi repositori baru di {path}...",
       "createdWithRemote": "Repositori dibuat dan remote origin ditautkan",
       "created": "Repositori berhasil dibuat",
-      "createBtn": "Buat Repositori"
+      "createBtn": "Buat Repositori",
+      "initializingBtn": "Membuat Repositori..."
     },
     "clone": {
       "urlLabel": "URL Repositori (HTTPS / SSH)",
@@ -675,7 +676,8 @@
       "requiredFields": "URL repositori dan folder tujuan wajib diisi.",
       "cloningStatus": "Cloning {url}...",
       "cloneSuccess": "Clone sukses",
-      "cloneBtn": "Clone"
+      "cloneBtn": "Clone",
+      "cloningBtn": "Mengkloning..."
     },
     "publish": {
       "noAccountNotice": "Belum ada akun Git terdaftar. Hubungkan akun dulu sebelum publikasi.",
@@ -692,7 +694,8 @@
       "nameRequired": "Nama repositori wajib diisi.",
       "publishingStatus": "Mempublikasikan repositori {name} ke server Git...",
       "publishedStatus": "Repositori dipublikasikan ke {url}",
-      "publishBtn": "Publikasikan"
+      "publishBtn": "Publikasikan",
+      "publishingBtn": "Mempublikasikan..."
     },
     "remote": {
       "emptyNoticePrefix": "Belum ada remote terhubung. Masukkan nama (biasanya ",
@@ -1415,5 +1418,109 @@
     "copyError": "Salin Log Error",
     "copied": "Log Tersalin!",
     "connectedAccount": "Akun terhubung: @{login}"
+  },
+  "gitErrors": {
+    "workflowScopeTitle": "Izin Workflow GitHub Diperlukan",
+    "workflowScopeDesc": "GitHub menolak push karena Personal Access Token tidak memiliki scope 'workflow'.",
+    "secretDetectedTitle": "Kredensial Rahasia Terdeteksi",
+    "secretDetectedDesc": "GitHub memblokir push karena komit mengandung secret atau token rahasia (GH008). Bersihkan riwayat komit atau gunakan tautan bypass resmi.",
+    "protectedBranchTitle": "Branch Terproteksi",
+    "protectedBranchDesc": "Push ditolak karena branch ini dilindungi oleh aturan proteksi (GH006). Perubahan harus diajukan melalui Pull Request.",
+    "largeFileTitle": "File Melebihi Batas 100 MB",
+    "largeFileDesc": "GitHub menolak file berukuran lebih dari 100 MB (GH001). Gunakan Git LFS atau batalkan komit file besar tersebut.",
+    "pullNeededTitle": "Tarik Perubahan Remote Terlebih Dahulu",
+    "pullNeededDesc": "Push ditolak karena remote memiliki komit baru yang belum ada di lokal. Lakukan Pull terlebih dahulu.",
+    "localOverwrittenTitle": "Perubahan Lokal Tertimpa",
+    "localOverwrittenDesc": "Operasi dibatalkan karena ada perubahan lokal belum dikomit yang akan tertimpa. Simpan ke Stash atau Commit terlebih dahulu.",
+    "authSamlTitle": "Otorisasi SAML SSO Diperlukan",
+    "authSamlDesc": "Akses ditolak karena organisasi mewajibkan otorisasi SAML Single Sign-On pada Personal Access Token Anda.",
+    "divergentBranchesTitle": "Branch Bercabang (Divergent)",
+    "divergentBranchesDesc": "Branch lokal dan remote memiliki riwayat komit yang berbeda. Tentukan strategi rekonsiliasi (Merge atau Rebase)."
+  },
+  "secretModal": {
+    "title": "Deteksi Rahasia / Push Protection",
+    "subtitle": "GitHub memblokir push karena mendeteksi token atau kredensial sensitif dalam commit Anda.",
+    "explanation": "Push ditolak oleh GitHub Push Protection karena terdapat secret/kredensial yang tidak sengaja ter-commit. Demi keamanan, Anda harus mencabut atau menghapus secret tersebut dari riwayat git, atau menggunakan URL bypass resmi jika ini adalah secret uji coba (false positive).",
+    "bypassHint": "Tautan Bypass GitHub (jika diizinkan):",
+    "openBypassBtn": "Buka Halaman Bypass",
+    "howToFixTitle": "Langkah Penyelesaian:",
+    "option1": "Hapus commit yang mengandung file sensitif (mis. file .env atau token) menggunakan git reset / git rebase.",
+    "option2": "Atau kunjungi tautan bypass resmi di atas untuk mengonfirmasi secret jika Anda memiliki izin dan secret aman/palsu.",
+    "copyError": "Salin Log Error",
+    "copied": "Log Tersalin!",
+    "retryPush": "Coba Push Ulang"
+  },
+  "protectedBranchModal": {
+    "title": "Branch Dilindungi (Protected Branch)",
+    "subtitle": "Push langsung ke branch \"{branch}\" ditolak oleh kebijakan remote repository.",
+    "explanation": "Branch ini dilindungi (protected branch) atau membutuhkan Pull Request dan review sebelum perubahan dapat digabungkan. Anda dapat membuat branch baru dari commit saat ini lalu melakukan push untuk membuat Pull Request.",
+    "newBranchLabel": "Nama Branch Baru untuk Pull Request:",
+    "newBranchPlaceholder": "contoh: feature/update-patch",
+    "createAndPushBtn": "Buat Branch & Push",
+    "creating": "Membuat & Mendorong...",
+    "openBranchList": "Buka Daftar Branch"
+  },
+  "stashPromptModal": {
+    "title": "Konflik File Lokal",
+    "subtitle": "Operasi {operation} akan menimpa perubahan lokal yang belum ter-commit.",
+    "explanation": "Git membatalkan operasi {operation} karena terdapat perubahan lokal pada file di bawah ini yang belum di-commit. Ingin menyimpan perubahan ke Stash terlebih dahulu sebelum melanjutkan {operation}?",
+    "filesLabel": "File yang terdampak:",
+    "stashAndProceedBtn": "Simpan ke Stash & Lanjutkan",
+    "stashing": "Menyimpan ke Stash..."
+  },
+  "pullFirstModal": {
+    "title": "Tarik Perubahan Remote Terlebih Dahulu",
+    "subtitle": "Push ke branch \"{branch}\" ditolak karena remote memiliki commit baru.",
+    "explanation": "Git menolak push (non-fast-forward) karena riwayat branch remote lebih baru dari lokal Anda. Anda perlu menarik (Pull) perubahan dari remote terlebih dahulu sebelum dapat mendorong commit baru Anda.",
+    "fetchOnlyBtn": "Fetch Saja",
+    "pullAndRetryBtn": "Tarik & Coba Push Ulang",
+    "fetching": "Mengambil...",
+    "pullingAndRetrying": "Menarik & Mendorong...",
+    "fetchTooltip": "Ambil referensi komit remote tanpa melakukan merge ke branch lokal"
+  },
+  "largeFileModal": {
+    "title": "File Melebihi Batas 100 MB",
+    "subtitle": "GitHub memblokir push karena mendeteksi file besar dalam commit Anda (GH001).",
+    "explanation": "GitHub menerapkan batas ukuran file maksimal 100 MB per file. File yang teridentifikasi di bawah ini tidak dapat di-push melalui Git standar.",
+    "detectedFileLabel": "File yang Terdeteksi:",
+    "solutionsTitle": "Pilihan Penyelesaian:",
+    "option1Tag": "Opsi 1 (Disarankan)",
+    "option1Desc": "Batalkan commit terakhir dengan Soft Reset. Perubahan Anda tetap utuh di disk/staging sehingga Anda dapat menghapus file besar dari staging atau menambahkannya ke .gitignore.",
+    "option2Tag": "Opsi 2 (Jika Perlu Dilacak)",
+    "option2Desc": "Gunakan Git LFS (Large File Storage) untuk melacak file biner besar tanpa membebani repositori Git.",
+    "openLfsBtn": "Panduan Git LFS",
+    "openLfsTooltip": "Buka panduan instalasi dan penggunaan Git Large File Storage",
+    "softResetBtn": "Batalkan Komit (Soft Reset)",
+    "softResetTooltip": "Kembalikan komit ke staging tanpa menghapus perubahan kode Anda (git reset --soft HEAD~1)",
+    "resetting": "Membatalkan komit..."
+  },
+  "samlModal": {
+    "title": "Otorisasi SAML SSO Diperlukan",
+    "subtitle": "Organisasi mewajibkan otorisasi Single Sign-On pada Personal Access Token Anda.",
+    "explanation": "Akses ke remote repository ini ditolak karena organisasi GitHub pemilik repo menerapkan kebijakan SAML SSO. Token akses pribadi (PAT) Anda harus diotorisasi secara eksplisit untuk organisasi ini.",
+    "stepsTitle": "Langkah Otorisasi:",
+    "step1": "1. Klik tombol 'Buka Pengaturan Token GitHub' di bawah.",
+    "step2": "2. Cari token yang Anda gunakan, klik menu 'Configure SSO', lalu klik 'Authorize' pada organisasi terkait.",
+    "step3": "3. Kembali ke Forge Desktop dan klik tombol 'Coba Push Lagi'.",
+    "openSettingsBtn": "Buka Pengaturan Token GitHub",
+    "retryBtn": "Coba Push Lagi"
+  },
+  "divergentModal": {
+    "title": "Branch Bercabang (Divergent Branches)",
+    "subtitle": "Branch lokal dan remote \"{branch}\" sama-sama memiliki komit baru.",
+    "explanation": "Git membatalkan penarikan perubahan (Pull) karena branch lokal dan remote memiliki riwayat yang bercabang. Pilih strategi rekonsiliasi yang Anda inginkan di bawah ini:",
+    "strategiesTitle": "Pilihan Strategi Rekonsiliasi:",
+    "rebaseTag": "Rebase (Disarankan)",
+    "rebaseLabel": "Pull dengan Rebase",
+    "rebaseDesc": "Menyusun ulang komit lokal Anda di atas komit terbaru dari remote. Menghasilkan riwayat Git yang bersih dan lurus (linear history).",
+    "mergeTag": "Merge Commit",
+    "mergeLabel": "Pull dengan Merge",
+    "mergeDesc": "Menggabungkan branch remote ke branch lokal dengan membuat satu merge commit eksplisit.",
+    "pullRebaseBtn": "Pull dengan Rebase",
+    "pullMergeBtn": "Pull dengan Merge",
+    "rebaseTooltip": "Jalankan git pull --rebase",
+    "mergeTooltip": "Jalankan git pull --no-rebase (Merge Commit)",
+    "rebasing": "Menyusun ulang (Rebase)...",
+    "merging": "Menggabungkan (Merge)..."
   }
 }

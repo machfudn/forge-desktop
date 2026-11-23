@@ -684,7 +684,8 @@
       "initializingStatus": "Initializing new repository in {path}...",
       "createdWithRemote": "Repository created and remote origin linked",
       "created": "Repository created",
-      "createBtn": "Create Repository"
+      "createBtn": "Create Repository",
+      "initializingBtn": "Creating Repository..."
     },
     "clone": {
       "urlLabel": "Repository URL (HTTPS / SSH)",
@@ -696,7 +697,8 @@
       "requiredFields": "Repository URL and destination folder are required.",
       "cloningStatus": "Cloning {url}...",
       "cloneSuccess": "Clone succeeded",
-      "cloneBtn": "Clone"
+      "cloneBtn": "Clone",
+      "cloningBtn": "Cloning..."
     },
     "publish": {
       "noAccountNotice": "No Git account registered yet. Connect an account before publishing.",
@@ -713,7 +715,8 @@
       "nameRequired": "Repository name is required.",
       "publishingStatus": "Publishing repository {name} to Git server...",
       "publishedStatus": "Repository published to {url}",
-      "publishBtn": "Publish"
+      "publishBtn": "Publish",
+      "publishingBtn": "Publishing..."
     },
     "remote": {
       "emptyNoticePrefix": "No remote connected yet. Enter a name (usually ",
@@ -1436,5 +1439,109 @@
     "copyError": "Copy Error Log",
     "copied": "Copied!",
     "connectedAccount": "Connected account: @{login}"
+  },
+  "gitErrors": {
+    "workflowScopeTitle": "GitHub Workflow Scope Required",
+    "workflowScopeDesc": "GitHub rejected the push because your Personal Access Token lacks the 'workflow' scope.",
+    "secretDetectedTitle": "Secret Detected (Push Protection)",
+    "secretDetectedDesc": "GitHub blocked the push because it contains secrets or credentials (GH008). Remove secrets from commit history or use the official bypass link if safe.",
+    "protectedBranchTitle": "Protected Branch Restriction",
+    "protectedBranchDesc": "Push was rejected because this branch is protected by branch rules (GH006). Changes must be made through a pull request.",
+    "largeFileTitle": "File Exceeds 100 MB Limit",
+    "largeFileDesc": "GitHub rejected files larger than 100 MB (GH001). Use Git LFS or remove the large file from your commit.",
+    "pullNeededTitle": "Remote Contains New Work (Pull First)",
+    "pullNeededDesc": "Push was rejected because the remote has changes you do not have locally. Pull or rebase the remote changes first.",
+    "localOverwrittenTitle": "Local Changes Would Be Overwritten",
+    "localOverwrittenDesc": "Operation aborted because your uncommitted local changes would be overwritten. Commit or stash your changes first.",
+    "authSamlTitle": "SAML SSO Authorization Required",
+    "authSamlDesc": "Access was denied because your organization enforces SAML Single Sign-On on Personal Access Tokens.",
+    "divergentBranchesTitle": "Divergent Branches",
+    "divergentBranchesDesc": "Local and remote branches have diverged. Specify how to reconcile (Merge or Rebase)."
+  },
+  "secretModal": {
+    "title": "Secret Detected / Push Protection",
+    "subtitle": "GitHub blocked this push because it detected sensitive tokens or credentials in your commit.",
+    "explanation": "Push was rejected by GitHub Push Protection because secrets or credentials were detected in your commits. For security, revoke or remove the secret from git history, or use the official bypass link if this is a false positive or test secret.",
+    "bypassHint": "GitHub Bypass Link (if allowed):",
+    "openBypassBtn": "Open Bypass Page",
+    "howToFixTitle": "How to resolve:",
+    "option1": "Remove the commit containing sensitive files (e.g. .env files or tokens) using git reset / git rebase.",
+    "option2": "Or visit the official bypass link above to confirm the secret if you have permission and it is safe/a test secret.",
+    "copyError": "Copy Error Details",
+    "copied": "Copied!",
+    "retryPush": "Retry Push"
+  },
+  "protectedBranchModal": {
+    "title": "Protected Branch Restriction",
+    "subtitle": "Direct push to branch \"{branch}\" was rejected by remote repository policies.",
+    "explanation": "This branch is protected or requires a Pull Request and code review before changes can be merged. You can create a new branch from your current commits and push it to open a Pull Request.",
+    "newBranchLabel": "New Branch Name for Pull Request:",
+    "newBranchPlaceholder": "e.g. feature/update-patch",
+    "createAndPushBtn": "Create Branch & Push",
+    "creating": "Creating & Pushing...",
+    "openBranchList": "Open Branch List"
+  },
+  "stashPromptModal": {
+    "title": "Local File Conflict",
+    "subtitle": "The {operation} operation would overwrite uncommitted local changes.",
+    "explanation": "Git aborted {operation} because there are local changes in the files below that have not been committed. Would you like to save changes to Stash before continuing {operation}?",
+    "filesLabel": "Affected files:",
+    "stashAndProceedBtn": "Stash Changes & Proceed",
+    "stashing": "Stashing..."
+  },
+  "pullFirstModal": {
+    "title": "Remote Contains New Work (Pull First)",
+    "subtitle": "Push to branch \"{branch}\" was rejected because remote has newer commits.",
+    "explanation": "Git rejected the push (non-fast-forward) because the remote branch tip is ahead of your local branch. You need to pull the remote changes first before pushing your local commits.",
+    "fetchOnlyBtn": "Fetch Only",
+    "pullAndRetryBtn": "Pull & Retry Push",
+    "fetching": "Fetching...",
+    "pullingAndRetrying": "Pulling & Pushing...",
+    "fetchTooltip": "Fetch remote commit references without merging into local branch"
+  },
+  "largeFileModal": {
+    "title": "File Exceeds 100 MB Limit",
+    "subtitle": "GitHub blocked this push because it detected large files in your commit (GH001).",
+    "explanation": "GitHub enforces a strict 100 MB maximum file size limit. The file identified below cannot be pushed through standard Git.",
+    "detectedFileLabel": "Detected File:",
+    "solutionsTitle": "Resolution Options:",
+    "option1Tag": "Option 1 (Recommended)",
+    "option1Desc": "Undo the last commit with a Soft Reset. Your work stays completely safe on disk/staging so you can unstage the large file or add it to .gitignore.",
+    "option2Tag": "Option 2 (If File Needed)",
+    "option2Desc": "Use Git LFS (Large File Storage) to track large binary files without bloating the Git repository.",
+    "openLfsBtn": "Git LFS Guide",
+    "openLfsTooltip": "Open installation and usage guide for Git Large File Storage",
+    "softResetBtn": "Undo Commit (Soft Reset)",
+    "softResetTooltip": "Rollback commit to staging without losing any code changes (git reset --soft HEAD~1)",
+    "resetting": "Resetting commit..."
+  },
+  "samlModal": {
+    "title": "SAML SSO Authorization Required",
+    "subtitle": "Organization enforces Single Sign-On authorization on your Personal Access Token.",
+    "explanation": "Access to this remote repository was denied because the owner organization enforces SAML SSO. Your Personal Access Token (PAT) must be explicitly authorized for this organization.",
+    "stepsTitle": "Authorization Steps:",
+    "step1": "1. Click 'Open GitHub Token Settings' below.",
+    "step2": "2. Find your active token, click 'Configure SSO', then click 'Authorize' next to the relevant organization.",
+    "step3": "3. Return to Forge Desktop and click 'Retry Push'.",
+    "openSettingsBtn": "Open GitHub Token Settings",
+    "retryBtn": "Retry Push"
+  },
+  "divergentModal": {
+    "title": "Divergent Branches",
+    "subtitle": "Local and remote branch \"{branch}\" both have new commits.",
+    "explanation": "Git aborted the Pull operation because local and remote branches have diverged. Choose your preferred reconciliation strategy below:",
+    "strategiesTitle": "Reconciliation Strategy Choices:",
+    "rebaseTag": "Rebase (Recommended)",
+    "rebaseLabel": "Pull with Rebase",
+    "rebaseDesc": "Reapplies your local commits on top of incoming remote commits. Produces a clean, linear Git history.",
+    "mergeTag": "Merge Commit",
+    "mergeLabel": "Pull with Merge",
+    "mergeDesc": "Merges the remote branch into your local branch by creating an explicit merge commit.",
+    "pullRebaseBtn": "Pull with Rebase",
+    "pullMergeBtn": "Pull with Merge",
+    "rebaseTooltip": "Run git pull --rebase",
+    "mergeTooltip": "Run git pull --no-rebase (Merge Commit)",
+    "rebasing": "Rebasing...",
+    "merging": "Merging..."
   }
 }

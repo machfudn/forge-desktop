@@ -44,6 +44,13 @@
   import AiAssistantModal from "./components/AiAssistantModal.svelte";
   import SshRemoteSwitchModal from "./components/SshRemoteSwitchModal.svelte";
   import WorkflowScopeModal from "./components/WorkflowScopeModal.svelte";
+  import SecretProtectionModal from "./components/SecretProtectionModal.svelte";
+  import ProtectedBranchModal from "./components/ProtectedBranchModal.svelte";
+  import StashPromptModal from "./components/StashPromptModal.svelte";
+  import PullFirstModal from "./components/PullFirstModal.svelte";
+  import LargeFileModal from "./components/LargeFileModal.svelte";
+  import SamlAuthModal from "./components/SamlAuthModal.svelte";
+  import DivergentBranchesModal from "./components/DivergentBranchesModal.svelte";
   import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
   import ProviderIcon from "./components/ProviderIcon.svelte";
   import { joinRepoPath, openExternalUrl, pathBaseName } from "./utils/path";
@@ -53,6 +60,7 @@
     convertSshToHttps,
     isWorkflowScopeError,
     extractWorkflowFileName,
+    classifyGitError,
   } from "./utils/remoteUrl";
   import {
     copyTextToClipboard,
@@ -153,6 +161,88 @@
     repo: "",
     errorMessage: "",
     workflowFile: null,
+  });
+  let secretModalState = $state<{
+    open: boolean;
+    repo: string;
+    errorMessage: string;
+    bypassUrl: string | null;
+    retryAction?: () => Promise<void>;
+  }>({
+    open: false,
+    repo: "",
+    errorMessage: "",
+    bypassUrl: null,
+  });
+  let protectedBranchModalState = $state<{
+    open: boolean;
+    repo: string;
+    branchName: string;
+    errorMessage: string;
+  }>({
+    open: false,
+    repo: "",
+    branchName: "main",
+    errorMessage: "",
+  });
+  let stashPromptModalState = $state<{
+    open: boolean;
+    repo: string;
+    files: string[];
+    operationName: string;
+    onProceed?: () => Promise<void>;
+  }>({
+    open: false,
+    repo: "",
+    files: [],
+    operationName: "Pull",
+  });
+  let pullFirstModalState = $state<{
+    open: boolean;
+    repo: string;
+    branchName: string;
+    errorMessage: string;
+    retryPushAction?: () => Promise<void>;
+  }>({
+    open: false,
+    repo: "",
+    branchName: "main",
+    errorMessage: "",
+  });
+  let largeFileModalState = $state<{
+    open: boolean;
+    repo: string;
+    fileName: string | null;
+    fileSize: string | null;
+    errorMessage: string;
+  }>({
+    open: false,
+    repo: "",
+    fileName: null,
+    fileSize: null,
+    errorMessage: "",
+  });
+  let samlModalState = $state<{
+    open: boolean;
+    repo: string;
+    errorMessage: string;
+    retryAction?: () => Promise<void>;
+  }>({
+    open: false,
+    repo: "",
+    errorMessage: "",
+  });
+  let divergentModalState = $state<{
+    open: boolean;
+    repo: string;
+    branchName: string;
+    errorMessage: string;
+    retryPullAction?: () => Promise<void>;
+  }>({
+    open: false,
+    repo: "",
+    branchName: "main",
+    errorMessage: "",
   });
   let aiModalState = $state<{
     task: "custom_ask" | "explain_diff" | "explain_commit" | "review_changes";
@@ -1295,7 +1385,14 @@
       setStatus(res || t("app.status.mergedBranch", { branch: branchName }));
       await loadRepo(activeRepo);
     } catch (err) {
-      setStatus(String(err), true);
+      const errStr = String(err);
+      if (
+        !checkAndHandlePullOrSyncError(errStr, "Merge", () =>
+          handleMergeBranchFromGraph(branchName)
+        )
+      ) {
+        setStatus(errStr, true);
+      }
     } finally {
       isLoading = false;
     }
@@ -1309,7 +1406,14 @@
       setStatus(res || t("app.status.rebasedBranch", { branch: baseRef }));
       await loadRepo(activeRepo);
     } catch (err) {
-      setStatus(String(err), true);
+      const errStr = String(err);
+      if (
+        !checkAndHandlePullOrSyncError(errStr, "Rebase", () =>
+          handleRebaseBranchFromGraph(baseRef)
+        )
+      ) {
+        setStatus(errStr, true);
+      }
     } finally {
       isLoading = false;
     }
@@ -2008,21 +2112,267 @@
     }
   }
 
-  function checkAndOpenWorkflowScopeModal(
+  function checkAndHandlePushError(
     errStr: string,
+    options?: { branch?: string; retryAction?: () => Promise<void> }
+  ): boolean {
+    if (!activeRepo) return false;
+
+    // 1. Workflow scope error
+    if (isWorkflowScopeError(errStr)) {
+      workflowModalState = {
+        open: true,
+        repo: activeRepo,
+        errorMessage: errStr,
+        workflowFile: extractWorkflowFileName(errStr),
+        retryAction: options?.retryAction,
+      };
+      setStatus(t("workflowModal.title"), true);
+      return true;
+    }
+
+    const classified = classifyGitError(errStr);
+
+    // 2. Secret Protection (GH008)
+    if (classified.kind === "secret_detected") {
+      secretModalState = {
+        open: true,
+        repo: activeRepo,
+        errorMessage: errStr,
+        bypassUrl: classified.bypassUrl || null,
+        retryAction: options?.retryAction,
+      };
+      setStatus(t("secretModal.title"), true);
+      return true;
+    }
+
+    // 3. Protected Branch (GH006)
+    if (classified.kind === "protected_branch") {
+      protectedBranchModalState = {
+        open: true,
+        repo: activeRepo,
+        branchName: classified.branchName || options?.branch || currentStatus?.branch || "main",
+        errorMessage: errStr,
+      };
+      setStatus(t("protectedBranchModal.title"), true);
+      return true;
+    }
+
+    // 4. Large file (GH001)
+    if (classified.kind === "large_file") {
+      largeFileModalState = {
+        open: true,
+        repo: activeRepo,
+        fileName: classified.detectedFile || null,
+        fileSize: classified.fileSize || null,
+        errorMessage: errStr,
+      };
+      setStatus(t("largeFileModal.title"), true);
+      return true;
+    }
+
+    // 5. Pull needed (non-fast-forward)
+    if (classified.kind === "pull_needed") {
+      pullFirstModalState = {
+        open: true,
+        repo: activeRepo,
+        branchName: options?.branch || currentStatus?.branch || "main",
+        errorMessage: errStr,
+        retryPushAction: options?.retryAction,
+      };
+      setStatus(t("pullFirstModal.title"), true);
+      return true;
+    }
+
+    // 6. SAML SSO
+    if (classified.kind === "auth_saml") {
+      samlModalState = {
+        open: true,
+        repo: activeRepo,
+        errorMessage: errStr,
+        retryAction: options?.retryAction,
+      };
+      setStatus(t("samlModal.title"), true);
+      return true;
+    }
+
+    return false;
+  }
+
+  function checkAndHandlePullOrSyncError(
+    errStr: string,
+    operationName: string,
     retryAction?: () => Promise<void>
   ): boolean {
-    if (!activeRepo || !isWorkflowScopeError(errStr)) {
-      return false;
+    if (!activeRepo) return false;
+
+    const classified = classifyGitError(errStr);
+
+    // Local changes would be overwritten
+    if (classified.kind === "local_overwritten") {
+      stashPromptModalState = {
+        open: true,
+        repo: activeRepo,
+        files: classified.filesOverwritten || [],
+        operationName,
+        onProceed: retryAction,
+      };
+      setStatus(t("stashPromptModal.title"), true);
+      return true;
     }
-    workflowModalState = {
-      open: true,
-      repo: activeRepo,
-      errorMessage: errStr,
-      workflowFile: extractWorkflowFileName(errStr),
-      retryAction,
-    };
-    return true;
+
+    if (classified.kind === "divergent_branches") {
+      divergentModalState = {
+        open: true,
+        repo: activeRepo,
+        branchName: currentStatus?.branch || "main",
+        errorMessage: errStr,
+        retryPullAction: retryAction,
+      };
+      setStatus(t("divergentModal.title"), true);
+      return true;
+    }
+
+    return false;
+  }
+
+  async function handlePullAndRetryPushFromModal() {
+    if (!activeRepo) return;
+    isLoading = true;
+    setStatus(t("pullFirstModal.pullingAndRetrying"));
+    try {
+      await gitService.gitPull(activeRepo);
+      await loadRepo(activeRepo);
+      pullFirstModalState.open = false;
+      if (pullFirstModalState.retryPushAction) {
+        await pullFirstModalState.retryPushAction();
+      } else {
+        await handlePush();
+      }
+    } catch (err) {
+      const errStr = String(err);
+      setStatus(errStr, true);
+      throw err;
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleFetchOnlyFromModal() {
+    if (!activeRepo) return;
+    isLoading = true;
+    setStatus(t("pullFirstModal.fetching"));
+    try {
+      await gitService.gitFetch(activeRepo);
+      await loadRepo(activeRepo);
+      pullFirstModalState.open = false;
+      setStatus(t("app.status.fetchDone"));
+    } catch (err) {
+      const errStr = String(err);
+      setStatus(errStr, true);
+      throw err;
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleSoftResetFromLargeFileModal() {
+    if (!activeRepo) return;
+    isLoading = true;
+    setStatus(t("largeFileModal.resetting"));
+    try {
+      await gitService.resetToCommit(activeRepo, "HEAD~1", false);
+      await loadRepo(activeRepo);
+      largeFileModalState.open = false;
+      setStatus(t("largeFileModal.softResetBtn") + " ✓");
+    } catch (err) {
+      const errStr = String(err);
+      setStatus(errStr, true);
+      throw err;
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handlePullRebaseFromDivergentModal() {
+    if (!activeRepo) return;
+    isLoading = true;
+    setStatus(t("divergentModal.rebasing"));
+    try {
+      await gitService.gitFetch(activeRepo);
+      const upstream = currentStatus?.branch ? `origin/${currentStatus.branch}` : "origin/main";
+      await gitService.rebaseBranch(activeRepo, upstream);
+      await loadRepo(activeRepo);
+      divergentModalState.open = false;
+      setStatus(t("branchModal.rebasedStatus"));
+    } catch (err) {
+      const errStr = String(err);
+      setStatus(errStr, true);
+      throw err;
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handlePullMergeFromDivergentModal() {
+    if (!activeRepo) return;
+    isLoading = true;
+    setStatus(t("divergentModal.merging"));
+    try {
+      await gitService.gitFetch(activeRepo);
+      const upstream = currentStatus?.branch ? `origin/${currentStatus.branch}` : "origin/main";
+      await gitService.mergeBranch(activeRepo, upstream);
+      await loadRepo(activeRepo);
+      divergentModalState.open = false;
+      setStatus(t("branchModal.mergedStatus"));
+    } catch (err) {
+      const errStr = String(err);
+      setStatus(errStr, true);
+      throw err;
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleCreateBranchAndPushFromProtected(newBranchName: string) {
+    if (!activeRepo) return;
+    isLoading = true;
+    setStatus(t("protectedBranchModal.creating"));
+    try {
+      await gitService.createBranch(activeRepo, newBranchName);
+      await gitService.switchBranch(activeRepo, newBranchName);
+      await loadRepo(activeRepo);
+      await gitService.gitPush(activeRepo, undefined, newBranchName);
+      await loadRepo(activeRepo);
+      setStatus(t("app.status.pushDone"));
+      protectedBranchModalState.open = false;
+    } catch (err) {
+      const errStr = String(err);
+      setStatus(errStr, true);
+      throw err;
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleStashAndProceed() {
+    if (!activeRepo) return;
+    isLoading = true;
+    setStatus(t("stashPromptModal.stashing"));
+    try {
+      await gitService.gitStashSave(activeRepo, `Auto-stash before ${stashPromptModalState.operationName}`);
+      await loadRepo(activeRepo);
+      stashPromptModalState.open = false;
+      if (stashPromptModalState.onProceed) {
+        await stashPromptModalState.onProceed();
+      }
+    } catch (err) {
+      const errStr = String(err);
+      setStatus(errStr, true);
+      throw err;
+    } finally {
+      isLoading = false;
+    }
   }
 
   async function handleFetch() {
@@ -2055,9 +2405,13 @@
     } catch (err) {
       await loadRepo(activeRepo);
       const errStr = String(err);
-      const opened = await checkAndOpenSshSwitchModal(errStr, handlePull);
-      if (!opened) {
-        setStatus(errStr, true);
+      if (checkAndHandlePullOrSyncError(errStr, "Pull", handlePull)) {
+        // Handled by modal or status
+      } else {
+        const opened = await checkAndOpenSshSwitchModal(errStr, handlePull);
+        if (!opened) {
+          setStatus(errStr, true);
+        }
       }
     } finally {
       isLoading = false;
@@ -2074,9 +2428,7 @@
       setStatus(res || t("app.status.pushDone"));
     } catch (err) {
       const errStr = String(err);
-      if (checkAndOpenWorkflowScopeModal(errStr, handlePush)) {
-        setStatus(t("workflowModal.title"), true);
-      } else {
+      if (!checkAndHandlePushError(errStr, { retryAction: handlePush })) {
         const opened = await checkAndOpenSshSwitchModal(errStr, handlePush);
         if (!opened) {
           setStatus(errStr, true);
@@ -2099,9 +2451,7 @@
         setStatus(res || t("app.status.forcePushDone"));
       } catch (err) {
         const errStr = String(err);
-        if (checkAndOpenWorkflowScopeModal(errStr, execute)) {
-          setStatus(t("workflowModal.title"), true);
-        } else {
+        if (!checkAndHandlePushError(errStr, { retryAction: execute })) {
           const opened = await checkAndOpenSshSwitchModal(errStr, execute);
           if (!opened) {
             setStatus(errStr, true);
@@ -2141,7 +2491,10 @@
         res || t("app.status.syncForkNotifBody")
       );
     } catch (err) {
-      setStatus(t("app.status.syncForkFailed", { err: String(err) }), true);
+      const errStr = String(err);
+      if (!checkAndHandlePullOrSyncError(errStr, "Sync Fork", handleSyncFork)) {
+        setStatus(t("app.status.syncForkFailed", { err: errStr }), true);
+      }
     } finally {
       isLoading = false;
     }
@@ -3882,14 +4235,17 @@
     onReloadRepo={() => loadRepo(activeRepo)}
     onStatus={setStatus}
     onRequestConfirm={requestConfirmation}
-    onPushError={(errStr, branchName) => {
-      const opened = checkAndOpenWorkflowScopeModal(errStr, async () => {
-        await gitService.gitPush(activeRepo, undefined, branchName);
+    onPushError={(errStr: string, branchName: string) => {
+      const handled = checkAndHandlePushError(errStr, {
+        branch: branchName,
+        retryAction: async () => {
+          await gitService.gitPush(activeRepo, undefined, branchName);
+        },
       });
-      if (opened) {
-        setStatus(t("workflowModal.title"), true);
-      }
-      return opened;
+      return handled;
+    }}
+    onOperationError={(errStr: string, operation: string, retryAction?: () => Promise<void>) => {
+      return checkAndHandlePullOrSyncError(errStr, operation, retryAction);
     }}
   />
 {/if}
@@ -4114,6 +4470,89 @@
     activeModal = "auth";
   }}
   onRetry={workflowModalState.retryAction}
+/>
+
+<SecretProtectionModal
+  open={secretModalState.open}
+  repo={secretModalState.repo}
+  errorMessage={secretModalState.errorMessage}
+  bypassUrl={secretModalState.bypassUrl}
+  onClose={() => {
+    secretModalState.open = false;
+  }}
+  onRetry={secretModalState.retryAction}
+/>
+
+<ProtectedBranchModal
+  open={protectedBranchModalState.open}
+  repo={protectedBranchModalState.repo}
+  branchName={protectedBranchModalState.branchName}
+  errorMessage={protectedBranchModalState.errorMessage}
+  onClose={() => {
+    protectedBranchModalState.open = false;
+  }}
+  onCreateBranchAndPush={handleCreateBranchAndPushFromProtected}
+  onOpenBranchModal={() => {
+    activeModal = "branch";
+  }}
+/>
+
+<StashPromptModal
+  open={stashPromptModalState.open}
+  repo={stashPromptModalState.repo}
+  files={stashPromptModalState.files}
+  operationName={stashPromptModalState.operationName}
+  onClose={() => {
+    stashPromptModalState.open = false;
+  }}
+  onStashAndProceed={handleStashAndProceed}
+/>
+
+<PullFirstModal
+  open={pullFirstModalState.open}
+  repo={pullFirstModalState.repo}
+  branchName={pullFirstModalState.branchName}
+  errorMessage={pullFirstModalState.errorMessage}
+  onClose={() => {
+    pullFirstModalState.open = false;
+  }}
+  onPullAndRetry={handlePullAndRetryPushFromModal}
+  onFetchOnly={handleFetchOnlyFromModal}
+/>
+
+<LargeFileModal
+  open={largeFileModalState.open}
+  repo={largeFileModalState.repo}
+  fileName={largeFileModalState.fileName}
+  fileSize={largeFileModalState.fileSize}
+  errorMessage={largeFileModalState.errorMessage}
+  onClose={() => {
+    largeFileModalState.open = false;
+  }}
+  onSoftReset={handleSoftResetFromLargeFileModal}
+/>
+
+<SamlAuthModal
+  open={samlModalState.open}
+  repo={samlModalState.repo}
+  accountLogin={activeRepoAccount?.login}
+  errorMessage={samlModalState.errorMessage}
+  onClose={() => {
+    samlModalState.open = false;
+  }}
+  onRetry={samlModalState.retryAction}
+/>
+
+<DivergentBranchesModal
+  open={divergentModalState.open}
+  repo={divergentModalState.repo}
+  branchName={divergentModalState.branchName}
+  errorMessage={divergentModalState.errorMessage}
+  onClose={() => {
+    divergentModalState.open = false;
+  }}
+  onPullRebase={handlePullRebaseFromDivergentModal}
+  onPullMerge={handlePullMergeFromDivergentModal}
 />
 
 <ContextMenu />
