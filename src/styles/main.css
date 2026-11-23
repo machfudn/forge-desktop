@@ -8319,3 +8319,172 @@ select optgroup {
   border: 1px solid var(--accent);
   border-radius: 6px;
 }
+
+/* Footer Update Pill (Pillar 1) */
+.footer-update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  border: 1px solid transparent;
+  background: transparent;
+  user-select: none;
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+
+.footer-update-pill.is-available {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.footer-update-pill.is-available:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
+}
+
+.footer-update-pill.is-downloading {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.footer-update-pill.is-pending {
+  color: var(--diff-add-text, #10b981);
+  background: color-mix(in srgb, var(--diff-add-text, #10b981) 12%, transparent);
+  border-color: color-mix(in srgb, var(--diff-add-text, #10b981) 35%, transparent);
+}
+
+.footer-update-pill.is-pending:hover {
+  background: color-mix(in srgb, var(--diff-add-text, #10b981) 22%, transparent);
+  border-color: var(--diff-add-text, #10b981);
+}
+
+.footer-update-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.footer-update-dot.is-green {
+  background: var(--diff-add-text, #10b981);
+  box-shadow: 0 0 6px var(--diff-add-text, #10b981);
+}
+
+.footer-update-dot.is-pulse {
+  background: var(--accent);
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Post-Update "What's New" Toast (Pillar 2) */
+.whats-new-toast {
+  position: fixed;
+  bottom: 34px;
+  right: 18px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 14px;
+  animation: slide-up-toast 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 440px;
+}
+
+@keyframes slide-up-toast {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.whats-new-toast-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.whats-new-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.whats-new-toast-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.whats-new-toast-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.whats-new-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.whats-new-toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.whats-new-toast-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Working Tree Safety Reassurance (Pillar 3) */
+.update-tree-reassurance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--diff-add-text, #10b981) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--diff-add-text, #10b981) 22%, transparent);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  text-align: left;
+  width: 100%;
+}
+
+.reassurance-icon {
+  color: var(--diff-add-text, #10b981);
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.badge-accent {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  padding: 1px 6px;
+  border-radius: 4px;
+}

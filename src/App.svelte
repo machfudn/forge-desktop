@@ -139,6 +139,9 @@
     timerId?: number;
   } | null>(null);
   let isUpdatePendingRestart = $state(false);
+  let whatsNewToastState = $state<{ open: boolean; version: string } | null>(null);
+  let latestUpdateLogPath = $state<string | null>(null);
+  let initialSettingsTab = $state<"git" | "appearance" | "safety" | "updates" | "ai">("git");
   let appHeaderHeight = $state(46);
   let appFooterHeight = $state(26);
   let sshSwitchModalState = $state<{
@@ -1917,7 +1920,8 @@
     }
   }
 
-  function openSettingsModal() {
+  function openSettingsModal(tabOrEvent?: "git" | "appearance" | "safety" | "updates" | "ai" | MouseEvent) {
+    initialSettingsTab = typeof tabOrEvent === "string" ? tabOrEvent : "git";
     toolsMenuOpen = false;
     const seq = ++settingsModalSeq;
     const targetRepo = activeRepo;
@@ -1944,6 +1948,10 @@
           isLoadingSettings = false;
         }
       });
+  }
+
+  function openSettingsUpdatesTab() {
+    openSettingsModal("updates");
   }
 
   async function handleSaveSettings(cfg: {
@@ -2130,6 +2138,11 @@
       const msg = String(err);
       updateError = msg;
       setStatus(t("app.status.installUpdateFailed", { msg }), true);
+      try {
+        latestUpdateLogPath = await gitService.getLatestUpdateLog();
+      } catch {
+        // ignore
+      }
     } finally {
       isInstallingUpdate = false;
     }
@@ -3017,6 +3030,19 @@
         .checkAppUpdate(updateChannel, targetPackageMode)
         .then((info) => {
           appUpdateInfo = info;
+          const lastSeen = localStorage.getItem("forge_last_seen_version");
+          const curVer = info.current_version;
+          if (curVer) {
+            if (lastSeen && lastSeen !== curVer) {
+              whatsNewToastState = { open: true, version: curVer };
+              setTimeout(() => {
+                if (whatsNewToastState?.version === curVer) {
+                  whatsNewToastState = null;
+                }
+              }, 8000);
+            }
+            localStorage.setItem("forge_last_seen_version", curVer);
+          }
         })
         .catch(() => {
           // Offline or non-Tauri preview
@@ -4300,6 +4326,41 @@
       ></span>
       <span class="footer-status-text">{statusMessage}</span>
     </div>
+
+    {#if isUpdatePendingRestart}
+      <button
+        type="button"
+        class="footer-update-pill is-pending"
+        onclick={() => startRestartCountdown(appUpdateInfo?.latest_version || "")}
+        title={t("app.status.restartPendingBadge")}
+      >
+        <span class="footer-update-dot is-green"></span>
+        <span class="footer-update-label">{t("app.status.restartToApplyPill", { version: appUpdateInfo?.latest_version || "" })}</span>
+      </button>
+    {:else if isInstallingUpdate}
+      <button
+        type="button"
+        class="footer-update-pill is-downloading"
+        onclick={openSettingsUpdatesTab}
+        title={t("wsModal.settings.updateDownloadingHint")}
+      >
+        <span class="footer-update-dot is-pulse"></span>
+        <span class="footer-update-label">{t("app.status.updateDownloadingPill", { version: appUpdateInfo?.latest_version || "" })}</span>
+      </button>
+    {:else if appUpdateInfo?.has_update}
+      <button
+        type="button"
+        class="footer-update-pill is-available"
+        onclick={openSettingsUpdatesTab}
+        title={t("app.updateAvailableDotTitle", { version: appUpdateInfo.latest_version })}
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 1a.75.75 0 0 1 .75.75v8.19l2.72-2.72a.75.75 0 1 1 1.06 1.06l-4 4a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 1 1 1.06-1.06l2.72 2.72V1.75A.75.75 0 0 1 8 1Zm-6 12a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 13Z" />
+        </svg>
+        <span class="footer-update-label">{t("app.status.updateAvailablePill", { version: appUpdateInfo.latest_version })}</span>
+      </button>
+    {/if}
+
     <span class="footer-path" title={activeRepo}>{activeRepo || t("app.noActiveRepo")}</span>
   </footer>
 </div>
@@ -4395,6 +4456,8 @@
     {isInstallingUpdate}
     {isUpdatePendingRestart}
     {updateError}
+    {latestUpdateLogPath}
+    {initialSettingsTab}
     onClose={() => (activeModal = null)}
     onLoadRepo={loadRepo}
     onRemotesChanged={refreshRemotesAndPushState}
@@ -4669,6 +4732,16 @@
         <div class="update-ready-timer-fill" style={`width: ${(updateReadyState.countdown / 5) * 100}%`}></div>
       </div>
 
+      <div class="update-tree-reassurance">
+        {#if currentStatus && currentStatus.files && currentStatus.files.length > 0}
+          <span class="reassurance-icon">✓</span>
+          <span>{t("app.status.workingTreeSafe")}</span>
+        {:else}
+          <span class="reassurance-icon">✓</span>
+          <span>{t("app.status.workingTreeClean")}</span>
+        {/if}
+      </div>
+
       <div class="update-ready-actions">
         <button
           type="button"
@@ -4685,6 +4758,41 @@
           {t("app.status.restartLaterBtn")}
         </button>
       </div>
+    </div>
+  </div>
+{/if}
+
+{#if whatsNewToastState?.open}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="whats-new-toast" role="status" aria-live="polite">
+    <div class="whats-new-toast-icon">✨</div>
+    <div class="whats-new-toast-body">
+      <div class="whats-new-toast-title">
+        {t("app.status.whatsNewTitle", { version: whatsNewToastState.version })}
+      </div>
+      <div class="whats-new-toast-desc">
+        {t("app.status.whatsNewDesc")}
+      </div>
+    </div>
+    <div class="whats-new-toast-actions">
+      <button
+        type="button"
+        class="btn-primary btn-xs"
+        onclick={() => {
+          whatsNewToastState = null;
+          openSettingsUpdatesTab();
+        }}
+      >
+        {t("app.status.viewReleaseNotesBtn")}
+      </button>
+      <button
+        type="button"
+        class="whats-new-toast-close"
+        onclick={() => { whatsNewToastState = null; }}
+        aria-label="Close"
+      >
+        ✕
+      </button>
     </div>
   </div>
 {/if}

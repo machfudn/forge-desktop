@@ -84,6 +84,8 @@
     isInstallingUpdate: boolean;
     isUpdatePendingRestart?: boolean;
     onTriggerRestart?: () => void;
+    latestUpdateLogPath?: string | null;
+    initialSettingsTab?: SettingsTabId;
     updateError: string;
     accountOverview: AccountOverview;
     activeRepoAccount: AccountProfile | null;
@@ -153,6 +155,8 @@
     isInstallingUpdate,
     isUpdatePendingRestart = false,
     onTriggerRestart,
+    latestUpdateLogPath = null,
+    initialSettingsTab = "git",
     updateError,
     accountOverview,
     activeRepoAccount,
@@ -224,6 +228,29 @@
 
   type SettingsTabId = "git" | "appearance" | "safety" | "updates" | "ai";
   let settingsTab = $state<SettingsTabId>("git");
+  $effect(() => {
+    if (initialSettingsTab) {
+      settingsTab = initialSettingsTab;
+    }
+  });
+
+  async function handleOpenUpdateLog(logPath: string) {
+    try {
+      await gitService.openInFileManager(logPath);
+    } catch (err) {
+      inlineError = String(err);
+    }
+  }
+
+  async function handleOpenUpdateFolder(logPath: string) {
+    try {
+      const lastSlash = Math.max(logPath.lastIndexOf("/"), logPath.lastIndexOf("\\"));
+      const folder = lastSlash > 0 ? logPath.substring(0, lastSlash) : logPath;
+      await gitService.openInFileManager(folder);
+    } catch (err) {
+      inlineError = String(err);
+    }
+  }
   const SETTINGS_TAB_ORDER: SettingsTabId[] = ["git", "appearance", "safety", "updates", "ai"];
   function handleSettingsTabKeydown(e: KeyboardEvent, current: SettingsTabId) {
     const idx = SETTINGS_TAB_ORDER.indexOf(current);
@@ -3046,13 +3073,21 @@
                 {#if updateError}
                   <div class="settings-status-box is-error" style="display: flex; flex-direction: column; gap: 6px;">
                     <div>{updateError}</div>
-                    {#if appUpdateInfo?.html_url}
-                      <div style="display: flex; gap: 8px; margin-top: 2px;">
+                    <div style="display: flex; gap: 8px; margin-top: 2px; align-items: center; flex-wrap: wrap;">
+                      {#if appUpdateInfo?.html_url}
                         <button type="button" class="link-btn" style="font-size: 11px;" onclick={() => openExternalUrl(appUpdateInfo!.html_url!)}>
                           {t("wsModal.settings.openReleasesBtn")}
                         </button>
-                      </div>
-                    {/if}
+                      {/if}
+                      {#if latestUpdateLogPath}
+                        <button type="button" class="link-btn" style="font-size: 11px;" onclick={() => handleOpenUpdateLog(latestUpdateLogPath!)}>
+                          {t("wsModal.settings.viewUpdateLogBtn")}
+                        </button>
+                        <button type="button" class="link-btn" style="font-size: 11px;" onclick={() => handleOpenUpdateFolder(latestUpdateLogPath!)}>
+                          {t("wsModal.settings.openUpdateDirBtn")}
+                        </button>
+                      {/if}
+                    </div>
                   </div>
                 {/if}
                 {#if isUpdatePendingRestart}
@@ -3088,7 +3123,7 @@
                           <div class="settings-hint" style="margin-top: 2px;">
                             {t("wsModal.settings.packageLabel", { name: appUpdateInfo.asset_name })}
                             {#if appUpdateInfo.asset_size}
-                              ({(appUpdateInfo.asset_size / (1024 * 1024)).toFixed(1)} MB)
+                              ({(appUpdateInfo.asset_size / (1024 * 1024)).toFixed(1)} MB • {t("wsModal.settings.downloadTimeEstimate", { seconds: Math.max(1, Math.round(appUpdateInfo.asset_size / (2.5 * 1024 * 1024))) })})
                             {/if}
                           </div>
                         {/if}
@@ -3156,14 +3191,14 @@
                                     {pkg.mode === "portable" ? "Portable" : "Installer"}
                                   </span>
                                   {#if pkg.asset_name === appUpdateInfo.asset_name}
-                                    <span style="font-size: 11px; color: var(--accent); font-weight: 500;">
-                                      ({t("wsModal.settings.targetSelected")})
+                                    <span class="badge-accent" style="font-size: 10px; font-weight: 600;">
+                                      {t("wsModal.settings.recommendedBadge")}
                                     </span>
                                   {/if}
                                 </div>
                                 {#if pkg.asset_size}
                                   <span style="font-size: 11px; color: var(--text-secondary);">
-                                    {(pkg.asset_size / (1024 * 1024)).toFixed(1)} MB
+                                    {(pkg.asset_size / (1024 * 1024)).toFixed(1)} MB • ~{Math.max(1, Math.round(pkg.asset_size / (2.5 * 1024 * 1024)))}s
                                   </span>
                                 {/if}
                               </div>
