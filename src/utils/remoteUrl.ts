@@ -105,23 +105,23 @@ export function getSshDiagnosisType(error: string): SshDiagnosisType {
   return "general";
 }
 
-export function isWorkflowScopeError(error: string): boolean {
-  const lower = error.toLowerCase();
-  return (
-    lower.includes("refusing to allow a personal access token to create or update workflow") ||
-    (lower.includes("workflow") &&
-      lower.includes("scope") &&
-      (lower.includes("token") || lower.includes("remote rejected") || lower.includes("personal access")))
-  );
-}
+export {
+  classifyGitError,
+  isWorkflowScopeError,
+  extractWorkflowFileName,
+  isSecretScanningError,
+  extractSecretBypassUrl,
+  isProtectedBranchError,
+  extractProtectedBranchName,
+  isLargeFileError,
+  extractLargeFileInfo,
+  isPullNeededError,
+  isLocalOverwrittenError,
+  extractOverwrittenFiles,
+  isDivergentBranchesError,
+  isAuthSamlError,
+  type GitErrorKind,
+  type ParsedGitError,
+} from "./gitErrorParser";
 
-export function extractWorkflowFileName(error: string): string | null {
-  const match = error.match(
-    /(?:\.github\/workflows\/[a-zA-Z0-9_.\-]+)|(?:workflow\s+[`'"]([^`'"]+)[`'"])/i
-  );
-  if (match) {
-    return match[1] || match[0];
-  }
-  return null;
-}
 
