@@ -8179,3 +8179,143 @@ select optgroup {
   align-items: center;
   gap: 5px;
 }
+
+/* Update Ready Modal & Transition (Impeccable Design) */
+.update-ready-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: var(--bg-overlay, rgba(0, 0, 0, 0.65));
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 10000;
+  animation: fade-in 0.15s ease-out;
+}
+
+.update-ready-dialog {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  animation: pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.update-ready-icon-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+
+.update-ready-icon {
+  width: 26px;
+  height: 26px;
+  animation: bounce-slight 1.5s infinite ease-in-out;
+}
+
+@keyframes bounce-slight {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.update-ready-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+.update-ready-desc {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.update-ready-timer-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-surface);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.update-ready-timer-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 1s linear;
+  border-radius: 999px;
+}
+
+.update-ready-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.update-ready-actions button {
+  min-width: 130px;
+}
+
+/* Update Progress Bar in Settings */
+.update-progress-container {
+  width: 100%;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.update-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-hover);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.update-progress-indeterminate {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background: var(--accent);
+  border-radius: 999px;
+  animation: indeterminate-bar 1.2s cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+}
+
+@keyframes indeterminate-bar {
+  0% { left: -40%; width: 40%; }
+  50% { left: 40%; width: 50%; }
+  100% { left: 100%; width: 30%; }
+}
+
+.update-pending-banner {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}

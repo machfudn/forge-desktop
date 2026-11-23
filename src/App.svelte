@@ -132,6 +132,13 @@
   let inspectFileState = $state<{ path: string; mode: "blame" | "history" } | null>(null);
   let workspaceToolsTab = $state<"reflog" | "submodules" | "worktrees" | null>(null);
   let terminalOpen = $state(false);
+  let updateReadyState = $state<{
+    open: boolean;
+    version: string;
+    countdown: number;
+    timerId?: number;
+  } | null>(null);
+  let isUpdatePendingRestart = $state(false);
   let appHeaderHeight = $state(46);
   let appFooterHeight = $state(26);
   let sshSwitchModalState = $state<{
@@ -899,7 +906,8 @@
       activeModal === "stash" ||
       activeModal === "remote" ||
       activeModal === "reword" ||
-      activeModal === "rebase"
+      activeModal === "rebase" ||
+      activeModal === "settings"
         ? activeModal
         : null;
     confirmTitle = title;
@@ -2029,7 +2037,81 @@
     }
   }
 
+  function startRestartCountdown(version: string) {
+    if (updateReadyState?.timerId) {
+      clearInterval(updateReadyState.timerId);
+    }
+    let count = 5;
+    const timer = window.setInterval(() => {
+      count -= 1;
+      if (updateReadyState) {
+        updateReadyState.countdown = count;
+      }
+      if (count <= 0) {
+        clearInterval(timer);
+        void handleExecuteRestart();
+      }
+    }, 1000);
+
+    updateReadyState = {
+      open: true,
+      version: version || appUpdateInfo?.latest_version || "terbaru",
+      countdown: count,
+      timerId: timer,
+    };
+    isUpdatePendingRestart = true;
+  }
+
+  function handleCancelRestartCountdown() {
+    if (updateReadyState?.timerId) {
+      clearInterval(updateReadyState.timerId);
+    }
+    if (updateReadyState) {
+      updateReadyState.open = false;
+    }
+  }
+
+  async function handleExecuteRestart() {
+    if (updateReadyState?.timerId) {
+      clearInterval(updateReadyState.timerId);
+    }
+    if (updateReadyState) {
+      updateReadyState.open = false;
+    }
+    setStatus(t("app.status.installingUpdate"));
+    try {
+      await gitService.restartAppNow();
+    } catch {
+      // In case window closes
+    }
+  }
+
   async function handleInstallUpdate(
+    channelOverride?: UpdateChannel,
+    targetModeOverride?: TargetPackageMode
+  ) {
+    const hasActiveConflicts =
+      Boolean(currentStatus?.has_conflicts) ||
+      Boolean(currentStatus?.in_merge) ||
+      Boolean(currentStatus?.in_rebase) ||
+      Boolean(currentStatus?.in_bisect) ||
+      Boolean(conflictFilePath);
+    const hasActiveTerminal = terminalOpen;
+    if (hasActiveConflicts || hasActiveTerminal) {
+      requestConfirmation(
+        t("app.status.updateSafetyTitle"),
+        t("app.status.updateSafetyMessage"),
+        async () => {
+          await runInstallUpdateFlow(channelOverride, targetModeOverride);
+        },
+        true
+      );
+      return;
+    }
+    await runInstallUpdateFlow(channelOverride, targetModeOverride);
+  }
+
+  async function runInstallUpdateFlow(
     channelOverride?: UpdateChannel,
     targetModeOverride?: TargetPackageMode
   ) {
@@ -2039,8 +2121,11 @@
     updateError = "";
     try {
       setStatus(t("app.status.installingUpdate"));
-      const res = await gitService.installAppUpdate(targetChannel, targetMode);
+      const res = await gitService.installAppUpdate(targetChannel, targetMode, false);
       setStatus(res.message);
+      if (res.restart_pending) {
+        startRestartCountdown(appUpdateInfo?.latest_version || "");
+      }
     } catch (err) {
       const msg = String(err);
       updateError = msg;
@@ -4308,6 +4393,7 @@
     {targetPackageMode}
     {isCheckingUpdate}
     {isInstallingUpdate}
+    {isUpdatePendingRestart}
     {updateError}
     onClose={() => (activeModal = null)}
     onLoadRepo={loadRepo}
@@ -4318,6 +4404,7 @@
     onSaveSettings={handleSaveSettings}
     onCheckUpdates={handleCheckUpdates}
     onInstallUpdate={handleInstallUpdate}
+    onTriggerRestart={() => startRestartCountdown(appUpdateInfo?.latest_version || "")}
     onStatus={setStatus}
     onAccountsChanged={handleAccountsChanged}
     onCheckAccountHealth={checkAccountHealth}
@@ -4554,5 +4641,52 @@
   onPullRebase={handlePullRebaseFromDivergentModal}
   onPullMerge={handlePullMergeFromDivergentModal}
 />
+
+{#if updateReadyState?.open}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="update-ready-overlay" onclick={(e) => { if (e.target === e.currentTarget) handleCancelRestartCountdown(); }}>
+    <div class="update-ready-dialog" role="dialog" aria-modal="true" aria-labelledby="update-ready-title">
+      <div class="update-ready-icon-wrap">
+        <svg class="update-ready-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </div>
+
+      <h3 id="update-ready-title" class="update-ready-title">
+        {t("app.status.updateReadyTitle")}
+      </h3>
+
+      <p class="update-ready-desc">
+        {t("app.status.updateReadyDesc", {
+          version: updateReadyState.version || appUpdateInfo?.latest_version || "",
+          seconds: updateReadyState.countdown,
+        })}
+      </p>
+
+      <div class="update-ready-timer-bar">
+        <div class="update-ready-timer-fill" style={`width: ${(updateReadyState.countdown / 5) * 100}%`}></div>
+      </div>
+
+      <div class="update-ready-actions">
+        <button
+          type="button"
+          class="btn-primary"
+          onclick={handleExecuteRestart}
+        >
+          {t("app.status.restartNowBtn", { seconds: updateReadyState.countdown })}
+        </button>
+        <button
+          type="button"
+          class="btn-secondary"
+          onclick={handleCancelRestartCountdown}
+        >
+          {t("app.status.restartLaterBtn")}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <ContextMenu />

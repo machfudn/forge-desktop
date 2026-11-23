@@ -754,12 +754,18 @@ export async function checkAppUpdate(
 
 export async function installAppUpdate(
   channel?: UpdateChannel,
-  targetMode?: TargetPackageMode
+  targetMode?: TargetPackageMode,
+  autoExit?: boolean
 ): Promise<UpdateApplyResult> {
   return invoke<UpdateApplyResult>("install_app_update", {
     channel: channel ?? null,
     targetMode: targetMode ?? null,
+    autoExit: autoExit ?? false,
   });
+}
+
+export async function restartAppNow(): Promise<void> {
+  return invoke<void>("restart_app_now");
 }
 
 export async function stageHunk(

@@ -82,6 +82,8 @@
     targetPackageMode?: TargetPackageMode;
     isCheckingUpdate: boolean;
     isInstallingUpdate: boolean;
+    isUpdatePendingRestart?: boolean;
+    onTriggerRestart?: () => void;
     updateError: string;
     accountOverview: AccountOverview;
     activeRepoAccount: AccountProfile | null;
@@ -149,6 +151,8 @@
     targetPackageMode: initialTargetPackageMode = "auto",
     isCheckingUpdate,
     isInstallingUpdate,
+    isUpdatePendingRestart = false,
+    onTriggerRestart,
     updateError,
     accountOverview,
     activeRepoAccount,
@@ -3040,7 +3044,39 @@
                   </div>
                 </div>
                 {#if updateError}
-                  <div class="settings-status-box is-error">{updateError}</div>
+                  <div class="settings-status-box is-error" style="display: flex; flex-direction: column; gap: 6px;">
+                    <div>{updateError}</div>
+                    {#if appUpdateInfo?.html_url}
+                      <div style="display: flex; gap: 8px; margin-top: 2px;">
+                        <button type="button" class="link-btn" style="font-size: 11px;" onclick={() => openExternalUrl(appUpdateInfo!.html_url!)}>
+                          {t("wsModal.settings.openReleasesBtn")}
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+                {#if isUpdatePendingRestart}
+                  <div class="update-pending-banner">
+                    <div style="font-size: 12px; font-weight: 500; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                      <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);"></span>
+                      {t("wsModal.settings.updateReadyBanner")}
+                    </div>
+                    {#if onTriggerRestart}
+                      <button type="button" class="btn-primary btn-xs" onclick={onTriggerRestart}>
+                        {t("app.status.restartNowBtnSimple")}
+                      </button>
+                    {/if}
+                  </div>
+                {/if}
+                {#if isInstallingUpdate}
+                  <div class="update-progress-container">
+                    <div class="update-progress-track">
+                      <div class="update-progress-indeterminate"></div>
+                    </div>
+                    <div class="settings-hint" style="color: var(--accent); font-size: 11px;">
+                      {t("wsModal.settings.updateDownloadingHint")}
+                    </div>
+                  </div>
                 {/if}
                 {#if appUpdateInfo}
                   <div class="settings-status-box {appUpdateInfo.has_update ? 'is-accent' : 'is-success'}">
@@ -3104,11 +3140,11 @@
                       {/if}
                     {/if}
                     {#if appUpdateInfo.available_packages && appUpdateInfo.available_packages.length > 0}
-                      <div class="settings-available-packages" style="margin-top: 10px; display: flex; flex-direction: column; gap: 6px;">
-                        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">
-                          {t("wsModal.settings.availablePackagesHeader")}
-                        </div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                      <details class="settings-available-packages" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+                        <summary style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                          {t("wsModal.settings.availablePackagesHeader")} ({appUpdateInfo.available_packages.length})
+                        </summary>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
                           {#each appUpdateInfo.available_packages as pkg}
                             <div
                               class="settings-pkg-card {pkg.asset_name === appUpdateInfo.asset_name ? 'is-selected' : ''}"
@@ -3173,7 +3209,7 @@
                             </div>
                           {/each}
                         </div>
-                      </div>
+                      </details>
                     {/if}
                   </div>
                 {/if}
