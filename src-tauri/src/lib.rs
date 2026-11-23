@@ -126,6 +126,7 @@ pub fn run() {
             commands::check_app_update,
             commands::install_app_update,
             commands::restart_app_now,
+            commands::get_latest_update_log,
             commands::get_rebase_commits,
             commands::interactive_rebase,
             commands::get_all_rebase_commits,

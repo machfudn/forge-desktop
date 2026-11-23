@@ -768,6 +768,10 @@ export async function restartAppNow(): Promise<void> {
   return invoke<void>("restart_app_now");
 }
 
+export async function getLatestUpdateLog(): Promise<string | null> {
+  return invoke<string | null>("get_latest_update_log");
+}
+
 export async function stageHunk(
   repo: string,
   patchText: string,

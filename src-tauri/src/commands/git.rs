@@ -1001,6 +1001,11 @@ pub fn restart_app_now(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+pub fn get_latest_update_log() -> Option<String> {
+    updater::find_latest_update_log().map(|p| p.display().to_string())
+}
+
+#[tauri::command]
 pub async fn stage_hunk(
     repo: String,
     patch_text: String,

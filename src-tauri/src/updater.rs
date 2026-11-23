@@ -986,37 +986,101 @@ fn apply_windows_update(
   [string]$StageDir
 )
 $ErrorActionPreference = 'Stop'
+$logFile = Join-Path $StageDir "update.log"
+function Write-Log($msg) {
+  $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+  "[$ts] $msg" | Out-File -FilePath $logFile -Append -Encoding utf8 -ErrorAction SilentlyContinue
+}
+
+Write-Log "=== Forge Updater Script Started ==="
+Write-Log "TargetPid: $TargetPid | Mode: $Mode | CurrentExe: $CurrentExe"
+Write-Log "Payload: $PayloadPath | StageDir: $StageDir"
+
+Write-Log "Waiting for process $TargetPid to exit..."
 for ($i = 0; $i -lt 720; $i++) {
   if (-not (Get-Process -Id $TargetPid -ErrorAction SilentlyContinue)) { break }
   Start-Sleep -Milliseconds 250
 }
+Write-Log "Target process terminated (or wait elapsed). Adding grace period for file locks..."
+Start-Sleep -Milliseconds 600
+
 if ($Mode -eq 'portable') {
   $bak = "$CurrentExe.bak"
-  if (Test-Path -LiteralPath $bak) { Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue }
-  $movedOld = $false
-  try {
-    Move-Item -LiteralPath $CurrentExe -Destination $bak -Force
-    $movedOld = $true
-    Copy-Item -LiteralPath $PayloadPath -Destination $CurrentExe -Force
+  if (Test-Path -LiteralPath $bak) {
     Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
-  } catch {
-    if ($movedOld -and (Test-Path -LiteralPath $bak) -and -not (Test-Path -LiteralPath $CurrentExe)) {
+  }
+  
+  Write-Log "Attempting to move current executable to backup with retry..."
+  $movedOld = $false
+  for ($attempt = 1; $attempt -le 40; $attempt++) {
+    try {
+      Move-Item -LiteralPath $CurrentExe -Destination $bak -Force -ErrorAction Stop
+      $movedOld = $true
+      Write-Log "Moved old executable to $bak on attempt $attempt."
+      break
+    } catch {
+      Write-Log "Attempt $attempt moving old executable failed: $_. Waiting 250ms..."
+      Start-Sleep -Milliseconds 250
+    }
+  }
+
+  if (-not $movedOld) {
+    Write-Log "FATAL: Could not move current executable after 40 attempts. Aborting."
+    throw "Failed to move old executable (file may still be locked or access denied)."
+  }
+
+  Write-Log "Attempting to copy new payload to $CurrentExe with retry..."
+  $copiedNew = $false
+  for ($attempt = 1; $attempt -le 20; $attempt++) {
+    try {
+      Copy-Item -LiteralPath $PayloadPath -Destination $CurrentExe -Force -ErrorAction Stop
+      $copiedNew = $true
+      Write-Log "Copied new payload on attempt $attempt."
+      break
+    } catch {
+      Write-Log "Attempt $attempt copying new payload failed: $_. Waiting 250ms..."
+      Start-Sleep -Milliseconds 250
+    }
+  }
+
+  if (-not $copiedNew) {
+    Write-Log "FATAL: Copy failed. Rolling back old executable..."
+    if (Test-Path -LiteralPath $bak) {
       Move-Item -LiteralPath $bak -Destination $CurrentExe -Force -ErrorAction SilentlyContinue
     }
+    throw "Failed to copy new executable payload."
+  }
+
+  Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
+  Unblock-File -LiteralPath $CurrentExe -ErrorAction SilentlyContinue
+
+  $workDir = Split-Path -Parent $CurrentExe
+  Write-Log "Launching updated portable app: $CurrentExe in $workDir"
+  try {
+    Start-Process -FilePath $CurrentExe -WorkingDirectory $workDir -ErrorAction Stop
+    Write-Log "Application launched successfully."
+  } catch {
+    Write-Log "FATAL: Start-Process failed: $_"
     throw
   }
-  Start-Process -FilePath $CurrentExe
 } elseif ($Mode -eq 'msi') {
+  Write-Log "Launching msiexec for $PayloadPath"
   $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", $PayloadPath, "/passive", "/norestart") -Wait -PassThru
+  Write-Log "msiexec completed with exit code $($proc.ExitCode)"
   if ($proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $CurrentExe)) {
-    Start-Process -FilePath $CurrentExe
+    $workDir = Split-Path -Parent $CurrentExe
+    Start-Process -FilePath $CurrentExe -WorkingDirectory $workDir
   }
 } else {
+  Write-Log "Launching NSIS installer for $PayloadPath"
   $proc = Start-Process -FilePath $PayloadPath -ArgumentList @("/P", "/UPDATE") -Wait -PassThru
+  Write-Log "Installer completed with exit code $($proc.ExitCode)"
   if ($proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $CurrentExe)) {
-    Start-Process -FilePath $CurrentExe
+    $workDir = Split-Path -Parent $CurrentExe
+    Start-Process -FilePath $CurrentExe -WorkingDirectory $workDir
   }
 }
+Write-Log "Update sequence complete. Cleaning up staging directory..."
 Remove-Item -LiteralPath $StageDir -Recurse -Force -ErrorAction SilentlyContinue
 "#;
     fs::write(&script_path, script_body)
@@ -1323,22 +1387,34 @@ PID="$1"
 NEW_APP="$2"
 TARGET_APP="$3"
 STAGE_DIR="$4"
+LOG_FILE="${STAGE_DIR}/update.log"
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE" 2>/dev/null || true
+}
+log "=== Forge macOS Updater Started ==="
+log "TargetPid: $PID | TargetApp: $TARGET_APP | NewApp: $NEW_APP"
+log "Waiting for process $PID to exit..."
 i=0
 while kill -0 "$PID" 2>/dev/null && [ "$i" -lt 720 ]; do
   sleep 0.25
   i=$((i + 1))
 done
+log "Target process terminated. Swapping application bundle..."
 BAK="${TARGET_APP}.bak"
 rm -rf "$BAK"
 mv "$TARGET_APP" "$BAK"
 if mv "$NEW_APP" "$TARGET_APP"; then
+  log "Application bundle swapped successfully. Removing backup..."
   rm -rf "$BAK"
 else
+  log "FATAL: Failed to replace application bundle. Restoring backup..."
   mv "$BAK" "$TARGET_APP" || true
   exit 1
 fi
 xattr -dr com.apple.quarantine "$TARGET_APP" 2>/dev/null || true
+log "Launching updated application: $TARGET_APP"
 open -n "$TARGET_APP"
+log "Cleaning up staging directory: $STAGE_DIR"
 rm -rf "$STAGE_DIR"
 "#;
         fs::write(&helper, script)
@@ -1469,6 +1545,31 @@ pub fn download_and_install_update(
         let _ = fs::remove_dir_all(&stage_dir);
         Err("OS saat ini tidak mendukung pembaruan otomatis.".into())
     }
+}
+
+pub fn find_latest_update_log() -> Option<PathBuf> {
+    let temp = std::env::temp_dir();
+    let entries = fs::read_dir(&temp).ok()?;
+    let mut matching: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with("forge-desktop-update-") {
+                    let log = path.join("update.log");
+                    if log.exists() {
+                        if let Ok(meta) = fs::metadata(&log) {
+                            if let Ok(modified) = meta.modified() {
+                                matching.push((modified, log));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    matching.sort_by(|a, b| b.0.cmp(&a.0));
+    matching.into_iter().next().map(|(_, p)| p)
 }
 
 #[cfg(test)]
