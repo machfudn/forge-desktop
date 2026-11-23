@@ -189,17 +189,20 @@
   let initGitignore = $state("Node");
   let initLicense = $state("MIT");
   let initRemoteUrl = $state("");
+  let isInitializing = $state(false);
 
   // Clone modal states
   let cloneUrl = $state("");
   let cloneTarget = $state("");
   let cloneAccountId = $state("");
+  let isCloning = $state(false);
 
   // Publish modal states
   let publishName = $state("");
   let publishDesc = $state("");
   let publishPrivate = $state(false);
   let publishAccountId = $state("");
+  let isPublishing = $state(false);
 
   // Remote modal states
   let newRemoteName = $state("origin");
@@ -655,13 +658,19 @@
       inlineError = t("wsModal.clone.requiredFields");
       return;
     }
-    onClose();
+    isCloning = true;
+    inlineError = "";
     try {
       onStatus(t("wsModal.clone.cloningStatus", { url }));
       await gitService.cloneRepository(url, target, cloneAccountId || undefined);
       onStatus(t("wsModal.clone.cloneSuccess"));
+      await onLoadRepo(target);
+      onClose();
     } catch (err) {
+      inlineError = String(err);
       onStatus(String(err), true);
+    } finally {
+      isCloning = false;
     }
   }
 
@@ -671,7 +680,8 @@
       inlineError = t("wsModal.init.pathRequired");
       return;
     }
-    onClose();
+    isInitializing = true;
+    inlineError = "";
     try {
       onStatus(t("wsModal.init.initializingStatus", { path: target }));
       let giContent: string | undefined;
@@ -697,8 +707,12 @@
       }
       onStatus(remoteUrl ? t("wsModal.init.createdWithRemote") : t("wsModal.init.created"));
       await onLoadRepo(target);
+      onClose();
     } catch (err) {
+      inlineError = String(err);
       onStatus(String(err), true);
+    } finally {
+      isInitializing = false;
     }
   }
 
@@ -794,7 +808,8 @@
       inlineError = t("wsModal.publish.nameRequired");
       return;
     }
-    onClose();
+    isPublishing = true;
+    inlineError = "";
     const targetAcc = accountOverview.accounts.find((a) => a.id === publishAccountId);
     try {
       onStatus(t("wsModal.publish.publishingStatus", { name: publishName }));
@@ -810,8 +825,12 @@
       );
       onStatus(t("wsModal.publish.publishedStatus", { url: cloneUrlResult }));
       await onLoadRepo(activeRepo);
+      onClose();
     } catch (err) {
+      inlineError = String(err);
       onStatus(String(err), true);
+    } finally {
+      isPublishing = false;
     }
   }
 
@@ -3290,15 +3309,19 @@
           {t("common.open")}
         </button>
       {:else if modal === "init"}
-        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
-        <button type="button" class="btn-primary" onclick={handleInitRepo}>{t("wsModal.init.createBtn")}</button>
+        <button type="button" class="btn-secondary" onclick={onClose} disabled={isInitializing}>{t("common.cancel")}</button>
+        <button type="button" class="btn-primary" onclick={handleInitRepo} disabled={isInitializing || !initRepoPath.trim()}>
+          {isInitializing ? t("wsModal.init.initializingBtn") : t("wsModal.init.createBtn")}
+        </button>
       {:else if modal === "clone"}
-        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
-        <button type="button" class="btn-primary" onclick={handleClone}>{t("wsModal.clone.cloneBtn")}</button>
+        <button type="button" class="btn-secondary" onclick={onClose} disabled={isCloning}>{t("common.cancel")}</button>
+        <button type="button" class="btn-primary" onclick={handleClone} disabled={isCloning || !cloneUrl.trim() || !cloneTarget.trim()}>
+          {isCloning ? t("wsModal.clone.cloningBtn") : t("wsModal.clone.cloneBtn")}
+        </button>
       {:else if modal === "publish"}
-        <button type="button" class="btn-secondary" onclick={onClose}>{t("common.cancel")}</button>
-        <button type="button" class="btn-primary" disabled={!publishName.trim()} onclick={handlePublishSubmit}>
-          {t("wsModal.publish.publishBtn")}
+        <button type="button" class="btn-secondary" onclick={onClose} disabled={isPublishing}>{t("common.cancel")}</button>
+        <button type="button" class="btn-primary" disabled={isPublishing || !publishName.trim()} onclick={handlePublishSubmit}>
+          {isPublishing ? t("wsModal.publish.publishingBtn") : t("wsModal.publish.publishBtn")}
         </button>
       {:else if modal === "diag"}
         <button

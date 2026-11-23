@@ -28,6 +28,11 @@
       danger?: boolean
     ) => void;
     onPushError?: (err: string, branch: string) => boolean | Promise<boolean>;
+    onOperationError?: (
+      err: string,
+      operation: string,
+      retryAction?: () => Promise<void>
+    ) => boolean | Promise<boolean>;
   }
 
   let {
@@ -46,6 +51,7 @@
     onStatus,
     onRequestConfirm,
     onPushError,
+    onOperationError,
   }: Props = $props();
 
   let pushingBranch = $state<string | null>(null);
@@ -112,6 +118,7 @@
             await gitService.switchBranch(activeRepo, name);
             onStatus(t("branchModal.switchedWithStash", { name }));
             await onReloadRepo();
+            onClose();
           } catch (err) {
             onStatus(String(err), true);
           }
@@ -121,12 +128,24 @@
       return;
     }
 
-    onClose();
     try {
       await gitService.switchBranch(activeRepo, name);
       await onReloadRepo();
+      onClose();
     } catch (err) {
-      onStatus(String(err), true);
+      const errStr = String(err);
+      inlineError = errStr;
+      let handled = false;
+      if (onOperationError) {
+        handled = Boolean(
+          await onOperationError(errStr, "Switch Branch", () => handleSwitchBranch(name))
+        );
+      }
+      if (handled) {
+        onClose();
+      } else {
+        onStatus(errStr, true);
+      }
     }
   }
 
@@ -137,12 +156,13 @@
       return;
     }
     inlineError = "";
-    onClose();
     try {
       await gitService.createBranch(activeRepo, name);
       onStatus(t("branchModal.createdStatus", { name }));
       await onReloadRepo();
+      onClose();
     } catch (err) {
+      inlineError = String(err);
       onStatus(String(err), true);
     }
   }
@@ -202,8 +222,25 @@
           const res = await gitService.mergeBranch(activeRepo, targetName);
           onStatus(res || t("branchModal.mergedStatus"));
           await onReloadRepo();
+          onClose();
         } catch (err) {
-          onStatus(String(err), true);
+          const errStr = String(err);
+          let handled = false;
+          if (onOperationError) {
+            handled = Boolean(
+              await onOperationError(errStr, "Merge", async () => {
+                const r = await gitService.mergeBranch(activeRepo, targetName);
+                onStatus(r || t("branchModal.mergedStatus"));
+                await onReloadRepo();
+              })
+            );
+          }
+          if (handled) {
+            onClose();
+          } else {
+            inlineError = errStr;
+            onStatus(errStr, true);
+          }
         }
       },
       false
@@ -220,8 +257,25 @@
           const res = await gitService.rebaseBranch(activeRepo, targetName);
           onStatus(res || t("branchModal.rebasedStatus"));
           await onReloadRepo();
+          onClose();
         } catch (err) {
-          onStatus(String(err), true);
+          const errStr = String(err);
+          let handled = false;
+          if (onOperationError) {
+            handled = Boolean(
+              await onOperationError(errStr, "Rebase", async () => {
+                const r = await gitService.rebaseBranch(activeRepo, targetName);
+                onStatus(r || t("branchModal.rebasedStatus"));
+                await onReloadRepo();
+              })
+            );
+          }
+          if (handled) {
+            onClose();
+          } else {
+            inlineError = errStr;
+            onStatus(errStr, true);
+          }
         }
       },
       false
