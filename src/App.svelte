@@ -43,6 +43,7 @@
   import BisectWizardModal from "./components/BisectWizardModal.svelte";
   import AiAssistantModal from "./components/AiAssistantModal.svelte";
   import SshRemoteSwitchModal from "./components/SshRemoteSwitchModal.svelte";
+  import WorkflowScopeModal from "./components/WorkflowScopeModal.svelte";
   import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
   import ProviderIcon from "./components/ProviderIcon.svelte";
   import { joinRepoPath, openExternalUrl, pathBaseName } from "./utils/path";
@@ -50,6 +51,8 @@
     isSshConnectionError,
     isSshRemoteUrl,
     convertSshToHttps,
+    isWorkflowScopeError,
+    extractWorkflowFileName,
   } from "./utils/remoteUrl";
   import {
     copyTextToClipboard,
@@ -138,6 +141,18 @@
     currentUrl: "",
     suggestedUrl: "",
     errorMessage: "",
+  });
+  let workflowModalState = $state<{
+    open: boolean;
+    repo: string;
+    errorMessage: string;
+    workflowFile: string | null;
+    retryAction?: () => Promise<void>;
+  }>({
+    open: false,
+    repo: "",
+    errorMessage: "",
+    workflowFile: null,
   });
   let aiModalState = $state<{
     task: "custom_ask" | "explain_diff" | "explain_commit" | "review_changes";
@@ -1993,6 +2008,23 @@
     }
   }
 
+  function checkAndOpenWorkflowScopeModal(
+    errStr: string,
+    retryAction?: () => Promise<void>
+  ): boolean {
+    if (!activeRepo || !isWorkflowScopeError(errStr)) {
+      return false;
+    }
+    workflowModalState = {
+      open: true,
+      repo: activeRepo,
+      errorMessage: errStr,
+      workflowFile: extractWorkflowFileName(errStr),
+      retryAction,
+    };
+    return true;
+  }
+
   async function handleFetch() {
     if (!activeRepo) return;
     try {
@@ -2042,9 +2074,13 @@
       setStatus(res || t("app.status.pushDone"));
     } catch (err) {
       const errStr = String(err);
-      const opened = await checkAndOpenSshSwitchModal(errStr, handlePush);
-      if (!opened) {
-        setStatus(errStr, true);
+      if (checkAndOpenWorkflowScopeModal(errStr, handlePush)) {
+        setStatus(t("workflowModal.title"), true);
+      } else {
+        const opened = await checkAndOpenSshSwitchModal(errStr, handlePush);
+        if (!opened) {
+          setStatus(errStr, true);
+        }
       }
     } finally {
       isLoading = false;
@@ -2063,9 +2099,13 @@
         setStatus(res || t("app.status.forcePushDone"));
       } catch (err) {
         const errStr = String(err);
-        const opened = await checkAndOpenSshSwitchModal(errStr, execute);
-        if (!opened) {
-          setStatus(errStr, true);
+        if (checkAndOpenWorkflowScopeModal(errStr, execute)) {
+          setStatus(t("workflowModal.title"), true);
+        } else {
+          const opened = await checkAndOpenSshSwitchModal(errStr, execute);
+          if (!opened) {
+            setStatus(errStr, true);
+          }
         }
       } finally {
         isLoading = false;
@@ -3842,6 +3882,15 @@
     onReloadRepo={() => loadRepo(activeRepo)}
     onStatus={setStatus}
     onRequestConfirm={requestConfirmation}
+    onPushError={(errStr, branchName) => {
+      const opened = checkAndOpenWorkflowScopeModal(errStr, async () => {
+        await gitService.gitPush(activeRepo, undefined, branchName);
+      });
+      if (opened) {
+        setStatus(t("workflowModal.title"), true);
+      }
+      return opened;
+    }}
   />
 {/if}
 
@@ -4049,6 +4098,22 @@
       void sshSwitchModalState.retryAction();
     }
   }}
+/>
+
+<WorkflowScopeModal
+  open={workflowModalState.open}
+  repo={workflowModalState.repo}
+  errorMessage={workflowModalState.errorMessage}
+  workflowFile={workflowModalState.workflowFile}
+  accountLogin={activeRepoAccount?.login}
+  onClose={() => {
+    workflowModalState.open = false;
+  }}
+  onOpenAuth={() => {
+    workflowModalState.open = false;
+    activeModal = "auth";
+  }}
+  onRetry={workflowModalState.retryAction}
 />
 
 <ContextMenu />

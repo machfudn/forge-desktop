@@ -27,6 +27,7 @@
       action: () => Promise<void>,
       danger?: boolean
     ) => void;
+    onPushError?: (err: string, branch: string) => boolean | Promise<boolean>;
   }
 
   let {
@@ -44,6 +45,7 @@
     onReloadRepo,
     onStatus,
     onRequestConfirm,
+    onPushError,
   }: Props = $props();
 
   let pushingBranch = $state<string | null>(null);
@@ -237,7 +239,13 @@
       onStatus(res || t("branchModal.pushedStatus", { name }));
     } catch (err) {
       inlineError = String(err);
-      onStatus(t("branchModal.pushFailedStatus", { name, err: String(err) }), true);
+      let handled = false;
+      if (onPushError) {
+        handled = Boolean(await onPushError(inlineError, name));
+      }
+      if (!handled) {
+        onStatus(t("branchModal.pushFailedStatus", { name, err: String(err) }), true);
+      }
     } finally {
       pushingBranch = null;
     }

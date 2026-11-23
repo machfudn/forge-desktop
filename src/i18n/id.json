@@ -1395,5 +1395,25 @@
     "whySwitchDesc": "HTTPS menggunakan port web standar 443 yang selalu diizinkan di hampir semua jaringan, ISP, dan firewall kantor tanpa memerlukan konfigurasi SSH key yang rumit.",
     "switchToHttps": "Ganti ke HTTPS",
     "switchToSsh": "Ganti ke SSH"
+  },
+  "workflowModal": {
+    "title": "Izin Workflow GitHub Diperlukan",
+    "subtitle": "GitHub menolak push karena Personal Access Token (PAT) Anda belum memiliki izin 'workflow'.",
+    "explanation": "Branch yang Anda push membuat atau memodifikasi file GitHub Actions workflow di bawah folder .github/workflows/. GitHub mewajibkan Personal Access Token memiliki izin 'workflow' untuk alasan keamanan.",
+    "detectedFile": "File Workflow Terdeteksi:",
+    "stepsTitle": "Cara Menyelesaikan:",
+    "step1": "Buka GitHub Developer Settings ➔ Personal Access Tokens.",
+    "step2Classic": "Untuk Token Classic: Centang izin 'workflow' (Update GitHub Action workflows).",
+    "step2FineGrained": "Untuk Fine-grained Token: Di bagian Repository permissions, ubah 'Workflows' menjadi 'Read and write'.",
+    "step3": "Simpan di GitHub, lalu perbarui token di menu Akun Forge Desktop jika diperlukan.",
+    "openGithubTokens": "Buka Pengaturan Token GitHub",
+    "openAccounts": "Kelola Akun di Forge",
+    "retryPush": "Coba Push Lagi",
+    "retrying": "Mencoba push...",
+    "showRawLogs": "Lihat Pesan Error Asli",
+    "hideRawLogs": "Sembunyikan Pesan Error Asli",
+    "copyError": "Salin Log Error",
+    "copied": "Log Tersalin!",
+    "connectedAccount": "Akun terhubung: @{login}"
   }
 }

@@ -1416,5 +1416,25 @@
     "whySwitchDesc": "HTTPS uses standard web port 443 which is always allowed across nearly all networks, ISPs, and firewalls without requiring complex SSH key setup.",
     "switchToHttps": "Switch to HTTPS",
     "switchToSsh": "Switch to SSH"
+  },
+  "workflowModal": {
+    "title": "GitHub Workflow Scope Required",
+    "subtitle": "GitHub rejected the push because your Personal Access Token (PAT) lacks the 'workflow' scope.",
+    "explanation": "The branch you are pushing creates or modifies GitHub Actions workflow files under .github/workflows/. For security reasons, GitHub requires your Personal Access Token to have the 'workflow' scope.",
+    "detectedFile": "Detected Workflow File:",
+    "stepsTitle": "How to resolve this:",
+    "step1": "Go to GitHub Developer Settings ➔ Personal Access Tokens.",
+    "step2Classic": "For Classic Tokens: Check the 'workflow' scope (Update GitHub Action workflows).",
+    "step2FineGrained": "For Fine-grained Tokens: Under Repository permissions, set 'Workflows' to 'Read and write'.",
+    "step3": "Save changes on GitHub, then update your token in Forge Desktop's Accounts settings if needed.",
+    "openGithubTokens": "Open GitHub Token Settings",
+    "openAccounts": "Manage Accounts in Forge",
+    "retryPush": "Retry Push",
+    "retrying": "Retrying push...",
+    "showRawLogs": "Show Raw Error Message",
+    "hideRawLogs": "Hide Raw Error Message",
+    "copyError": "Copy Error Log",
+    "copied": "Copied!",
+    "connectedAccount": "Connected account: @{login}"
   }
 }
