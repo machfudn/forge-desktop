@@ -23,6 +23,9 @@ updates:
       npm-dependencies:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # 2. Rust & Tauri backend dependencies (src-tauri Cargo crates)
   - package-ecosystem: "cargo"
