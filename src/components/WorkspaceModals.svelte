@@ -236,15 +236,6 @@
       document.getElementById(`settings-tab-${nextId}`)?.focus();
     }
   }
-  function handleScrollBoundary(e: WheelEvent) {
-    const el = e.currentTarget as HTMLElement;
-    if (!el) return;
-    const isAtTop = el.scrollTop <= 0;
-    const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-    if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
-      e.preventDefault();
-    }
-  }
   // Settings local drafts
   let draftRepoConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
   let draftGlobalConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
@@ -1249,7 +1240,6 @@
 
     <div
       class="modal-body {modal === 'settings' ? 'settings-modal-body' : ''}"
-      onwheel={modal !== 'settings' ? handleScrollBoundary : undefined}
     >
       {#if modal === "open"}
         {@const q = openRepoFilter.trim().toLowerCase()}
@@ -2687,7 +2677,6 @@
             role="tabpanel"
             id="settings-panel-{settingsTab}"
             aria-labelledby="settings-tab-{settingsTab}"
-            onwheel={handleScrollBoundary}
           >
             {#if settingsTab === "git"}
               <div class="settings-panel-header">

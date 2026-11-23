@@ -6897,6 +6897,10 @@ select optgroup {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .repo-card {
