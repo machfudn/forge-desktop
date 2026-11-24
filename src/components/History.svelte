@@ -45,6 +45,7 @@
     onOpenInEditor?: (filePath: string) => void;
     onInspectFile?: (filePath: string, mode: "blame" | "history") => void;
     onAiExplainCommit?: (sha: string, summary: string) => void;
+    onBranchContextMenu?: (e: MouseEvent, branchName: string, isRemote: boolean) => void;
     onLoadMoreCommits?: () => void;
     hasMoreCommits?: boolean;
     onStatus?: (msg: string, isError?: boolean) => void;
@@ -83,6 +84,7 @@
     onOpenInEditor,
     onInspectFile,
     onAiExplainCommit,
+    onBranchContextMenu,
     onLoadMoreCommits,
     hasMoreCommits = false,
     onStatus,
@@ -1827,6 +1829,10 @@
                           ondragstart={(e) => {
                             e.stopPropagation();
                             handleCommitDragStart(e, commit, refItem.name);
+                          }}
+                          oncontextmenu={(e) => {
+                            e.stopPropagation();
+                            onBranchContextMenu?.(e, refItem.name, refItem.kind === "remote");
                           }}
                           title={refItem.name}
                         >

@@ -273,6 +273,7 @@
   let repoConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
   let globalConfig = $state<RepoConfig>({ user_name: "", user_email: "" });
   let isLoadingBranches = $state(false);
+  let branchModalInitialRename = $state<string | undefined>(undefined);
   let isLoadingDiag = $state(false);
   let isLoadingSettings = $state(false);
   let branchModalSeq = 0;
@@ -911,7 +912,8 @@
       activeModal === "remote" ||
       activeModal === "reword" ||
       activeModal === "rebase" ||
-      activeModal === "settings"
+      activeModal === "settings" ||
+      activeModal === "branch"
         ? activeModal
         : null;
     confirmTitle = title;
@@ -1791,8 +1793,9 @@
       });
   }
 
-  function openBranchModal() {
+  function openBranchModal(initialRename?: string | unknown) {
     if (!activeRepo) return;
+    branchModalInitialRename = typeof initialRename === "string" ? initialRename : undefined;
     const seq = ++branchModalSeq;
     const targetRepo = activeRepo;
     branchDivergenceMap = {};
@@ -2817,7 +2820,11 @@
     const items: ContextMenuItem[] = [
       {
         label: t("ctx.branch.manage"),
-        onSelect: openBranchModal,
+        onSelect: () => openBranchModal(),
+      },
+      {
+        label: t("ctx.branch.renameActive"),
+        onSelect: () => openBranchModal(branchName),
       },
       {
         label: t("ctx.branch.copyName"),
@@ -2880,6 +2887,113 @@
         onSelect: () => handleDeleteTag(tagName),
       },
     ]);
+  }
+
+  async function handleSwitchBranch(name: string) {
+    if (!activeRepo) return;
+    try {
+      setStatus(t("branchModal.switchingStatus", { name }));
+      await gitService.switchBranch(activeRepo, name);
+      await loadRepo(activeRepo);
+      commits = await gitService.getCommitHistory(activeRepo, commitHistoryLimit, allBranches);
+    } catch (err) {
+      setStatus(String(err), true);
+    }
+  }
+
+  function handleHistoryBranchContextMenu(
+    e: MouseEvent,
+    branchName: string,
+    isRemote: boolean
+  ) {
+    const isCurrent = currentStatus?.branch === branchName;
+    const items: ContextMenuItem[] = [];
+
+    if (!isCurrent) {
+      items.push({
+        label: t("ctx.branch.switchTo"),
+        onSelect: () => {
+          void handleSwitchBranch(branchName);
+        },
+      });
+    }
+
+    items.push({
+      label: isCurrent ? t("ctx.branch.renameActive") : t("ctx.branch.rename"),
+      onSelect: () => {
+        openBranchModal(branchName);
+      },
+    });
+
+    items.push({
+      label: t("ctx.branch.copyName"),
+      onSelect: () => {
+        void copyTextToClipboard(
+          branchName,
+          setStatus,
+          t("ctx.status.copiedBranch", { branch: branchName })
+        );
+      },
+    });
+
+    items.push({ type: "divider" });
+
+    if (isRemote) {
+      items.push({
+        label: t("ctx.branch.deleteRemote"),
+        danger: true,
+        onSelect: () => {
+          requestConfirmation(
+            t("branchModal.deleteRemoteTitle"),
+            t("branchModal.deleteRemoteMsg", { name: branchName }),
+            async () => {
+              try {
+                setStatus(t("branchModal.deletingRemoteStatus", { name: branchName }));
+                await gitService.deleteRemoteBranch(activeRepo, branchName);
+                await loadRepo(activeRepo);
+                commits = await gitService.getCommitHistory(activeRepo, commitHistoryLimit, allBranches);
+                setStatus(t("branchModal.deletedRemoteStatus", { name: branchName }));
+              } catch (err) {
+                setStatus(String(err), true);
+              }
+            },
+            true
+          );
+        },
+      });
+    } else {
+      items.push({
+        label: t("ctx.branch.delete"),
+        danger: !isCurrent,
+        disabled: isCurrent,
+        onSelect: () => {
+          if (isCurrent) return;
+          const targetBranch = branches.find((b) => b.name === branchName);
+          const hasRemoteTracking = hasRemote && targetBranch && (targetBranch.upstream || targetBranch.is_pushed);
+          const confirmMsg = hasRemoteTracking
+            ? `${t("branchModal.deleteMsg", { name: branchName })} (${t("branchModal.deleteBtnTitle")})`
+            : t("branchModal.deleteMsg", { name: branchName });
+
+          requestConfirmation(
+            t("branchModal.deleteTitle"),
+            confirmMsg,
+            async () => {
+              try {
+                await gitService.deleteBranch(activeRepo, branchName, true);
+                await loadRepo(activeRepo);
+                commits = await gitService.getCommitHistory(activeRepo, commitHistoryLimit, allBranches);
+                setStatus(t("branchModal.deletedStatus", { name: branchName }));
+              } catch (err) {
+                setStatus(String(err), true);
+              }
+            },
+            true
+          );
+        },
+      });
+    }
+
+    openContextMenu(e, items);
   }
 
   async function openInTerminal() {
@@ -4323,7 +4437,7 @@
       {/if}
       {#if activeView === "history"}
         <section class="content-panel is-full-width">
-          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onRenameTag={handleOpenRenameTag} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onLoadMoreCommits={handleLoadMoreCommits} {hasMoreCommits} />
+          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} onBranchContextMenu={handleHistoryBranchContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onRenameTag={handleOpenRenameTag} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onLoadMoreCommits={handleLoadMoreCommits} {hasMoreCommits} />
         </section>
       {/if}
     </main>
@@ -4391,12 +4505,16 @@
     bind:branches
     {branchDivergenceMap}
     {isLoadingBranches}
+    initialRenameBranch={branchModalInitialRename}
     onInspectBranch={inspectBranchDivergence}
     hasDirtyFiles={currentStatus.files.length > 0}
     dirtyFileCount={currentStatus.files.length}
     {hasRemote}
     hasCommits={currentStatus.has_commits}
-    onClose={() => (activeModal = null)}
+    onClose={() => {
+      activeModal = null;
+      branchModalInitialRename = undefined;
+    }}
     onReloadRepo={() => loadRepo(activeRepo)}
     onStatus={setStatus}
     onRequestConfirm={requestConfirmation}

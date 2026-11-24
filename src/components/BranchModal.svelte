@@ -18,6 +18,7 @@
     dirtyFileCount: number;
     hasRemote: boolean;
     hasCommits: boolean;
+    initialRenameBranch?: string;
     onClose: () => void;
     onReloadRepo: () => Promise<void>;
     onStatus: (msg: string, isError?: boolean) => void;
@@ -46,6 +47,7 @@
     dirtyFileCount,
     hasRemote,
     hasCommits,
+    initialRenameBranch,
     onClose,
     onReloadRepo,
     onStatus,
@@ -59,9 +61,22 @@
   let newBranchName = $state("");
   let branchToRename = $state<string | null>(null);
   let renameBranchInput = $state("");
+  let alsoRenameOnRemote = $state(false);
+  let branchToDelete = $state<BranchInfo | null>(null);
+  let alsoDeleteOnRemote = $state(false);
+  let hoveredBranchName = $state<string | null>(null);
+  let focusedBranchName = $state<string | null>(null);
   let inlineError = $state("");
   let branchFilterTab = $state<"all" | "local" | "remote">("all");
   let isFetchingBranches = $state(false);
+
+  let renameTargetBranch = $derived(branches.find((b) => b.name === branchToRename));
+
+  $effect(() => {
+    if (initialRenameBranch && !branchToRename) {
+      handleStartRename(initialRenameBranch);
+    }
+  });
 
   let localBranches = $derived(branches.filter((b) => !b.is_remote));
   let remoteBranches = $derived(branches.filter((b) => Boolean(b.is_remote)));
@@ -167,48 +182,106 @@
     }
   }
 
-  function handleDeleteBranch(name: string, isCurrent: boolean) {
-    if (isCurrent) {
-      inlineError = t("branchModal.deleteCurrentError");
+  function promptDeleteBranch(b: BranchInfo) {
+    if (b.is_current) {
+      inlineError = t("branchModal.cannotDeleteCurrentTooltip");
       return;
     }
-    onRequestConfirm(
-      t("branchModal.deleteTitle"),
-      t("branchModal.deleteMsg", { name }),
-      async () => {
-        try {
-          await gitService.deleteBranch(activeRepo, name, true);
-          branches = await gitService.listBranches(activeRepo);
-          onStatus(t("branchModal.deletedStatus", { name }));
-        } catch (err) {
-          onStatus(String(err), true);
+    inlineError = "";
+    branchToRename = null;
+    branchToDelete = b;
+    alsoDeleteOnRemote = false;
+  }
+
+  async function handleExecuteDelete() {
+    if (!branchToDelete) return;
+    const target = branchToDelete;
+    const deletedName = target.name;
+    branchToDelete = null;
+    inlineError = "";
+
+    // Optimistic UI update: instantly remove from list (0ms latency)
+    branches = branches.filter((b) => b.name !== deletedName);
+
+    try {
+      if (target.is_remote) {
+        onStatus(t("branchModal.deletingRemoteStatus", { name: target.name }));
+        await gitService.deleteRemoteBranch(activeRepo, target.name, target.remote_name || undefined);
+        branches = await gitService.listBranches(activeRepo);
+        await onReloadRepo();
+        onStatus(t("branchModal.deletedRemoteStatus", { name: target.name }));
+      } else {
+        await gitService.deleteBranch(activeRepo, target.name, true);
+        if (alsoDeleteOnRemote && hasRemote && (target.upstream || target.is_pushed)) {
+          const rem = target.upstream?.split("/")[0] || "origin";
+          if (!target.upstream_gone) {
+            try {
+              onStatus(t("branchModal.deletingRemoteStatus", { name: target.name }));
+              await gitService.deleteRemoteBranch(activeRepo, target.name, rem);
+            } catch (rErr) {
+              onStatus(String(rErr), true);
+            }
+          }
         }
-      },
-      true
-    );
+        branches = await gitService.listBranches(activeRepo);
+        await onReloadRepo();
+        onStatus(t("branchModal.deletedStatus", { name: target.name }));
+      }
+    } catch (err) {
+      // Rollback on unexpected error
+      branches = await gitService.listBranches(activeRepo);
+      inlineError = String(err);
+      onStatus(String(err), true);
+    }
   }
 
   function handleStartRename(name: string) {
     branchToRename = name;
     renameBranchInput = name;
+    alsoRenameOnRemote = false;
+    branchToDelete = null;
     inlineError = "";
   }
 
   async function handleConfirmRename() {
     if (!branchToRename) return;
+    const oldName = branchToRename;
     const newName = renameBranchInput.trim();
-    if (!newName || newName === branchToRename) {
+    if (!newName || newName === oldName) {
       branchToRename = null;
       return;
     }
+    const targetBranch = branches.find((b) => b.name === oldName);
+    const syncRemote = alsoRenameOnRemote && hasRemote && targetBranch && (targetBranch.upstream || targetBranch.is_pushed);
+    const remoteTarget = targetBranch?.upstream?.split("/")[0] || "origin";
+    const wasUpstreamGone = targetBranch?.upstream_gone ?? false;
+
+    // Optimistic UI update: instantly rename in branches list (0ms latency)
+    branches = branches.map((b) => (b.name === oldName ? { ...b, name: newName } : b));
+    branchToRename = null;
+    inlineError = "";
+
     try {
-      await gitService.renameBranch(activeRepo, branchToRename, newName);
-      branchToRename = null;
+      await gitService.renameBranch(activeRepo, oldName, newName);
+      if (syncRemote) {
+        onStatus(t("branchModal.renamingRemoteStatus", { name: newName }));
+        if (!wasUpstreamGone) {
+          try {
+            await gitService.deleteRemoteBranch(activeRepo, oldName, remoteTarget);
+          } catch (remoteErr) {
+            onStatus(String(remoteErr), true);
+          }
+        }
+        await gitService.gitPush(activeRepo, remoteTarget, newName);
+      }
       branches = await gitService.listBranches(activeRepo);
       await onReloadRepo();
       onStatus(t("branchModal.renamedStatus", { name: newName }));
     } catch (err) {
+      // Rollback on unexpected error
+      branches = await gitService.listBranches(activeRepo);
       inlineError = String(err);
+      onStatus(String(err), true);
     }
   }
 
@@ -308,6 +381,33 @@
   function openBranchContextMenu(e: MouseEvent, b: BranchInfo) {
     const items: ContextMenuItem[] = [];
 
+    if (b.is_remote) {
+      items.push({
+        label: t("ctx.branch.switchTo"),
+        onSelect: () => {
+          void handleSwitchBranch(b.name);
+        },
+      });
+      items.push({
+        label: t("ctx.branch.copyName"),
+        onSelect: () => {
+          void copyTextToClipboard(
+            b.name,
+            onStatus,
+            t("ctx.status.copiedBranch", { branch: b.name })
+          );
+        },
+      });
+      items.push({ type: "divider" });
+      items.push({
+        label: t("ctx.branch.deleteRemote"),
+        danger: true,
+        onSelect: () => promptDeleteBranch(b),
+      });
+      openContextMenu(e, items);
+      return;
+    }
+
     if (!b.is_current) {
       items.push({
         label: t("ctx.branch.switchTo"),
@@ -340,12 +440,10 @@
     }
 
     items.push({ type: "divider" });
-    if (!b.is_current) {
-      items.push({
-        label: t("ctx.branch.rename"),
-        onSelect: () => handleStartRename(b.name),
-      });
-    }
+    items.push({
+      label: b.is_current ? t("ctx.branch.renameActive") : t("ctx.branch.rename"),
+      onSelect: () => handleStartRename(b.name),
+    });
     items.push({
       label: t("ctx.branch.copyName"),
       onSelect: () => {
@@ -356,13 +454,14 @@
         );
       },
     });
-    if (!b.is_current) {
-      items.push({
-        label: t("ctx.branch.delete"),
-        danger: true,
-        onSelect: () => handleDeleteBranch(b.name, b.is_current),
-      });
-    }
+    items.push({
+      label: t("ctx.branch.delete"),
+      danger: !b.is_current,
+      disabled: b.is_current,
+      onSelect: () => {
+        if (!b.is_current) promptDeleteBranch(b);
+      },
+    });
 
     openContextMenu(e, items);
   }
@@ -465,23 +564,56 @@
         </div>
       {/if}
 
+      {#if branchToDelete}
+        <div style="display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg-subtle); border-radius: var(--radius-sm); border: 1px solid var(--danger-border);">
+          <div style="font-size: 12px; font-weight: 600; color: var(--danger-text);">
+            {branchToDelete.is_remote ? t("branchModal.deleteRemoteTitle") : t("branchModal.deleteTitle")}
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">
+            {branchToDelete.is_remote
+              ? t("branchModal.deleteRemoteMsg", { name: branchToDelete.name })
+              : t("branchModal.deleteMsg", { name: branchToDelete.name })}
+          </div>
+          {#if !branchToDelete.is_remote && hasRemote && (branchToDelete.upstream || branchToDelete.is_pushed)}
+            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-primary);">
+              <input type="checkbox" bind:checked={alsoDeleteOnRemote} />
+              <span>{t("branchModal.alsoDeleteRemoteCheckbox", { upstream: branchToDelete.upstream || branchToDelete.name })}</span>
+            </label>
+          {/if}
+          <div style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px;">
+            <button type="button" onclick={() => (branchToDelete = null)} class="btn-secondary btn-xs">{t("common.cancel")}</button>
+            <button type="button" onclick={handleExecuteDelete} class="btn-primary btn-xs btn-danger">{t("common.delete")}</button>
+          </div>
+        </div>
+      {/if}
+
       {#if branchToRename}
-        <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--bg-subtle); border-radius: var(--radius-sm); align-items: center;">
-          <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
+        <div style="display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg-subtle); border-radius: var(--radius-sm); border: 1px solid var(--border-default);">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
             {t("branchModal.renameLabel", { name: branchToRename })}
-          </span>
-          <input
-            type="text"
-            class="form-input"
-            aria-label={t("branchModal.renameAria")}
-            bind:value={renameBranchInput}
-            style="flex: 1 1 140px; font-size: 11px;"
-            onkeydown={(e) => {
-              if (e.key === "Enter") handleConfirmRename();
-            }}
-          />
-          <button type="button" onclick={handleConfirmRename} class="btn-primary btn-xs">{t("common.save")}</button>
-          <button type="button" onclick={() => (branchToRename = null)} class="btn-secondary btn-xs">{t("common.cancel")}</button>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <input
+              type="text"
+              class="form-input"
+              aria-label={t("branchModal.renameAria")}
+              bind:value={renameBranchInput}
+              style="flex: 1; font-size: 11px;"
+              onkeydown={(e) => {
+                if (e.key === "Enter") handleConfirmRename();
+              }}
+            />
+          </div>
+          {#if renameTargetBranch && hasRemote && (renameTargetBranch.upstream || renameTargetBranch.is_pushed)}
+            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-secondary);">
+              <input type="checkbox" bind:checked={alsoRenameOnRemote} />
+              <span>{t("branchModal.alsoRenameRemoteCheckbox", { upstream: renameTargetBranch.upstream || renameTargetBranch.name })}</span>
+            </label>
+          {/if}
+          <div style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px;">
+            <button type="button" onclick={() => (branchToRename = null)} class="btn-secondary btn-xs">{t("common.cancel")}</button>
+            <button type="button" onclick={handleConfirmRename} class="btn-primary btn-xs">{t("common.save")}</button>
+          </div>
         </div>
       {/if}
 
@@ -499,16 +631,31 @@
         {:else}
           {#each filteredBranches as b (b.name)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="list-row {b.is_current ? 'is-active' : ''}" oncontextmenu={(e) => { if (!b.is_remote) openBranchContextMenu(e, b); }}>
+            <div
+              class="list-row {b.is_current ? 'is-active' : ''}"
+              oncontextmenu={(e) => openBranchContextMenu(e, b)}
+              onmouseenter={() => {
+                hoveredBranchName = b.name;
+                if (!b.is_current) onInspectBranch?.(b.name);
+              }}
+              onmouseleave={() => {
+                if (hoveredBranchName === b.name) {
+                  hoveredBranchName = null;
+                }
+              }}
+            >
               <button
                 type="button"
                 onclick={() => handleSwitchBranch(b.name)}
                 title={b.is_remote ? t("branchModal.checkoutRemoteTitle", { name: b.name }) : undefined}
-                onmouseenter={() => {
+                onfocus={() => {
+                  focusedBranchName = b.name;
                   if (!b.is_current) onInspectBranch?.(b.name);
                 }}
-                onfocus={() => {
-                  if (!b.is_current) onInspectBranch?.(b.name);
+                onblur={() => {
+                  if (focusedBranchName === b.name) {
+                    focusedBranchName = null;
+                  }
                 }}
                 style="flex: 1; min-width: 0; text-align: left; display: flex; align-items: center; gap: 6px;"
               >
@@ -549,7 +696,7 @@
                     </span>
                   {/if}
                 {/if}
-                {#if !b.is_current && branchDivergenceMap[b.name]}
+                {#if !b.is_current && (hoveredBranchName === b.name || focusedBranchName === b.name) && branchDivergenceMap[b.name]}
                   {@const div = branchDivergenceMap[b.name]}
                   {#if div.ahead > 0 || div.behind > 0}
                     <span class="tabular-nums" style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); display: inline-flex; gap: 4px; flex-shrink: 0;" title={t("branchModal.divergenceTitle", { branch: formatBranchDisplay(currentBranch) })}>
@@ -581,14 +728,37 @@
                   <button type="button" onclick={() => handleRebase(b.name)} class="btn-secondary btn-xs" title={t("branchModal.rebaseTitle")}>
                     {t("branchModal.rebaseBtn")}
                   </button>
-                  {#if !b.is_remote}
-                    <button type="button" onclick={() => handleStartRename(b.name)} class="btn-secondary btn-xs" title={t("branchModal.renameTitle")}>
-                      {t("branchModal.renameBtn")}
-                    </button>
-                    <button type="button" onclick={() => handleDeleteBranch(b.name, b.is_current)} class="btn-secondary btn-xs btn-danger branch-delete-btn" title={t("branchModal.deleteBtnTitle")}>
-                      {t("branchModal.deleteBtn")}
-                    </button>
-                  {/if}
+                {/if}
+                {#if !b.is_remote}
+                  <button
+                    type="button"
+                    onclick={() => handleStartRename(b.name)}
+                    class="btn-secondary btn-xs"
+                    title={t("branchModal.renameTitle")}
+                  >
+                    {t("branchModal.renameBtn")}
+                  </button>
+                  <button
+                    type="button"
+                    onclick={() => {
+                      if (!b.is_current) promptDeleteBranch(b);
+                    }}
+                    disabled={b.is_current}
+                    class="btn-secondary btn-xs btn-danger branch-delete-btn"
+                    style={b.is_current ? "opacity: 0.45; cursor: not-allowed;" : ""}
+                    title={b.is_current ? t("branchModal.cannotDeleteCurrentTooltip") : t("branchModal.deleteBtnTitle")}
+                  >
+                    {t("branchModal.deleteBtn")}
+                  </button>
+                {:else}
+                  <button
+                    type="button"
+                    onclick={() => promptDeleteBranch(b)}
+                    class="btn-secondary btn-xs btn-danger branch-delete-btn"
+                    title={t("branchModal.deleteRemoteBtnTitle")}
+                  >
+                    {t("branchModal.deleteRemoteBtn")}
+                  </button>
                 {/if}
               </div>
             </div>
