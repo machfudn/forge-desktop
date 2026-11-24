@@ -237,6 +237,14 @@ export async function deleteBranch(
   return invoke<string>("delete_branch", { repo, branchName, force });
 }
 
+export async function deleteRemoteBranch(
+  repo: string,
+  branchName: string,
+  remote?: string
+): Promise<string> {
+  return invoke<string>("delete_remote_branch", { repo, remote, branchName });
+}
+
 export async function renameBranch(
   repo: string,
   oldName: string,
