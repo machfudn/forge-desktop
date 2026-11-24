@@ -555,12 +555,33 @@
   }
 
   let safeDiffText = $derived(diffText ?? "");
-  let lines = $derived(parseLines(safeDiffText, filePath));
-  let splitRows = $derived(parseSplit(safeDiffText, filePath));
-  let isVeryLargeDiff = $derived(lines.length > 2500);
-  let stats = $derived({
-    adds: lines.filter((l) => l.kind === "add").length,
-    dels: lines.filter((l) => l.kind === "del").length,
+  let rawLineCount = $derived(safeDiffText ? (safeDiffText.match(/\n/g)?.length ?? 0) + 1 : 0);
+  let isVeryLargeDiff = $derived(rawLineCount > 2500);
+  let lines = $derived(
+    isVeryLargeDiff && !forceRenderLargeDiff
+      ? []
+      : parseLines(safeDiffText, filePath)
+  );
+  let splitRows = $derived(
+    viewMode === "split" && (!isVeryLargeDiff || forceRenderLargeDiff)
+      ? parseSplit(safeDiffText, filePath)
+      : []
+  );
+  let stats = $derived.by(() => {
+    if (isVeryLargeDiff && !forceRenderLargeDiff) {
+      let adds = 0;
+      let dels = 0;
+      const raw = safeDiffText.split("\n");
+      for (const l of raw) {
+        if (l.startsWith("+") && !l.startsWith("+++")) adds++;
+        else if (l.startsWith("-") && !l.startsWith("---")) dels++;
+      }
+      return { adds, dels };
+    }
+    return {
+      adds: lines.filter((l) => l.kind === "add").length,
+      dels: lines.filter((l) => l.kind === "del").length,
+    };
   });
 
   let selectedLineMap = $state<Record<string, true>>({});
@@ -601,9 +622,13 @@
       bucket.indices.push(item.bodyIdx);
       byHunk.set(item.hunkKey!, bucket);
     }
-    selectedLineMap = {};
-    for (const { patch, indices } of byHunk.values()) {
-      await onStageLines(patch, indices, isStaged);
+    try {
+      for (const { patch, indices } of byHunk.values()) {
+        await onStageLines(patch, indices, isStaged);
+      }
+      selectedLineMap = {};
+    } catch (err) {
+      if (onStatus) onStatus(String(err), true);
     }
   }
 
@@ -617,9 +642,13 @@
       bucket.indices.push(item.bodyIdx);
       byHunk.set(item.hunkKey!, bucket);
     }
-    selectedLineMap = {};
-    for (const { patch, indices } of byHunk.values()) {
-      await onDiscardLines(patch, indices);
+    try {
+      for (const { patch, indices } of byHunk.values()) {
+        await onDiscardLines(patch, indices);
+      }
+      selectedLineMap = {};
+    } catch (err) {
+      if (onStatus) onStatus(String(err), true);
     }
   }
   function openDiffContextMenu(e: MouseEvent) {
@@ -913,7 +942,7 @@
   {:else if isVeryLargeDiff && !forceRenderLargeDiff}
     <div class="empty-state" style="padding: 24px 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center;">
       <span style="font-weight: 600; color: var(--text-primary); font-size: 13px;">
-        {t("diff.largeDiffWarning", { count: lines.length })}
+        {t("diff.largeDiffWarning", { count: rawLineCount || lines.length })}
       </span>
       <button type="button" class="btn-primary btn-sm" onclick={() => (forceRenderLargeDiff = true)}>
         {t("diff.loadAnywayBtn")}
