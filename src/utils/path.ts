@@ -1,5 +1,6 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { t } from "../i18n/index.svelte";
 
 export function pathBaseName(rawPath: string): string {
   const cleaned = rawPath.replace(/[\\/]+$/, "");
@@ -46,7 +47,7 @@ export async function pickDirectory(options?: {
   canCreateDirectories?: boolean;
 }): Promise<string | null> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-    throw new Error("Pemilih folder native hanya tersedia di aplikasi desktop Tauri.");
+    throw new Error(t("common.tauriPickerFolder"));
   }
   const selected = await openDialog({
     directory: true,
@@ -63,7 +64,7 @@ export async function pickFile(options?: {
   defaultPath?: string;
 }): Promise<string | null> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-    throw new Error("Pemilih file native hanya tersedia di aplikasi desktop Tauri.");
+    throw new Error(t("common.tauriPickerFile"));
   }
   const selected = await openDialog({
     directory: false,

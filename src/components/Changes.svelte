@@ -707,7 +707,7 @@
     <span class="commit-box-count">{stagedCount}/{totalCount}</span>
   </div>
 
-  <div class="commit-box-toolbar" aria-label="Commit options">
+  <div class="commit-box-toolbar" aria-label={t("changes.commitToolbarAria")}>
     <button
       type="button"
       class="link-btn {showDescription ? 'is-active' : ''}"

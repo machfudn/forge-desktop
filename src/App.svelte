@@ -2063,7 +2063,7 @@
 
     updateReadyState = {
       open: true,
-      version: version || appUpdateInfo?.latest_version || "terbaru",
+      version: version || appUpdateInfo?.latest_version || t("app.status.latestVersionFallback"),
       countdown: count,
       timerId: timer,
     };
@@ -3215,13 +3215,13 @@
     activeTheme = theme;
     localStorage.setItem("forge_theme", theme);
     applyTheme(theme);
-    setStatus(`Theme: ${theme}`);
+    setStatus(t("app.status.themeChanged", { theme }));
   }
 
   function switchLocale(loc: Locale) {
     activeLocale = loc;
     setLocale(loc);
-    setStatus(`Language: ${loc === "id" ? "Bahasa Indonesia" : "English"}`);
+    setStatus(t("app.status.languageChanged", { lang: loc === "id" ? "Bahasa Indonesia" : "English" }));
   }
 
   async function handleQuickStash() {
@@ -3243,7 +3243,7 @@
     if (!activeRepo) return;
     try {
       isLoading = true;
-      setStatus("Applying stash...");
+      setStatus(t("wsModal.stash.applyingStatus"));
       await gitService.gitStashPop(activeRepo);
       await loadRepo(activeRepo);
       setStatus(t("wsModal.stash.poppedStatus"));
@@ -3493,7 +3493,7 @@
             keywords: ["copy", "sha", shortSha, c.sha],
             action: async () => {
               await navigator.clipboard.writeText(c.sha);
-              setStatus(`Copied commit SHA ${shortSha} to clipboard`);
+              setStatus(t("palette.copiedCommitSha", { sha: shortSha }));
             },
           },
           {
@@ -4801,7 +4801,7 @@
         type="button"
         class="whats-new-toast-close"
         onclick={() => { whatsNewToastState = null; }}
-        aria-label="Close"
+        aria-label={t("common.close")}
       >
         ✕
       </button>
