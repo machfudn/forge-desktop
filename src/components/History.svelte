@@ -49,6 +49,7 @@
     onBranchContextMenu?: (e: MouseEvent, branchName: string, isRemote: boolean) => void;
     onLoadMoreCommits?: () => void;
     hasMoreCommits?: boolean;
+    onCompare?: (baseRef?: string, targetRef?: string) => void;
     onStatus?: (msg: string, isError?: boolean) => void;
   }
 
@@ -88,8 +89,10 @@
     onBranchContextMenu,
     onLoadMoreCommits,
     hasMoreCommits = false,
+    onCompare,
     onStatus,
   }: Props = $props();
+  let compareBaseCommit = $state<string | null>(null);
   let selectedSha = $state<string | null>(null);
   let selectedDetail = $state<CommitDetail | null>(null);
   let detailLoading = $state(false);
@@ -969,6 +972,29 @@
         onSelect: () => onInteractiveRebase(commit.sha),
       });
     }
+    if (onCompare) {
+      items.push({
+        label: t("ctx.history.compareWithHead"),
+        onSelect: () => onCompare(commit.sha, "HEAD"),
+      });
+      if (compareBaseCommit && compareBaseCommit !== commit.sha) {
+        items.push({
+          label: t("ctx.history.compareWithSelected", { ref: compareBaseCommit.substring(0, 7) }),
+          onSelect: () => onCompare(compareBaseCommit!, commit.sha),
+        });
+      }
+      items.push({
+        label: t("ctx.history.selectForCompare"),
+        onSelect: () => {
+          compareBaseCommit = commit.sha;
+          onStatus?.(`${t("ctx.history.selectForCompare")}: ${commit.short_sha}`);
+        },
+      });
+      items.push({
+        label: t("ctx.history.compareWith"),
+        onSelect: () => onCompare(commit.sha, undefined),
+      });
+    }
 
     items.push({ type: "divider" });
     items.push({
@@ -1464,6 +1490,22 @@
               <path d="M11 6v2a3 3 0 0 1-3 3" />
             </svg>
             <span>{t("app.historySidebar.interactiveRebase")}</span>
+          </button>
+        {/if}
+
+        {#if onCompare}
+          <button
+            type="button"
+            class="btn-secondary btn-xs"
+            onclick={() => onCompare()}
+            title={t("history.compareBtnTitle")}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="5" cy="5" r="2.5" />
+              <circle cx="11" cy="11" r="2.5" />
+              <path d="M5 7.5v3a2 2 0 0 0 2 2h1.5" />
+            </svg>
+            <span>{t("history.compareBtn")}</span>
           </button>
         {/if}
 

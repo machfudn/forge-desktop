@@ -34,6 +34,7 @@
       operation: string,
       retryAction?: () => Promise<void>
     ) => boolean | Promise<boolean>;
+    onCompare?: (baseRef: string, targetRef: string) => void;
   }
 
   let {
@@ -54,6 +55,7 @@
     onRequestConfirm,
     onPushError,
     onOperationError,
+    onCompare,
   }: Props = $props();
 
   let pushingBranch = $state<string | null>(null);
@@ -437,6 +439,15 @@
         }),
         onSelect: () => handleRebase(b.name),
       });
+      if (onCompare) {
+        items.push({
+          label: t("ctx.branch.compareWithActive", { branch: formatBranchDisplay(currentBranch) }),
+          onSelect: () => {
+            onCompare(currentBranch, b.name);
+            onClose();
+          },
+        });
+      }
     }
 
     items.push({ type: "divider" });
@@ -722,6 +733,19 @@
                   </button>
                 {/if}
                 {#if !b.is_current}
+                  {#if onCompare}
+                    <button
+                      type="button"
+                      onclick={() => {
+                        onCompare(currentBranch, b.name);
+                        onClose();
+                      }}
+                      class="btn-secondary btn-xs"
+                      title={t("branchModal.compareBtnTitle", { name: b.name })}
+                    >
+                      {t("branchModal.compareBtn")}
+                    </button>
+                  {/if}
                   <button type="button" onclick={() => handleMergeBranch(b.name)} class="btn-secondary btn-xs" title={t("branchModal.mergeTitle")}>
                     {t("branchModal.mergeBtn")}
                   </button>

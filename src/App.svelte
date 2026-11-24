@@ -51,6 +51,7 @@
   import LargeFileModal from "./components/LargeFileModal.svelte";
   import SamlAuthModal from "./components/SamlAuthModal.svelte";
   import DivergentBranchesModal from "./components/DivergentBranchesModal.svelte";
+  import CompareModal from "./components/CompareModal.svelte";
   import CommandPalette, { type PaletteCommand } from "./components/CommandPalette.svelte";
   import ProviderIcon from "./components/ProviderIcon.svelte";
   import { joinRepoPath, openExternalUrl, pathBaseName } from "./utils/path";
@@ -261,6 +262,17 @@
     prompt: string;
     context: string;
   } | null>(null);
+  let isCompareModalOpen = $state(false);
+  let compareBaseRef = $state<string | undefined>(undefined);
+  let compareTargetRef = $state<string | undefined>(undefined);
+
+  function openCompareModal(base?: string, target?: string) {
+    if (!activeRepo) return;
+    compareBaseRef = base;
+    compareTargetRef = target;
+    isCompareModalOpen = true;
+  }
+
   let paletteOpen = $state(false);
 
   // Shared modal states
@@ -3441,6 +3453,7 @@
         { id: "open-reflog", category: "Tools", label: t("wsTools.tabReflog"), action: () => { workspaceToolsTab = "reflog"; } },
         { id: "open-submodules", category: "Tools", label: t("wsTools.tabSubmodules"), action: () => { workspaceToolsTab = "submodules"; } },
         { id: "open-worktrees", category: "Tools", label: t("tools.worktreeTitle"), action: () => { activeModal = "worktree"; } },
+        { id: "compare-revisions", category: "Git", label: t("compareModal.title"), action: () => openCompareModal() },
         { id: "open-branches", category: "Branch", label: t("ctx.branch.manage"), action: openBranchModal },
         { id: "open-bisect", category: "Git", label: t("bisect.toolsMenu"), action: () => { activeModal = "bisect"; } },
         { id: "open-stash", category: "Git", label: t("app.manageStash"), action: () => { activeModal = "stash"; } },
@@ -4438,7 +4451,7 @@
       {/if}
       {#if activeView === "history"}
         <section class="content-panel is-full-width">
-          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} onBranchContextMenu={handleHistoryBranchContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onRenameTag={handleOpenRenameTag} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onLoadMoreCommits={handleLoadMoreCommits} {hasMoreCommits} />
+          <History repoPath={activeRepo} {externalEditorLabel} remoteWebUrl={hostingRepoInfo?.web_url || null} accounts={accountOverview.accounts} {commits} searchQuery={historySearch} onSearchChange={(q) => (historySearch = q)} {allBranches} {branches} currentBranch={currentStatus?.branch || ""} selectedBranches={selectedHistoryBranches} onFilterBranches={handleFilterBranches} {tags} onCreateTag={() => openCreateTagModal(null)} onInteractiveRebase={openInteractiveRebase} onTagContextMenu={openSidebarTagContextMenu} onBranchContextMenu={handleHistoryBranchContextMenu} {checkRunsMap} onCherryPick={handleCherryPick} onRevert={handleRevert} onTag={(sha) => openCreateTagModal(sha)} onRenameTag={handleOpenRenameTag} onDeleteTag={handleDeleteTag} onReset={handleReset} onSquash={(idx) => handleOpenSquash(idx)} onEditCommitMessage={handleOpenRewordModal} onMergeBranch={handleMergeBranchFromGraph} onRebaseBranch={handleRebaseBranchFromGraph} onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })} onAiExplainCommit={handleAiExplainCommit} onRevealFile={openInFileManagerTarget} onOpenInEditor={openInEditorFile} onLoadMoreCommits={handleLoadMoreCommits} {hasMoreCommits} onCompare={openCompareModal} />
         </section>
       {/if}
     </main>
@@ -4531,6 +4544,7 @@
     onOperationError={(errStr: string, operation: string, retryAction?: () => Promise<void>) => {
       return checkAndHandlePullOrSyncError(errStr, operation, retryAction);
     }}
+    onCompare={openCompareModal}
   />
 {/if}
 
@@ -4842,6 +4856,26 @@
   onPullRebase={handlePullRebaseFromDivergentModal}
   onPullMerge={handlePullMergeFromDivergentModal}
 />
+
+{#if isCompareModalOpen && activeRepo}
+  <CompareModal
+    repoPath={activeRepo}
+    initialBase={compareBaseRef}
+    initialTarget={compareTargetRef}
+    {branches}
+    {tags}
+    {externalEditorLabel}
+    onClose={() => {
+      isCompareModalOpen = false;
+      compareBaseRef = undefined;
+      compareTargetRef = undefined;
+    }}
+    onInspectFile={(fp, mode) => (inspectFileState = { path: fp, mode })}
+    onRevealFile={openInFileManagerTarget}
+    onOpenInEditor={openInEditorFile}
+    onStatus={setStatus}
+  />
+{/if}
 
 {#if updateReadyState?.open}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
