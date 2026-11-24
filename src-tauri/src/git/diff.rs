@@ -108,7 +108,25 @@ pub fn get_file_diff(
                 ));
             }
         }
-        if let Ok(content) = fs::read_to_string(&full_path) {
+        if let Ok(bytes) = fs::read(&full_path) {
+            // Handle binary files with null bytes
+            if bytes.iter().take(8000).any(|&b| b == 0)
+                && !bytes.starts_with(&[0xFF, 0xFE])
+                && !bytes.starts_with(&[0xFE, 0xFF])
+            {
+                return Ok(format!("Binary files /dev/null and b/{p} differ"));
+            }
+            let content = if bytes.starts_with(&[0xFF, 0xFE]) {
+                let u16_chars: Vec<u16> = bytes[2..]
+                    .chunks_exact(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .collect();
+                String::from_utf16_lossy(&u16_chars)
+            } else if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+                String::from_utf8_lossy(&bytes[3..]).into_owned()
+            } else {
+                String::from_utf8_lossy(&bytes).into_owned()
+            };
             let lines: Vec<String> = content.lines().map(|l| format!("+{l}")).collect();
             return Ok(format!(
                 "--- /dev/null\n+++ b/{p}\n@@ -0,0 +1,{} @@\n{}",
