@@ -72,8 +72,12 @@
     try {
       const items = await gitService.getFileHistory(repoPath, filePath, 100);
       historyCommits = items;
-      if (items.length > 0 && !selectedSha) {
-        await selectCommit(items[0].sha);
+      if (items.length > 0) {
+        if (selectedSha && items.some((c) => c.sha === selectedSha)) {
+          await selectCommit(selectedSha);
+        } else {
+          await selectCommit(items[0].sha);
+        }
       }
     } catch (err) {
       historyError = String(err);
@@ -96,10 +100,9 @@
     }
   }
 
-  async function jumpToCommitHistory(sha: string) {
+  function jumpToCommitHistory(sha: string) {
+    selectedSha = sha;
     activeTab = "history";
-    await loadFileHistory();
-    await selectCommit(sha);
   }
 </script>
 
