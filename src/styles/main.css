@@ -3147,6 +3147,9 @@ select optgroup {
 .list-box {
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background-color: var(--bg-app);
@@ -5411,6 +5414,10 @@ select optgroup {
   border-right: 1px solid var(--border-muted);
   background: var(--bg-subtle);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .conflict-sidebar-title {
@@ -5449,6 +5456,10 @@ select optgroup {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .conflict-panes {
@@ -5564,6 +5575,10 @@ select optgroup {
   background: var(--bg-app);
   font-family: var(--font-mono);
   font-size: 11px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .blame-row {
@@ -5642,6 +5657,10 @@ select optgroup {
   border-radius: var(--radius-sm);
   overflow-y: auto;
   background: var(--bg-panel);
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .file-history-item {
@@ -6417,6 +6436,10 @@ select optgroup {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .palette-overlay {
@@ -6858,6 +6881,10 @@ select optgroup {
   gap: 8px;
   max-height: 360px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
   padding-right: 2px;
 }
 
@@ -7168,6 +7195,10 @@ select optgroup {
 .worktree-modal-body {
   padding: 14px 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -8185,6 +8216,10 @@ select optgroup {
   padding: 8px 10px;
   max-height: 140px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.45;
