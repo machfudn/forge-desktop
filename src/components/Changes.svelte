@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FileEntry, RepoStatus, GitHooksInfo } from "../types/git";
-  import { detectGitHooks } from "../services/git";
+  import { detectGitHooks, getCommitDetail, getCommitHistory } from "../services/git";
   import { t } from "../i18n/index.svelte";
   import { joinRepoPath } from "../utils/path";
   import {
@@ -177,6 +177,51 @@
   let coAuthorName = $state("");
   let coAuthorEmail = $state("");
   let isGeneratingAiCommit = $state(false);
+  let draftBeforeAmend = $state<{ summary: string; description: string; showDescription: boolean } | null>(null);
+
+  $effect(() => {
+    if (isAmend) {
+      if (repoPath && status.has_commits) {
+        if (!draftBeforeAmend) {
+          draftBeforeAmend = {
+            summary: commitSummary,
+            description: commitDescription,
+            showDescription,
+          };
+        }
+        if (!commitSummary.trim()) {
+          void getCommitHistory(repoPath, 1, false).then(async (commits) => {
+            if (commits && commits.length > 0) {
+              const headCommit = commits[0];
+              try {
+                const detail = await getCommitDetail(repoPath, headCommit.sha);
+                if (isAmend && !commitSummary.trim()) {
+                  commitSummary = detail.summary || headCommit.summary || "";
+                  commitDescription = detail.description || "";
+                  if (commitDescription.trim()) {
+                    showDescription = true;
+                  }
+                }
+              } catch {
+                if (isAmend && !commitSummary.trim()) {
+                  commitSummary = headCommit.summary || "";
+                }
+              }
+            }
+          });
+        }
+      }
+    } else {
+      if (draftBeforeAmend) {
+        if (!commitSummary.trim() || commitSummary === draftBeforeAmend.summary) {
+          commitSummary = draftBeforeAmend.summary;
+          commitDescription = draftBeforeAmend.description;
+          showDescription = draftBeforeAmend.showDescription;
+        }
+        draftBeforeAmend = null;
+      }
+    }
+  });
 
   let gitHooks = $state<GitHooksInfo | null>(null);
   let showConventional = $state(false);
@@ -296,6 +341,7 @@
       coAuthorName = "";
       coAuthorEmail = "";
       isAmend = false;
+      draftBeforeAmend = null;
       showDescription = false;
       showCoAuthors = false;
       convSummary = "";
