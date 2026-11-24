@@ -55,6 +55,7 @@ pub fn run() {
             commands::rename_tag,
             commands::push_tag,
             commands::delete_remote_tag,
+            commands::delete_remote_branch,
             commands::abort_merge,
             commands::continue_merge,
             commands::abort_rebase,

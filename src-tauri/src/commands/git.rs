@@ -286,6 +286,22 @@ pub async fn delete_remote_tag(
 }
 
 #[tauri::command]
+pub async fn delete_remote_branch(
+    repo: String,
+    remote: Option<String>,
+    branch_name: String,
+    accounts: State<'_, AccountManager>,
+) -> Result<String, String> {
+    let mgr = accounts.inner().clone();
+    run_blocking(move || {
+        git::delete_remote_branch(&repo, remote.as_deref(), &branch_name, |url| {
+            resolve_creds_for_url(&mgr, Some(&repo), None, url)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn abort_merge(repo: String) -> Result<(), String> {
     run_blocking(move || git::abort_merge(&repo)).await
 }

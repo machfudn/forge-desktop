@@ -322,7 +322,7 @@ where
         .collect();
     cli::run_with_credentials_and_options(
         repo,
-        &["fetch", &rem],
+        &["fetch", "--prune", &rem],
         creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str())),
         &borrowed_opts,
     )
@@ -335,7 +335,7 @@ pub fn fetch(
 ) -> Result<String, String> {
     let snap = RemoteConfigSnapshot::read(repo);
     let rem = snap.resolve_remote(remote, None)?;
-    cli::run_with_credentials(repo, &["fetch", &rem], creds)
+    cli::run_with_credentials(repo, &["fetch", "--prune", &rem], creds)
 }
 
 pub fn fetch_all_with<F>(repo: &str, resolve_creds: F) -> Result<String, String>
@@ -568,6 +568,73 @@ where
         creds_ref,
         &borrowed_opts,
     )
+}
+
+pub fn sanitize_remote_branch_name<'a>(branch: &'a str, remote: &str) -> Result<&'a str, String> {
+    let trimmed = branch.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') || trimmed.contains("..") || trimmed.contains('\\') || trimmed.contains(':') || trimmed.contains(' ') {
+        return Err("Nama branch tidak valid".into());
+    }
+    let prefix = format!("{remote}/");
+    let clean = if let Some(stripped) = trimmed.strip_prefix(&prefix) {
+        stripped
+    } else {
+        trimmed
+    };
+    if clean.is_empty() || clean.starts_with('-') || clean.starts_with('/') || clean.ends_with('/') {
+        return Err("Nama branch tidak valid".into());
+    }
+    Ok(clean)
+}
+
+pub fn delete_remote_branch<F>(
+    repo: &str,
+    remote: Option<&str>,
+    branch_name: &str,
+    resolve_creds: F,
+) -> Result<String, String>
+where
+    F: FnOnce(&str) -> Option<(String, String)>,
+{
+    let snap = RemoteConfigSnapshot::read(repo);
+    let rem = snap.resolve_remote(remote, None)?;
+    let clean_branch = sanitize_remote_branch_name(branch_name, &rem)?;
+    let (creds, rewrite_options) = resolve_creds_and_rewrite(&snap, &rem, true, resolve_creds);
+    let borrowed_opts: Vec<(&str, &str)> = rewrite_options
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let creds_ref = creds.as_ref().map(|(u, t)| (u.as_str(), t.as_str()));
+    let push_res = cli::run_with_credentials_and_options(
+        repo,
+        &["push", "--delete", &rem, clean_branch],
+        creds_ref,
+        &borrowed_opts,
+    );
+
+    // Regardless of whether push succeeded or the remote ref was already gone,
+    // explicitly remove the local remote-tracking ref and prune so Git never reports it again locally:
+    let remote_ref = format!("{rem}/{clean_branch}");
+    let _ = cli::run(repo, &["branch", "-r", "-d", &remote_ref]);
+    let _ = cli::run(repo, &["remote", "prune", &rem]);
+
+    match push_res {
+        Ok(out) => Ok(out),
+        Err(err) => {
+            let lower = err.to_lowercase();
+            if lower.contains("remote ref does not exist")
+                || lower.contains("ref does not exist")
+                || lower.contains("does not exist")
+            {
+                // Branch was already deleted on remote; local stale ref has been cleaned up above.
+                Ok(format!(
+                    "Branch remote '{clean_branch}' sudah tidak ada di remote. Referensi lokal telah dibersihkan."
+                ))
+            } else {
+                Err(err)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
@@ -1004,6 +1071,70 @@ branch.feat.v1.remote origin
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert!(err.contains("belum dikonfigurasi") || err.contains("tidak ditemukan"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_sanitize_remote_branch_name_and_delete_remote_branch() {
+        assert_eq!(sanitize_remote_branch_name("main", "origin").unwrap(), "main");
+        assert_eq!(sanitize_remote_branch_name("origin/main", "origin").unwrap(), "main");
+        assert_eq!(sanitize_remote_branch_name("feat/login", "origin").unwrap(), "feat/login");
+        assert_eq!(sanitize_remote_branch_name("origin/feat/login", "origin").unwrap(), "feat/login");
+        assert!(sanitize_remote_branch_name(" ", "origin").is_err());
+        assert!(sanitize_remote_branch_name("-D", "origin").is_err());
+        assert!(sanitize_remote_branch_name("--delete", "origin").is_err());
+        assert!(sanitize_remote_branch_name("origin/", "origin").is_err());
+        assert!(sanitize_remote_branch_name("feat..bad", "origin").is_err());
+        assert!(sanitize_remote_branch_name("feat\\bad", "origin").is_err());
+
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("forge-delete-remote-branch-{nanos}"));
+        let bare = root.join("bare.git");
+        let local = root.join("local");
+        std::fs::create_dir_all(&bare).unwrap();
+        std::fs::create_dir_all(&local).unwrap();
+
+        let run_git = |cwd: &std::path::Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(cwd)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "git failed: {}", String::from_utf8_lossy(&out.stderr));
+        };
+
+        run_git(&bare, &["init", "--bare"]);
+        run_git(&local, &["init", "-b", "main"]);
+        run_git(&local, &["config", "user.name", "Tester"]);
+        run_git(&local, &["config", "user.email", "tester@example.com"]);
+        run_git(&local, &["remote", "add", "origin", bare.to_str().unwrap()]);
+        std::fs::write(local.join("file.txt"), "hello\n").unwrap();
+        run_git(&local, &["add", "file.txt"]);
+        run_git(&local, &["commit", "-m", "init"]);
+        run_git(&local, &["push", "-u", "origin", "main"]);
+
+        run_git(&local, &["checkout", "-b", "feat/test-delete"]);
+        std::fs::write(local.join("file2.txt"), "feat\n").unwrap();
+        run_git(&local, &["add", "file2.txt"]);
+        run_git(&local, &["commit", "-m", "feat"]);
+        run_git(&local, &["push", "-u", "origin", "feat/test-delete"]);
+
+        let local_str = local.to_str().unwrap();
+        let res = delete_remote_branch(local_str, Some("origin"), "origin/feat/test-delete", |_| None);
+        assert!(res.is_ok(), "delete_remote_branch failed: {:?}", res);
+
+        // Deleting the same remote branch again should still return Ok and clean up gracefully
+        let res2 = delete_remote_branch(local_str, Some("origin"), "origin/feat/test-delete", |_| None);
+        assert!(res2.is_ok(), "delete_remote_branch second run (already deleted) should succeed: {:?}", res2);
+
+        let out = std::process::Command::new("git")
+            .args(&["ls-remote", "--heads", "origin", "feat/test-delete"])
+            .current_dir(&local)
+            .output()
+            .unwrap();
+        assert!(out.stdout.is_empty(), "remote branch should have been deleted");
 
         let _ = std::fs::remove_dir_all(&root);
     }
