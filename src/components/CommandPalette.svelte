@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t, type TranslationKey } from "../i18n/index.svelte";
+  import { wheelHorizontalScroll } from "../utils/scroll";
 
   export type PaletteCategory =
     | "Git"
@@ -383,7 +384,7 @@
     </div>
 
     <!-- Category Filter Chips -->
-    <div class="palette-filters" role="tablist" aria-label="Palette Categories">
+    <div class="palette-filters" role="tablist" aria-label="Palette Categories" use:wheelHorizontalScroll>
       {#each filterTabs as tab}
         {@const count = tabCounts[tab.id]}
         {#if count > 0 || tab.id === "all"}

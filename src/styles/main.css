@@ -752,6 +752,10 @@ a {
   flex: 1 1 auto;
   min-height: 96px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
   list-style: none;
 }
 
@@ -1768,7 +1772,6 @@ select optgroup {
   display: grid;
   grid-template-columns: 40px 1fr;
   min-width: 0;
-  overflow-x: auto;
   min-height: 20px;
 }
 
@@ -3007,8 +3010,11 @@ select optgroup {
   gap: 10px;
   overflow-y: auto;
   min-height: 0;
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-actions {
@@ -3706,8 +3712,10 @@ select optgroup {
   border-right: 1px solid var(--border-muted);
   background: var(--bg-subtle);
   overflow-y: auto;
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .settings-nav-item {
@@ -3755,8 +3763,11 @@ select optgroup {
   overflow-y: auto;
   min-width: 0;
   background: var(--bg-panel);
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .settings-available-packages {
@@ -3764,8 +3775,9 @@ select optgroup {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 .settings-panel-header {
@@ -5785,6 +5797,9 @@ select optgroup {
   align-items: center;
   gap: 3px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   min-width: 0;
   flex: 1;
@@ -6192,6 +6207,9 @@ select optgroup {
   flex: 1 1 0%;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -6275,6 +6293,9 @@ select optgroup {
   background: var(--bg-panel);
   border-top: 1px solid var(--border-muted);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 .terminal-quick-chips::-webkit-scrollbar {
@@ -6471,6 +6492,9 @@ select optgroup {
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-app);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 
@@ -6521,6 +6545,10 @@ select optgroup {
   flex: 1;
   max-height: 380px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
   padding: 6px;
   display: flex;
   flex-direction: column;

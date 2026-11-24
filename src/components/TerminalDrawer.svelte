@@ -3,6 +3,7 @@
   import * as gitService from "../services/git";
   import { t } from "../i18n/index.svelte";
   import { parseAnsiText, stripAnsi, type AnsiSpan } from "../lib/ansi";
+  import { wheelHorizontalScroll } from "../utils/scroll";
 
   interface Props {
     repoPath: string;
@@ -704,7 +705,7 @@
   <div class="terminal-header" ondblclick={toggleMaximize}>
     <div class="terminal-header-left">
       <!-- Tabs strip -->
-      <div class="terminal-tabs-strip" role="tablist">
+      <div class="terminal-tabs-strip" role="tablist" use:wheelHorizontalScroll>
         {#each sessions as s, i (s.id)}
           <div
             role="tab"
@@ -1121,7 +1122,7 @@
 
   <!-- Quick Action Chips Bar (when chunks exist) -->
   {#if activeSession.chunks.length > 0}
-    <div class="terminal-quick-chips">
+    <div class="terminal-quick-chips" use:wheelHorizontalScroll>
       {#each QUICK_ACTIONS as action}
         <button
           type="button"

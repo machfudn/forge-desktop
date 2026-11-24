@@ -2986,6 +2986,14 @@
       handleGlobalContextMenu(e, setStatus);
     };
 
+    const handleGlobalWheel = (e: WheelEvent) => {
+      // Prevent accidental whole-window zoom from touchpad pinch or Ctrl+wheel
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener("wheel", handleGlobalWheel, { passive: false });
     window.addEventListener("keydown", handleGlobalKeydown);
     window.addEventListener("click", handleGlobalClick);
     window.addEventListener("keydown", handleWorkspaceSettingsKeydown);
@@ -3057,6 +3065,7 @@
       window.removeEventListener("keydown", handleWorkspaceSettingsKeydown);
       window.removeEventListener("click", handleWorkspaceSettingsOutside);
       document.removeEventListener("contextmenu", onDocContextMenu);
+      window.removeEventListener("wheel", handleGlobalWheel);
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("blur", handleWindowBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
