@@ -393,7 +393,7 @@
     </div>
 
     <!-- Category Filter Chips -->
-    <div class="palette-filters" role="tablist" aria-label="Palette Categories" use:wheelHorizontalScroll>
+    <div class="palette-filters" role="tablist" aria-label={t("palette.categoriesAria")} use:wheelHorizontalScroll>
       {#each filterTabs as tab}
         {@const count = tabCounts[tab.id]}
         {#if count > 0 || tab.id === "all"}

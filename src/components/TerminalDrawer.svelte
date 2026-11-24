@@ -721,11 +721,11 @@
       tabindex="0"
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize terminal"
+      aria-label={t("terminal.resizerAria")}
       aria-valuenow={height}
       aria-valuemin="140"
       aria-valuemax={Math.floor(typeof window !== "undefined" ? window.innerHeight - 150 : 600)}
-      title="Drag or use arrow keys to resize terminal"
+      title={t("terminal.resizerTitle")}
       onpointerdown={handleResizerPointerDown}
       onpointermove={handleResizerPointerMove}
       onpointerup={handleResizerPointerUp}
@@ -829,14 +829,14 @@
       <div class="terminal-actions-group">
         <!-- Process Status Badge -->
         {#if activeSession.running}
-          <div class="terminal-status-badge is-running" title="Command running">
+          <div class="terminal-status-badge is-running" title={t("terminal.commandRunningTitle")}>
             <span class="terminal-tab-dot is-running"></span>
             <span>{activeSession.activeCmd.split(/\s+/)[0]} {formatElapsed(activeSession.startTime)}</span>
           </div>
         {:else if activeSession.exitCode !== null}
           <div
             class="terminal-status-badge {activeSession.exitCode === 0 ? '' : 'is-error'}"
-            title="Last exit code: {activeSession.exitCode}"
+            title={t("terminal.lastExitCodeTitle", { code: activeSession.exitCode })}
           >
             <span>Exit {activeSession.exitCode}</span>
           </div>
@@ -1243,7 +1243,7 @@
         type="button"
         class="terminal-btn btn-danger"
         onclick={handleKill}
-        title="Kill active process (Ctrl+C)"
+        title={t("terminal.killProcessTitle")}
       >
         <svg
           width="10"

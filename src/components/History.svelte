@@ -1263,7 +1263,7 @@
             onclick={() => (tagFilterOpen = !tagFilterOpen)}
             aria-expanded={tagFilterOpen}
             aria-haspopup="dialog"
-            title="Filter Tag"
+            title={t("history.filterTag")}
           >
             <svg class="tag-filter-icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2.5 8.5L8.5 2.5H13.5V7.5L7.5 13.5L2.5 8.5Z" />
@@ -1291,7 +1291,7 @@
             <div
               class="tag-filter-popover"
               role="dialog"
-              aria-label="Filter Tag"
+              aria-label={t("history.filterTag")}
               tabindex="-1"
               onkeydown={(e) => {
                 if (e.key === "Escape") tagFilterOpen = false;
@@ -1446,7 +1446,7 @@
               </svg>
             </button>
           {:else}
-            <kbd class="history-search-kbd" title="Shortcut: Ctrl+F">Ctrl+F</kbd>
+            <kbd class="history-search-kbd" title={t("history.searchShortcutTitle")}>Ctrl+F</kbd>
           {/if}
         </div>
       </div>

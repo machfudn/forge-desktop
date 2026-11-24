@@ -1001,7 +1001,7 @@
                   </div>
                   {#if wt.lock_reason}
                     <div style="font-size: 10px; color: var(--warning-color, #f59e0b); margin-top: 2px; font-style: italic;">
-                      Alasan: {wt.lock_reason}
+                      {t("tools.worktreeLockReason", { reason: wt.lock_reason })}
                     </div>
                   {/if}
                 </div>

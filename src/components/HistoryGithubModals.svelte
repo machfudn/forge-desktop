@@ -624,7 +624,7 @@
               ondrop={(e) => handleDrop(idx, e)}
               role="listitem"
             >
-              <div class="rebase-drag-handle" title="Drag to reorder">
+              <div class="rebase-drag-handle" title={t("history.dragToReorder")}>
                 ⋮⋮
               </div>
 
