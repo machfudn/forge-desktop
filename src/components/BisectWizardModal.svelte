@@ -2,6 +2,7 @@
   import type { CommitInfo, BisectState } from "../types/git";
   import * as gitService from "../services/git";
   import { t } from "../i18n/index.svelte";
+  import { copyTextToClipboard } from "../lib/contextMenu.svelte";
 
   interface Props {
     repoPath: string;
@@ -104,11 +105,13 @@
 
   async function handleCopySha(sha: string) {
     try {
-      await navigator.clipboard.writeText(sha);
-      copiedSha = true;
-      setTimeout(() => {
-        copiedSha = false;
-      }, 2000);
+      const ok = await copyTextToClipboard(sha);
+      if (ok) {
+        copiedSha = true;
+        setTimeout(() => {
+          copiedSha = false;
+        }, 2000);
+      }
     } catch {
       // ignore
     }
