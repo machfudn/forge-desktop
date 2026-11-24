@@ -2,9 +2,10 @@
   import type { AccountProfile, BranchInfo, CommitChangedFile, CommitDetail, CommitInfo, HistoryColumnId } from "../types/git";
   import * as gitService from "../services/git";
   import Diff from "./Diff.svelte";
-  import { getLocale, t } from "../i18n/index.svelte";
+  import { t } from "../i18n/index.svelte";
   import { joinRepoPath, openExternalUrl } from "../utils/path";
   import { computeCommitGraph, GRAPH_COLORS } from "../utils/commitGraph";
+  import { formatCommitDate, formatLocalDate, formatFullTooltip } from "../utils/dateFormat";
   import {
     copyTextToClipboard,
     openContextMenu,
@@ -568,27 +569,6 @@
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
       moveColumn(colId, 1);
-    }
-  }
-
-  function formatCommitDate(rawDate: string, format: "relative" | "absolute"): string {
-    if (format === "absolute" || !rawDate) return rawDate;
-    try {
-      const cleanDate = rawDate.includes("T") ? rawDate : rawDate.replace(" ", "T");
-      const parsed = Date.parse(cleanDate);
-      if (isNaN(parsed)) return rawDate;
-      const diffSec = Math.round((parsed - Date.now()) / 1000);
-      const absSec = Math.abs(diffSec);
-      const lang = getLocale();
-      if (absSec < 45) return t("history.justNow");
-      const rtf = new Intl.RelativeTimeFormat(lang === "en" ? "en-US" : "id-ID", { numeric: "auto" });
-      if (absSec < 3600) return rtf.format(Math.round(diffSec / 60), "minute");
-      if (absSec < 86400) return rtf.format(Math.round(diffSec / 3600), "hour");
-      if (absSec < 2592000) return rtf.format(Math.round(diffSec / 86400), "day");
-      if (absSec < 31536000) return rtf.format(Math.round(diffSec / 2592000), "month");
-      return rtf.format(Math.round(diffSec / 31536000), "year");
-    } catch {
-      return rawDate;
     }
   }
 
@@ -1919,7 +1899,7 @@
                 {/if}
               </span>
              {:else if colId === "date"}
-              <span class="commit-date" title={commit.date}>{formatCommitDate(commit.date, dateFormat)}</span>
+              <span class="commit-date" title={formatFullTooltip(commit.date)}>{formatCommitDate(commit.date, dateFormat)}</span>
              {:else if colId === "sha"}
               <span class="commit-sha">
                 {#if !commit.is_pushed}
@@ -2138,7 +2118,7 @@
               {selectedDetail?.author || selectedCommitSummary?.author}{#if selectedDetail?.author_email} &lt;{selectedDetail.author_email}&gt;{/if}
             </span>
             <span>·</span>
-            <span>{selectedDetail?.date || selectedCommitSummary?.date}</span>
+            <span title={formatFullTooltip(selectedDetail?.date || selectedCommitSummary?.date)}>{formatLocalDate(selectedDetail?.date || selectedCommitSummary?.date)}</span>
             {#if selectedDetail}
               <span>·</span>
               <span class="tabular-nums">

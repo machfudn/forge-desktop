@@ -79,6 +79,7 @@
   } from "./i18n/index.svelte";
   import { getAppErrorLogs, logAppError } from "./utils/appLog.svelte";
   import { localizeBackendError } from "./utils/errorLocalization";
+  import { formatLocalDate } from "./utils/dateFormat";
 
   type ModalType = "branch" | "worktree" | "bisect" | WorkspaceModalType | HistoryGithubModalType | null;
 
@@ -3592,7 +3593,7 @@
       // Recent Commits (Deep Commit Search)
       for (const c of commits.slice(0, 30)) {
         const shortSha = c.short_sha || c.sha.slice(0, 7);
-        const dateStr = c.date;
+        const dateStr = formatLocalDate(c.date);
         cmds.push(
           {
             id: `commit-view-${c.sha}`,

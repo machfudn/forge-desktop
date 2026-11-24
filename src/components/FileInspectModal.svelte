@@ -3,6 +3,7 @@
   import * as gitService from "../services/git";
   import Diff from "./Diff.svelte";
   import { t } from "../i18n/index.svelte";
+  import { formatLocalDate, formatFullTooltip } from "../utils/dateFormat";
 
   interface Props {
     repoPath: string;
@@ -158,11 +159,11 @@
                   type="button"
                   class="blame-gutter"
                   onclick={() => jumpToCommitHistory(row.sha)}
-                  title={`${row.short_sha} · ${row.author} (${row.date})\n${row.summary}`}
+                  title={`${row.short_sha} · ${row.author} (${formatLocalDate(row.date)})\n${row.summary}`}
                 >
                   <span class="blame-sha">{row.short_sha}</span>
                   <span class="blame-author">{row.author}</span>
-                  <span class="blame-date">{row.date}</span>
+                  <span class="blame-date">{formatLocalDate(row.date)}</span>
                 </button>
                 <span class="blame-ln tabular-nums">{row.line_no}</span>
                 <span class="blame-code">{row.content}</span>
@@ -188,7 +189,7 @@
                 >
                   <div class="file-history-top">
                     <span class="commit-sha">{c.short_sha}</span>
-                    <span class="commit-date">{c.date}</span>
+                    <span class="commit-date" title={formatFullTooltip(c.date)}>{formatLocalDate(c.date)}</span>
                   </div>
                   <div class="file-history-summary" title={c.summary}>{c.summary}</div>
                   <div class="file-history-author">{c.author}</div>

@@ -3,6 +3,7 @@
   import { renderMarkdownHtml } from "../utils/markdown";
   import { t } from "../i18n/index.svelte";
   import { joinRepoPath } from "../utils/path";
+  import { formatRelativeDate, formatFullTooltip } from "../utils/dateFormat";
   import {
     copyTextToClipboard,
     openContextMenu,
@@ -1169,7 +1170,7 @@
                           {/if}
                           <span class="comment-author">{comment.user}</span>
                         </div>
-                        <span class="comment-date">{comment.created_at.substring(0, 10)}</span>
+                        <span class="comment-date" title={formatFullTooltip(comment.created_at)}>{formatRelativeDate(comment.created_at)}</span>
                       </div>
                       <div class="diff-comment-body markdown-body">
                         {@html renderMarkdownHtml(comment.body)}

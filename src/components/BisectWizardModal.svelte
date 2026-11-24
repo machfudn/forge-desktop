@@ -3,6 +3,7 @@
   import * as gitService from "../services/git";
   import { t } from "../i18n/index.svelte";
   import { copyTextToClipboard } from "../lib/contextMenu.svelte";
+  import { formatLocalDate, formatFullTooltip } from "../utils/dateFormat";
 
   interface Props {
     repoPath: string;
@@ -183,7 +184,7 @@
           <div class="bisect-culprit-meta">
             <span>{bisectState.first_bad_commit.author}</span>
             <span>·</span>
-            <span>{bisectState.first_bad_commit.date}</span>
+            <span title={formatFullTooltip(bisectState.first_bad_commit.date)}>{formatLocalDate(bisectState.first_bad_commit.date)}</span>
           </div>
         </div>
 
@@ -252,7 +253,7 @@
             <div class="bisect-commit-meta">
               <span>{bisectState.current_commit.author}</span>
               <span>·</span>
-              <span>{bisectState.current_commit.date}</span>
+              <span title={formatFullTooltip(bisectState.current_commit.date)}>{formatLocalDate(bisectState.current_commit.date)}</span>
             </div>
 
             {#if bisectState.remaining_steps_hint}
