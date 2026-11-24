@@ -1156,8 +1156,8 @@
                   type="button"
                   class="branch-search-clear"
                   onclick={() => (branchSearchQuery = "")}
-                  title="Clear search"
-                  aria-label="Clear search"
+                  title={t("common.clear")}
+                  aria-label={t("common.clear")}
                 >
                   <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
@@ -1223,10 +1223,10 @@
                       {b.name}
                     </span>
                     {#if isCurrent}
-                      <span class="branch-pill-badge is-active">aktif</span>
+                      <span class="branch-pill-badge is-active">{t("history.badgeActive")}</span>
                     {/if}
                     {#if b.is_remote}
-                      <span class="branch-pill-badge is-remote">remote</span>
+                      <span class="branch-pill-badge is-remote">{t("history.badgeRemote")}</span>
                     {/if}
                   </label>
                 {/each}
@@ -1324,7 +1324,7 @@
                   <input
                     type="text"
                     class="tag-filter-search-input"
-                    placeholder="Cari tag..."
+                    placeholder={t("history.tagSearchPlaceholder")}
                     bind:value={tagSearchQuery}
                   />
                   {#if tagSearchQuery}
@@ -1332,8 +1332,8 @@
                       type="button"
                       class="tag-search-clear"
                       onclick={() => (tagSearchQuery = "")}
-                      title="Clear search"
-                      aria-label="Clear search"
+                      title={t("common.clear")}
+                      aria-label={t("common.clear")}
                     >
                       <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                         <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
@@ -1350,7 +1350,7 @@
                     class="quick-pill btn-clear"
                     onclick={() => (selectedTag = null)}
                   >
-                    Hapus filter tag
+                    {t("history.clearTagFilter")}
                   </button>
                 </div>
               {/if}
@@ -1385,8 +1385,8 @@
                           type="button"
                           class="tag-item-del-btn"
                           onclick={() => onDeleteTag(tagName)}
-                          title="Hapus tag {tagName}"
-                          aria-label="Hapus tag {tagName}"
+                          title={t("history.deleteTagAria", { tagName })}
+                          aria-label={t("history.deleteTagAria", { tagName })}
                         >
                           ✕
                         </button>
@@ -1438,8 +1438,8 @@
                 onSearchChange?.("");
                 historySearchInputEl?.focus();
               }}
-              title="Clear search"
-              aria-label="Clear search"
+              title={t("common.clear")}
+              aria-label={t("common.clear")}
             >
               <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
@@ -1748,7 +1748,7 @@
               <span
                 class="commit-graph-cell"
                 aria-hidden="true"
-                title={layout?.branchName ? `Cabang: ${layout.branchName}` : undefined}
+                title={layout?.branchName ? t("history.branchLaneTitle", { branch: layout.branchName }) : undefined}
               >
                 <svg class="commit-graph-svg" width={graphColWidth} height={rowHeight} viewBox="0 0 {graphColWidth} {rowHeight}">
                   {#if layout}
@@ -2082,7 +2082,7 @@
                 {selectedDetail?.short_sha || selectedCommitSummary?.short_sha || selectedSha.slice(0, 7)}
               </span>
               {#if selectedCommitLayout?.branchName}
-                <span class="commit-lane-badge" title="Cabang pada alur ini">
+                <span class="commit-lane-badge" title={t("history.commitLaneBadgeTitle")}>
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <line x1="6" y1="3" x2="6" y2="13" />
                     <circle cx="6" cy="3" r="2" />
