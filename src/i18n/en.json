@@ -13,7 +13,9 @@
     "detachedHead": "Detached HEAD",
     "loading": "Loading...",
     "refresh": "Refresh",
-    "clear": "Clear"
+    "clear": "Clear",
+    "tauriPickerFolder": "Native folder picker is only available in the Tauri desktop app.",
+    "tauriPickerFile": "Native file picker is only available in the Tauri desktop app."
   },
   "app": {
     "ready": "Ready",
@@ -238,7 +240,10 @@
       "linesStaged": "Selected lines staged.",
       "linesUnstaged": "Selected lines unstaged.",
       "mergedBranch": "Merged branch {branch}.",
-      "rebasedBranch": "Rebased onto {branch}."
+      "rebasedBranch": "Rebased onto {branch}.",
+      "latestVersionFallback": "latest",
+      "themeChanged": "Theme changed to: {theme}",
+      "languageChanged": "Language changed to: {lang}"
     }
   },
   "changes": {
@@ -309,7 +314,6 @@
     "descAria": "Commit description",
     "descPlaceholder": "Why was this change needed? Add context for the next person.",
     "coAuthorFieldLabel": "Co-author",
-    "coAuthorEmailAria": "Co-Author Email",
     "coAuthorNamePlaceholder": "Name",
     "coAuthorEmailPlaceholder": "email@domain.com",
     "amendDisabledTitle": "No commits to amend yet",
@@ -327,13 +331,13 @@
     "commitBtnMany": "Commit ({count} files)",
     "undoLastCommit": "Undo Last Commit",
     "undoLastCommitTitle": "Undo last commit and keep its changes staged",
-    "conventionalToggle": "Use structured format",
-    "conventionalHide": "Hide structured format",
+    "conventionalToggle": "Conventional Commit Form",
+    "conventionalHide": "Hide Form",
     "conventionalTypeLabel": "Type",
     "conventionalTypeNone": "No type",
     "conventionalScopeLabel": "Scope",
-    "conventionalScopePlaceholder": "Scope, optional",
-    "conventionalBreaking": "Breaking change",
+    "conventionalScopePlaceholder": "e.g. auth, worktree",
+    "conventionalBreaking": "Breaking Change (!)",
     "conventionalLivePreview": "Preview",
     "validationOver72": "Subject exceeds 72 characters",
     "validationLowercase": "Use lowercase imperative summary (e.g. 'add' not 'Add')",
@@ -366,27 +370,7 @@
     },
     "resolveConflictBtn": "Resolve",
     "resolveConflictTitle": "Open 3-way merge conflict editor",
-    "conventionalToggle": "Conventional Commit Form",
-    "conventionalHide": "Hide Form",
-    "conventionalTypeLabel": "Type",
-    "conventionalScopeLabel": "Scope",
-    "conventionalScopePlaceholder": "e.g. auth, worktree",
-    "conventionalBreaking": "Breaking Change (!)",
-    "conventionalLivePreview": "Preview",
-    "validationOver72": "Subject exceeds 72 characters",
-    "validationLowercase": "Use lowercase imperative summary (e.g. 'add' not 'Add')",
-    "validationNoPeriod": "Summary should not end with a period",
-    "hooksActive": "Active Git Hooks: {hooks}",
-    "typeFeat": "New feature",
-    "typeFix": "Bug fix",
-    "typeDocs": "Documentation",
-    "typeStyle": "Code style / formatting",
-    "typeRefactor": "Code refactor",
-    "typePerf": "Performance boost",
-    "typeTest": "Tests",
-    "typeBuild": "Build / dependencies",
-    "typeCi": "Continuous Integration",
-    "typeChore": "Maintenance"
+    "commitToolbarAria": "Commit options"
   },
   "diff": {
     "viewModeAria": "Diff view mode",
@@ -445,7 +429,7 @@
     "empty": "No commit history on this branch yet.",
     "loadMoreCommits": "Load 100 More Commits",
     "colBranchTag": "BRANCH / TAG",
-    "colGraph": "GRAPH",
+    "colGraph": "Graph",
     "colSha": "SHA",
     "colCommit": "COMMIT",
     "colChanges": "CHANGES",
@@ -492,7 +476,6 @@
     "filesResizerVerticalTitle": "Drag up/down to resize file list (double-click to reset)",
     "filesResizerHorizontalTitle": "Drag left/right to resize file list (double-click to reset)",
     "loadingDiff": "Loading diff...",
-    "colGraph": "Graph",
     "allBranchesShort": "All Branches",
     "currentBranchShort": "Current Branch",
     "toggleAllBranchesTitle": "Filter branches in history",
@@ -525,7 +508,13 @@
     "moveColumnLeft": "Move column left",
     "moveColumnRight": "Move column right",
     "columnRequired": "Required column",
-    "justNow": "just now"
+    "justNow": "just now",
+    "badgeActive": "Active",
+    "tagSearchPlaceholder": "Search tags...",
+    "clearTagFilter": "Clear tag filter",
+    "deleteTagAria": "Delete tag {tagName}",
+    "branchLaneTitle": "Branch: {branch}",
+    "commitLaneBadgeTitle": "Branch on this lane"
   },
   "branchModal": {
     "title": "Select or Manage Branches",
@@ -587,8 +576,7 @@
     "renameBtn": "Rename",
     "renameTitle": "Rename branch",
     "deleteBtn": "Delete",
-    "deleteBtnTitle": "Delete local branch"
-    ,
+    "deleteBtnTitle": "Delete local branch",
     "tabAll": "All ({count})",
     "tabLocal": "Local ({count})",
     "tabRemote": "Remote ({count})",
@@ -672,8 +660,7 @@
       "relocateAria": "New location for {path}",
       "relocatePlaceholder": "New repository location path",
       "relocatePickerTitle": "Select New Repository Location",
-      "moveBtn": "Move"
-      ,
+      "moveBtn": "Move",
       "searchPlaceholder": "Search name, alias, branch, or path...",
       "emptyFilter": "No matching repositories.",
       "activeBadge": "Active",
@@ -774,7 +761,8 @@
       "hunkAppliedStatus": "Hunk patch applied from stash",
       "filesTitle": "Files ({count})",
       "allFiles": "All Files",
-      "noFiles": "No files in this stash"
+      "noFiles": "No files in this stash",
+      "applyingStatus": "Applying stash..."
     },
     "diag": {
       "collecting": "Collecting system diagnostic information...",
@@ -1233,7 +1221,13 @@
     "cwdCopy": "Copy working directory",
     "cwdCopied": "Directory copied",
     "shellSelectTitle": "Select Terminal Shell",
-    "shellAutoDesc": "Detected system default"
+    "shellAutoDesc": "Detected system default",
+    "searchToggleTitle": "Search output (Ctrl+F)",
+    "searchToggleAria": "Search output",
+    "searchMatchCountOne": "{count} match",
+    "searchMatchCountMany": "{count} matches",
+    "searchCloseTitle": "Close search",
+    "searchCloseAria": "Close search"
   },
   "palette": {
     "title": "Command Palette",
@@ -1277,7 +1271,8 @@
     "badgeDeleted": "Deleted",
     "badgeActive": "Active",
     "badgeLocal": "Local",
-    "badgeRemote": "Remote"
+    "badgeRemote": "Remote",
+    "copiedCommitSha": "Copied commit SHA {sha} to clipboard"
   },
   "ai": {
     "settingsSection": "Custom AI",
@@ -1397,8 +1392,8 @@
     "logEmpty": "No steps recorded yet",
     "pickCommit": "Pick from commits",
     "customRef": "Custom ref or HEAD"
-  }
-  ,"workspaceSettings": {
+  },
+  "workspaceSettings": {
     "title": "Panel layout",
     "empty": "No workspace panels visible",
     "reset": "Reset panels",
@@ -1442,7 +1437,9 @@
     "whySwitch": "Why switch to HTTPS?",
     "whySwitchDesc": "HTTPS uses standard web port 443 which is always allowed across nearly all networks, ISPs, and firewalls without requiring complex SSH key setup.",
     "switchToHttps": "Switch to HTTPS",
-    "switchToSsh": "Switch to SSH"
+    "switchToSsh": "Switch to SSH",
+    "errorLogDetail": "Error Log Detail",
+    "copyErrorAria": "Copy error message to clipboard"
   },
   "workflowModal": {
     "title": "GitHub Workflow Scope Required",

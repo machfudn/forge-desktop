@@ -13,7 +13,9 @@
     "detachedHead": "HEAD terlepas",
     "loading": "Memuat...",
     "refresh": "Segarkan",
-    "clear": "Bersihkan"
+    "clear": "Bersihkan",
+    "tauriPickerFolder": "Pemilih folder native hanya tersedia di aplikasi desktop Tauri.",
+    "tauriPickerFile": "Pemilih file native hanya tersedia di aplikasi desktop Tauri."
   },
   "app": {
     "ready": "Siap",
@@ -238,7 +240,10 @@
       "linesStaged": "Baris terpilih berhasil di-stage.",
       "linesUnstaged": "Baris terpilih berhasil di-unstage.",
       "mergedBranch": "Berhasil merge branch {branch}.",
-      "rebasedBranch": "Berhasil rebase ke {branch}."
+      "rebasedBranch": "Berhasil rebase ke {branch}.",
+      "latestVersionFallback": "terbaru",
+      "themeChanged": "Tema diubah ke: {theme}",
+      "languageChanged": "Bahasa diubah ke: {lang}"
     }
   },
   "changes": {
@@ -271,7 +276,7 @@
     "stageAllBtn": "Stage",
     "stageAllTitle": "Stage semua perubahan",
     "unstageAllBtn": "Unstage",
-    "coAuthorEmailAria": "Email Co-Author",
+    "coAuthorEmailAria": "Email Co-author",
     "unstageAllTitle": "Unstage semua perubahan",
     "emptyClean": "Working tree bersih",
     "emptyNoCommits": "Repositori baru (belum ada commit)",
@@ -309,7 +314,6 @@
     "descAria": "Deskripsi commit",
     "descPlaceholder": "Mengapa perubahan ini diperlukan? Tambahkan konteks untuk pengguna berikutnya.",
     "coAuthorFieldLabel": "Co-author",
-    "coAuthorEmailAria": "Email Co-author",
     "coAuthorNamePlaceholder": "Nama",
     "coAuthorEmailPlaceholder": "email@domain.com",
     "amendDisabledTitle": "Belum ada commit untuk diamend",
@@ -365,7 +369,8 @@
     "typeTest": "Pengujian / tes",
     "typeBuild": "Build / dependensi",
     "typeCi": "Continuous Integration",
-    "typeChore": "Pemeliharaan rutin"
+    "typeChore": "Pemeliharaan rutin",
+    "commitToolbarAria": "Opsi commit"
   },
   "diff": {
     "viewModeAria": "Mode tampilan diff",
@@ -424,7 +429,7 @@
     "empty": "Belum ada riwayat commit di branch ini.",
     "loadMoreCommits": "Muat 100 Commit Lebih Banyak",
     "colBranchTag": "BRANCH / TAG",
-    "colGraph": "GRAFIK",
+    "colGraph": "Grafik",
     "colSha": "SHA",
     "colCommit": "COMMIT",
     "colChanges": "PERUBAHAN",
@@ -471,7 +476,6 @@
     "filesResizerVerticalTitle": "Seret ke atas/bawah untuk ubah tinggi daftar file (klik ganda untuk reset)",
     "filesResizerHorizontalTitle": "Seret ke kiri/kanan untuk ubah lebar daftar file (klik ganda untuk reset)",
     "loadingDiff": "Memuat diff perubahan...",
-    "colGraph": "Grafik",
     "allBranchesShort": "Semua Branch",
     "currentBranchShort": "Branch Aktif",
     "toggleAllBranchesTitle": "Filter branch di riwayat commit",
@@ -504,7 +508,13 @@
     "moveColumnLeft": "Pindahkan kolom ke kiri",
     "moveColumnRight": "Pindahkan kolom ke kanan",
     "columnRequired": "Wajib ditampilkan",
-    "justNow": "baru saja"
+    "justNow": "baru saja",
+    "badgeActive": "Aktif",
+    "tagSearchPlaceholder": "Cari tag...",
+    "clearTagFilter": "Hapus filter tag",
+    "deleteTagAria": "Hapus tag {tagName}",
+    "branchLaneTitle": "Cabang: {branch}",
+    "commitLaneBadgeTitle": "Cabang pada alur ini"
   },
   "branchModal": {
     "title": "Pilih atau Kelola Branch",
@@ -566,8 +576,7 @@
     "renameBtn": "Rename",
     "renameTitle": "Ganti nama branch",
     "deleteBtn": "Hapus",
-    "deleteBtnTitle": "Hapus branch lokal"
-    ,
+    "deleteBtnTitle": "Hapus branch lokal",
     "tabAll": "Semua ({count})",
     "tabLocal": "Lokal ({count})",
     "tabRemote": "Remote ({count})",
@@ -651,8 +660,7 @@
       "relocateAria": "Lokasi baru untuk {path}",
       "relocatePlaceholder": "Path lokasi baru repositori",
       "relocatePickerTitle": "Pilih Lokasi Baru Repositori",
-      "moveBtn": "Pindah"
-      ,
+      "moveBtn": "Pindah",
       "searchPlaceholder": "Cari nama, alias, branch, atau path...",
       "emptyFilter": "Tidak ada repositori yang cocok dengan pencarian.",
       "activeBadge": "Aktif",
@@ -753,7 +761,8 @@
       "hunkAppliedStatus": "Patch hunk berhasil diterapkan dari stash",
       "filesTitle": "File ({count})",
       "allFiles": "Semua File",
-      "noFiles": "Tidak ada file di stash ini"
+      "noFiles": "Tidak ada file di stash ini",
+      "applyingStatus": "Menerapkan stash..."
     },
     "diag": {
       "collecting": "Mengumpulkan informasi diagnostik sistem...",
@@ -1212,7 +1221,13 @@
     "cwdCopy": "Salin direktori kerja",
     "cwdCopied": "Direktori disalin",
     "shellSelectTitle": "Pilih Shell Terminal",
-    "shellAutoDesc": "Default sistem terdeteksi"
+    "shellAutoDesc": "Default sistem terdeteksi",
+    "searchToggleTitle": "Cari output (Ctrl+F)",
+    "searchToggleAria": "Cari output",
+    "searchMatchCountOne": "{count} kecocokan",
+    "searchMatchCountMany": "{count} kecocokan",
+    "searchCloseTitle": "Tutup pencarian",
+    "searchCloseAria": "Tutup pencarian"
   },
   "palette": {
     "title": "Palet Perintah",
@@ -1256,7 +1271,8 @@
     "badgeDeleted": "Dihapus",
     "badgeActive": "Aktif",
     "badgeLocal": "Lokal",
-    "badgeRemote": "Remote"
+    "badgeRemote": "Remote",
+    "copiedCommitSha": "SHA commit {sha} disalin ke clipboard"
   },
   "ai": {
     "settingsSection": "AI Kustom",
@@ -1376,8 +1392,8 @@
     "logEmpty": "Belum ada langkah tercatat",
     "pickCommit": "Pilih dari commit",
     "customRef": "Ref kustom atau HEAD"
-  }
-  ,"workspaceSettings": {
+  },
+  "workspaceSettings": {
     "title": "Tata letak panel",
     "empty": "Tidak ada panel workspace yang terlihat",
     "reset": "Atur ulang panel",
@@ -1421,7 +1437,9 @@
     "whySwitch": "Mengapa beralih ke HTTPS?",
     "whySwitchDesc": "HTTPS menggunakan port web standar 443 yang selalu diizinkan di hampir semua jaringan, ISP, dan firewall kantor tanpa memerlukan konfigurasi SSH key yang rumit.",
     "switchToHttps": "Ganti ke HTTPS",
-    "switchToSsh": "Ganti ke SSH"
+    "switchToSsh": "Ganti ke SSH",
+    "errorLogDetail": "Detail Log Error",
+    "copyErrorAria": "Salin pesan error ke clipboard"
   },
   "workflowModal": {
     "title": "Izin Workflow GitHub Diperlukan",
