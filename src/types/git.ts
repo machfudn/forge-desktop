@@ -61,6 +61,30 @@ export interface CommitDetail {
   files: CommitChangedFile[];
 }
 
+export interface CompareFileItem {
+  path: string;
+  old_path?: string | null;
+  status_code: string;
+  insertions: number;
+  deletions: number;
+  is_binary: boolean;
+}
+
+export interface CompareSummary {
+  base: string;
+  target: string;
+  range_spec: string;
+  is_three_dot: boolean;
+  merge_base: string | null;
+  ahead: number;
+  behind: number;
+  commits: CommitInfo[];
+  files: CompareFileItem[];
+  total_files: number;
+  total_insertions: number;
+  total_deletions: number;
+}
+
 export interface BranchInfo {
   name: string;
   is_current: boolean;

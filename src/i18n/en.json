@@ -530,7 +530,9 @@
     "branchLaneTitle": "Branch: {branch}",
     "commitLaneBadgeTitle": "Branch on this lane",
     "filterTag": "Filter Tag",
-    "searchShortcutTitle": "Shortcut: Ctrl+F"
+    "searchShortcutTitle": "Shortcut: Ctrl+F",
+    "compareBtn": "Compare",
+    "compareBtnTitle": "Compare commits, branches, or tags"
   },
   "branchModal": {
     "title": "Select or Manage Branches",
@@ -610,7 +612,45 @@
     "fetchingBtn": "Fetching...",
     "fetchedStatus": "Remote branches refreshed",
     "remoteBadge": "Remote",
-    "checkoutRemoteTitle": "Checkout remote branch {name} to a local branch"
+    "checkoutRemoteTitle": "Checkout remote branch {name} to a local branch",
+    "compareBtn": "Compare",
+    "compareBtnTitle": "Compare branch {name} with active branch"
+  },
+  "compareModal": {
+    "title": "Compare Revisions",
+    "base": "Base (Target)",
+    "target": "Compare (Source)",
+    "swap": "Swap comparison direction",
+    "modeThreeDot": "PR / Merge Base (...)",
+    "modeTwoDot": "Direct / Snapshot (..)",
+    "modeThreeDotTitle": "Shows changes since branching off common ancestor (merge-base)",
+    "modeTwoDotTitle": "Shows direct snapshot differences between the two revisions",
+    "aheadBehind": "{ahead} ahead, {behind} behind",
+    "aheadOnly": "{count} commit(s) ahead",
+    "behindOnly": "{count} commit(s) behind",
+    "identical": "Revisions are identical — no differences between base and compare.",
+    "noCommonAncestor": "No common ancestor found (unrelated histories). Direct (..) mode activated.",
+    "tabCommits": "Commits ({count})",
+    "tabFiles": "Files ({count})",
+    "filterPlaceholder": "Filter files or commits...",
+    "overviewTitle": "Comparison Summary",
+    "mergeBase": "Common Ancestor (Merge Base)",
+    "noMergeBase": "None found (unrelated)",
+    "commitsSummary": "{count} commit(s)",
+    "filesSummary": "{count} changed file(s)",
+    "insertionsSummary": "+{count} lines",
+    "deletionsSummary": "-{count} lines",
+    "loading": "Comparing revisions...",
+    "emptySearch": "No files or commits match your filter",
+    "binaryNotice": "Binary file changed (text diff not displayed)",
+    "tabBranch": "Branch",
+    "tabTag": "Tag",
+    "tabCommit": "Commit",
+    "selectRefTitle": "Select Revision",
+    "searchRefPlaceholder": "Search branch, tag, or SHA...",
+    "close": "Close",
+    "selectFilePrompt": "Select a changed file on the left to view the code comparison.",
+    "failedToLoadDiff": "Failed to load diff for {path}: {err}"
   },
   "hgModal": {
     "titleTag": "Create Git Tag",
@@ -1070,7 +1110,11 @@
       "interactiveRebase": "Interactive Rebase from here...",
       "copySha": "Copy SHA",
       "copyMessage": "Copy Commit Message",
-      "viewOnGithub": "View on Web Hosting"
+      "viewOnGithub": "View on Web Hosting",
+      "compareWithHead": "Compare with HEAD...",
+      "compareWith": "Compare Revisions...",
+      "selectForCompare": "Select for Compare",
+      "compareWithSelected": "Compare with {ref}..."
     },
     "tag": {
       "copyName": "Copy Tag Name",
@@ -1087,6 +1131,7 @@
       "copyName": "Copy Branch Name",
       "delete": "Delete Branch...",
       "deleteRemote": "Delete from Remote...",
+      "compareWithActive": "Compare with {branch}...",
       "manage": "Manage Branches..."
     },
     "repo": {

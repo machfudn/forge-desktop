@@ -530,7 +530,9 @@
     "branchLaneTitle": "Cabang: {branch}",
     "commitLaneBadgeTitle": "Cabang pada alur ini",
     "filterTag": "Filter Tag",
-    "searchShortcutTitle": "Pintasan: Ctrl+F"
+    "searchShortcutTitle": "Pintasan: Ctrl+F",
+    "compareBtn": "Bandingkan",
+    "compareBtnTitle": "Bandingkan commit, branch, atau tag"
   },
   "branchModal": {
     "title": "Pilih atau Kelola Branch",
@@ -610,7 +612,45 @@
     "fetchingBtn": "Fetch...",
     "fetchedStatus": "Semua branch remote berhasil diperbarui",
     "remoteBadge": "Remote",
-    "checkoutRemoteTitle": "Checkout branch remote {name} ke branch lokal"
+    "checkoutRemoteTitle": "Checkout branch remote {name} ke branch lokal",
+    "compareBtn": "Bandingkan",
+    "compareBtnTitle": "Bandingkan branch {name} dengan branch aktif"
+  },
+  "compareModal": {
+    "title": "Bandingkan Referensi",
+    "base": "Base (Target)",
+    "target": "Compare (Sumber)",
+    "swap": "Tukar arah perbandingan",
+    "modeThreeDot": "PR / Merge Base (...)",
+    "modeTwoDot": "Langsung / Snapshot (..)",
+    "modeThreeDotTitle": "Menampilkan perubahan sejak bercabang dari leluhur bersama (merge-base)",
+    "modeTwoDotTitle": "Menampilkan perbedaan langsung antara snapshot kedua referensi",
+    "aheadBehind": "{ahead} di depan, {behind} di belakang",
+    "aheadOnly": "{count} commit lebih baru",
+    "behindOnly": "{count} commit tertinggal",
+    "identical": "Referensi identik — tidak ada perbedaan antara base dan compare.",
+    "noCommonAncestor": "Tidak ada leluhur bersama (riwayat tidak berhubungan). Mode direct (..) diaktifkan.",
+    "tabCommits": "Commit ({count})",
+    "tabFiles": "Berkas ({count})",
+    "filterPlaceholder": "Filter berkas atau commit...",
+    "overviewTitle": "Ringkasan Komparasi",
+    "mergeBase": "Leluhur Bersama (Merge Base)",
+    "noMergeBase": "Tidak ditemukan (unrelated)",
+    "commitsSummary": "{count} commit",
+    "filesSummary": "{count} berkas berubah",
+    "insertionsSummary": "+{count} baris",
+    "deletionsSummary": "-{count} baris",
+    "loading": "Membandingkan referensi...",
+    "emptySearch": "Tidak ada berkas atau commit yang cocok dengan filter",
+    "binaryNotice": "Berkas biner berubah (diff teks tidak ditampilkan)",
+    "tabBranch": "Branch",
+    "tabTag": "Tag",
+    "tabCommit": "Commit",
+    "selectRefTitle": "Pilih Referensi",
+    "searchRefPlaceholder": "Cari branch, tag, atau SHA...",
+    "close": "Tutup",
+    "selectFilePrompt": "Pilih salah satu berkas di sebelah kiri untuk melihat perbandingan kode.",
+    "failedToLoadDiff": "Gagal memuat diff untuk berkas {path}: {err}"
   },
   "hgModal": {
     "titleTag": "Buat Git Tag",
@@ -1070,7 +1110,11 @@
       "interactiveRebase": "Rebase Interaktif dari commit ini...",
       "copySha": "Salin SHA",
       "copyMessage": "Salin Pesan Commit",
-      "viewOnGithub": "Buka di Web Hosting"
+      "viewOnGithub": "Buka di Web Hosting",
+      "compareWithHead": "Bandingkan dengan HEAD...",
+      "compareWith": "Bandingkan Referensi...",
+      "selectForCompare": "Pilih sebagai Dasar Komparasi",
+      "compareWithSelected": "Bandingkan dengan {ref}..."
     },
     "tag": {
       "copyName": "Salin Nama Tag",
@@ -1087,6 +1131,7 @@
       "copyName": "Salin Nama Branch",
       "delete": "Hapus Branch...",
       "deleteRemote": "Hapus dari Remote...",
+      "compareWithActive": "Bandingkan dengan {branch}...",
       "manage": "Kelola Branch..."
     },
     "repo": {

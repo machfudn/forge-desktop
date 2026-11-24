@@ -16,6 +16,7 @@ import type {
   CheckRunInfo,
   CommitDetail,
   CommitInfo,
+  CompareSummary,
   ConflictFileData,
   DetectedSession,
   DeviceFlowInit,
@@ -711,6 +712,40 @@ export async function compareBranches(
   target: string
 ): Promise<AheadBehind> {
   return invoke<AheadBehind>("compare_branches", { repo, base, target });
+}
+
+export async function compareRevisions(
+  repo: string,
+  base: string,
+  target: string,
+  threeDot = true
+): Promise<CompareSummary> {
+  return invoke<CompareSummary>("compare_revisions", {
+    repo,
+    base,
+    target,
+    threeDot,
+  });
+}
+
+export async function getCompareFileDiff(
+  repo: string,
+  base: string,
+  target: string,
+  filePath: string,
+  oldPath?: string | null,
+  threeDot = true,
+  ignoreWhitespace = false
+): Promise<string> {
+  return invoke<string>("get_compare_file_diff", {
+    repo,
+    base,
+    target,
+    filePath,
+    oldPath: oldPath ?? null,
+    threeDot,
+    ignoreWhitespace,
+  });
 }
 
 export async function publishRepositoryToGithub(
