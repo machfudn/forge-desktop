@@ -297,30 +297,39 @@
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation();
       onClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
+      e.stopPropagation();
       if (filtered.length > 0) activeIndex = (activeIndex + 1) % filtered.length;
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       if (filtered.length > 0) activeIndex = (activeIndex - 1 + filtered.length) % filtered.length;
     } else if (e.key === "PageDown") {
       e.preventDefault();
+      e.stopPropagation();
       if (filtered.length > 0) activeIndex = Math.min(activeIndex + 6, filtered.length - 1);
     } else if (e.key === "PageUp") {
       e.preventDefault();
+      e.stopPropagation();
       if (filtered.length > 0) activeIndex = Math.max(activeIndex - 6, 0);
     } else if (e.key === "Home") {
       e.preventDefault();
+      e.stopPropagation();
       activeIndex = 0;
     } else if (e.key === "End") {
       e.preventDefault();
+      e.stopPropagation();
       if (filtered.length > 0) activeIndex = filtered.length - 1;
     } else if (e.key === "Tab") {
       e.preventDefault();
+      e.stopPropagation();
       cycleFilter(e.shiftKey ? -1 : 1);
     } else if (e.key === "Enter" && filtered[activeIndex]) {
       e.preventDefault();
+      e.stopPropagation();
       runItem(filtered[activeIndex].cmd);
     }
   }
