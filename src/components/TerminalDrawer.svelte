@@ -363,6 +363,33 @@
     } catch {}
   }
 
+  function handleResizerKeyDown(e: KeyboardEvent) {
+    const maxH = Math.floor(window.innerHeight - 150);
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const step = (e.key === "ArrowUp" ? 12 : -12) * (e.shiftKey ? 2 : 1);
+      height = Math.max(140, Math.min(maxH, height + step));
+      if (isMaximized) isMaximized = false;
+      try {
+        localStorage.setItem("forge_terminal_height", String(height));
+      } catch {}
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      height = 140;
+      if (isMaximized) isMaximized = false;
+      try {
+        localStorage.setItem("forge_terminal_height", String(height));
+      } catch {}
+    } else if (e.key === "End") {
+      e.preventDefault();
+      height = maxH;
+      if (isMaximized) isMaximized = false;
+      try {
+        localStorage.setItem("forge_terminal_height", String(height));
+      } catch {}
+    }
+  }
+
   function toggleMaximize() {
     isMaximized = !isMaximized;
     queueMicrotask(() => inputEl?.focus());
@@ -688,15 +715,22 @@
 >
   <!-- Vertical resizer handle -->
   {#if !isMaximized}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
       class="terminal-resizer {isResizing ? 'is-resizing' : ''}"
+      tabindex="0"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Resize terminal"
+      aria-valuenow={height}
+      aria-valuemin="140"
+      aria-valuemax={Math.floor(typeof window !== "undefined" ? window.innerHeight - 150 : 600)}
+      title="Drag or use arrow keys to resize terminal"
       onpointerdown={handleResizerPointerDown}
       onpointermove={handleResizerPointerMove}
       onpointerup={handleResizerPointerUp}
       onpointercancel={handleResizerPointerUp}
-      role="separator"
-      aria-label="Resize terminal"
-      title="Drag to resize terminal"
+      onkeydown={handleResizerKeyDown}
     ></div>
   {/if}
 
