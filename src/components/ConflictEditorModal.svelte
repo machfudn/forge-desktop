@@ -2,6 +2,7 @@
   import type { ConflictBlock, ConflictFileData } from "../types/git";
   import * as gitService from "../services/git";
   import { t } from "../i18n/index.svelte";
+  import { localizeBackendError } from "../utils/errorLocalization";
 
   interface Props {
     repoPath: string;
@@ -154,8 +155,8 @@
       replaceBlockInOutput(block, res.content);
       onStatus?.(t("conflict.aiResolvedBlock", { model: res.model }));
     } catch (err) {
-      errorMsg = String(err);
-      onStatus?.(String(err), true);
+      errorMsg = localizeBackendError(err);
+      onStatus?.(errorMsg, true);
     } finally {
       aiBusyBlock = null;
     }
@@ -171,8 +172,8 @@
       outputText = res.content;
       onStatus?.(t("conflict.aiResolvedFile", { model: res.model }));
     } catch (err) {
-      errorMsg = String(err);
-      onStatus?.(String(err), true);
+      errorMsg = localizeBackendError(err);
+      onStatus?.(errorMsg, true);
     } finally {
       aiBusyBlock = null;
     }
@@ -194,8 +195,8 @@
         onClose();
       }
     } catch (err) {
-      errorMsg = String(err);
-      onStatus?.(String(err), true);
+      errorMsg = localizeBackendError(err);
+      onStatus?.(errorMsg, true);
     } finally {
       saving = false;
     }

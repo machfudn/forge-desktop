@@ -78,6 +78,7 @@
     type TranslationKey,
   } from "./i18n/index.svelte";
   import { getAppErrorLogs, logAppError } from "./utils/appLog.svelte";
+  import { localizeBackendError } from "./utils/errorLocalization";
 
   type ModalType = "branch" | "worktree" | "bisect" | WorkspaceModalType | HistoryGithubModalType | null;
 
@@ -1373,7 +1374,7 @@
       setStatus(t("ai.generatedCommit", { model: res.model }));
       return { summary, description };
     } catch (err) {
-      setStatus(String(err), true);
+      setStatus(localizeBackendError(err), true);
       return null;
     }
   }
@@ -1381,7 +1382,7 @@
   function handleAiExplainDiff(filePath: string, diffText: string) {
     aiModalState = {
       task: "explain_diff",
-      prompt: `Explain changes in ${filePath}`,
+      prompt: t("ai.explainDiffPrompt", { file: filePath }),
       context: diffText.slice(0, 12000),
     };
   }
@@ -1389,7 +1390,7 @@
   function handleAiExplainCommit(sha: string, summary: string) {
     aiModalState = {
       task: "explain_commit",
-      prompt: `Explain commit ${sha.slice(0, 8)}: ${summary}`,
+      prompt: t("ai.explainCommitPrompt", { sha: sha.slice(0, 8), summary }),
       context: `Commit SHA: ${sha}\nSummary: ${summary}`,
     };
   }

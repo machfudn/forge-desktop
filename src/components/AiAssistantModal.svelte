@@ -2,6 +2,7 @@
   import * as gitService from "../services/git";
   import { t } from "../i18n/index.svelte";
   import { copyTextToClipboard } from "../lib/contextMenu.svelte";
+  import { localizeBackendError } from "../utils/errorLocalization";
 
   interface Props {
     repoPath?: string;
@@ -66,8 +67,8 @@
       answer = res.content;
       metaText = `${res.model} · ${res.latency_ms} ms`;
     } catch (err) {
-      errorMsg = String(err);
-      onStatus?.(String(err), true);
+      errorMsg = localizeBackendError(err);
+      onStatus?.(errorMsg, true);
     } finally {
       running = false;
     }

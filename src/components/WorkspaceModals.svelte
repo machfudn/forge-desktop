@@ -44,6 +44,7 @@
   import ProviderIcon from "./ProviderIcon.svelte";
   import Diff from "./Diff.svelte";
   import { splitMultiFileDiff, type StashFileItem } from "../lib/stashDiff";
+  import { localizeBackendError } from "../utils/errorLocalization";
 
   export type WorkspaceModalType =
     | "open"
@@ -978,10 +979,10 @@
       const msg = String(err);
       if (msg.includes("[KEYRING_UNAVAILABLE]")) {
         aiKeyringFallbackPending = true;
-        aiTestResult = { ok: false, msg: msg.replace("[KEYRING_UNAVAILABLE]", "").trim() };
+        aiTestResult = { ok: false, msg: t("wsModal.auth.keyringUnavailable") };
         return false;
       }
-      aiTestResult = { ok: false, msg };
+      aiTestResult = { ok: false, msg: localizeBackendError(err) };
       return false;
     }
   }
@@ -998,7 +999,7 @@
         msg: t("ai.testSuccess", { model: res.model, ms: res.latency_ms }),
       };
     } catch (err) {
-      aiTestResult = { ok: false, msg: String(err) };
+      aiTestResult = { ok: false, msg: localizeBackendError(err) };
     } finally {
       isTestingAi = false;
     }
