@@ -3,6 +3,7 @@
   import * as gitService from "../services/git";
   import { t } from "../i18n/index.svelte";
   import { pickDirectory } from "../utils/path";
+  import { copyTextToClipboard } from "../lib/contextMenu.svelte";
 
   interface Props {
     repoPath: string;
@@ -143,9 +144,9 @@
           gitService.listBranches(repoPath).catch(() => []),
         ]);
         worktrees = wtList;
-        localBranches = branchList;
-        if (!newWtBranch && branchList.length > 0) {
-          const defaultBranch = branchList.find((b) => b.is_current)?.name || branchList[0]?.name || "";
+        localBranches = (branchList || []).filter((b) => !b.is_remote);
+        if (!newWtBranch && localBranches.length > 0) {
+          const defaultBranch = localBranches.find((b) => b.is_current)?.name || localBranches[0]?.name || "";
           newWtBranch = defaultBranch;
           suggestWorktreePath(defaultBranch);
         }
@@ -251,11 +252,13 @@
   async function handleCopySubmoduleUrl(sub: SubmoduleInfo) {
     const textToCopy = sub.url || getSubmoduleFullPath(sub.path);
     try {
-      await navigator.clipboard.writeText(textToCopy);
-      copiedSubPath = sub.path;
-      setTimeout(() => {
-        if (copiedSubPath === sub.path) copiedSubPath = null;
-      }, 2000);
+      const ok = await copyTextToClipboard(textToCopy);
+      if (ok) {
+        copiedSubPath = sub.path;
+        setTimeout(() => {
+          if (copiedSubPath === sub.path) copiedSubPath = null;
+        }, 2000);
+      }
     } catch {
       // ignore
     }
