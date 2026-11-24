@@ -31,6 +31,10 @@
   let errorMsg = $state("");
 
   $effect(() => {
+    if (conflictedFiles.length === 0) {
+      onClose();
+      return;
+    }
     const first =
       initialFilePath && conflictedFiles.includes(initialFilePath)
         ? initialFilePath
@@ -186,6 +190,7 @@
       if (remaining.length > 0) {
         selectedFile = remaining[0];
       } else {
+        selectedFile = "";
         onClose();
       }
     } catch (err) {
