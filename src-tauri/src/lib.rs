@@ -120,6 +120,8 @@ pub fn run() {
             commands::set_global_config,
             commands::get_cli_repo_arg,
             commands::compare_branches,
+            commands::compare_revisions,
+            commands::get_compare_file_diff,
             commands::publish_repository_to_github,
             commands::sync_fork,
             commands::get_image_diff,

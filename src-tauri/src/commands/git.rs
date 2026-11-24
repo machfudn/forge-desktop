@@ -4,7 +4,8 @@ use crate::ai::{AiConfigPublic, AiManager, AiTaskResult, AiTestResult, SaveAiCon
 use crate::diagnostics::{self, DiagnosticReport};
 use crate::git::{
     self, AccountHealth, AccountManager, AccountOverview, AccountProfile, AheadBehind,
-    BisectState, BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo, ConflictFileData,
+    BisectState, BlameLine, BranchInfo, CheckRunInfo, CommitDetail, CommitInfo,
+    CompareSummary, ConflictFileData,
     DetectedSession, DeviceFlowInit, DeviceFlowPollOutcome, GitHooksInfo, HostingProvider, ImageDiffData,
     IssueInfo, LocalSessionSource, ParsedGitHubRepo, ParsedHostingRepo, PublishRepoParams,
     CreateReviewCommentParams, PullRequestInfo, PullRequestReviewComment, RebaseCommitItem, RebaseStep, ReflogEntry, RemoteInfo, RepoConfig, RepoQuickSummary, RepoStatus,
@@ -161,6 +162,43 @@ pub async fn get_commit_file_diff(
             &sha,
             &file_path,
             old_path.as_deref(),
+            ignore_whitespace.unwrap_or(false),
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn compare_revisions(
+    repo: String,
+    base: String,
+    target: String,
+    three_dot: Option<bool>,
+) -> Result<CompareSummary, String> {
+    run_blocking(move || {
+        git::compare_revisions(&repo, &base, &target, three_dot.unwrap_or(true))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_compare_file_diff(
+    repo: String,
+    base: String,
+    target: String,
+    file_path: String,
+    old_path: Option<String>,
+    three_dot: Option<bool>,
+    ignore_whitespace: Option<bool>,
+) -> Result<String, String> {
+    run_blocking(move || {
+        git::get_compare_file_diff(
+            &repo,
+            &base,
+            &target,
+            &file_path,
+            old_path.as_deref(),
+            three_dot.unwrap_or(true),
             ignore_whitespace.unwrap_or(false),
         )
     })
