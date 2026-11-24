@@ -243,7 +243,14 @@
       "rebasedBranch": "Berhasil rebase ke {branch}.",
       "latestVersionFallback": "terbaru",
       "themeChanged": "Tema diubah ke: {theme}",
-      "languageChanged": "Bahasa diubah ke: {lang}"
+      "languageChanged": "Bahasa diubah ke: {lang}",
+      "indexLockDetected": "File .git/index.lock terdeteksi. Silakan bersihkan file lock terlebih dahulu.",
+      "dirtyWorkingTree": "Working tree masih memiliki perubahan belum di-commit. Commit atau stash terlebih dahulu.",
+      "noCommitsToPush": "Belum ada commit untuk di-push. Buat commit pertama terlebih dahulu.",
+      "detachedHeadPush": "Tidak dapat push dari posisi detached HEAD. Pilih atau buat branch terlebih dahulu.",
+      "commitSummaryRequired": "Pesan ringkasan commit wajib diisi.",
+      "noCommitToUndo": "Belum ada commit untuk dibatalkan.",
+      "gitNotFound": "Git tidak ditemukan pada sistem. Pastikan Git sudah terpasang di PATH."
     }
   },
   "changes": {
@@ -511,7 +518,7 @@
     "dateRelative": "Relatif",
     "dateAbsolute": "Lengkap",
     "resetColumns": "Reset Tata Letak",
-    "dragToReorder": "Seret untuk memindahkan posisi kolom",
+    "dragToReorder": "Seret untuk mengubah urutan commit",
     "moveColumnLeft": "Pindahkan kolom ke kiri",
     "moveColumnRight": "Pindahkan kolom ke kanan",
     "columnRequired": "Wajib ditampilkan",
@@ -521,7 +528,9 @@
     "clearTagFilter": "Hapus filter tag",
     "deleteTagAria": "Hapus tag {tagName}",
     "branchLaneTitle": "Cabang: {branch}",
-    "commitLaneBadgeTitle": "Cabang pada alur ini"
+    "commitLaneBadgeTitle": "Cabang pada alur ini",
+    "filterTag": "Filter Tag",
+    "searchShortcutTitle": "Pintasan: Ctrl+F"
   },
   "branchModal": {
     "title": "Pilih atau Kelola Branch",
@@ -830,6 +839,7 @@
       "tabOauth": "Browser OAuth",
       "tabImport": "Impor Sesi",
       "keyringNotice": "OS Keyring / Secret Service tidak tersedia. Anda dapat menyimpan token sementara di memori sesi saja (hilang saat aplikasi ditutup).",
+      "keyringUnavailable": "Penyimpanan kredensial OS Keyring tidak tersedia pada sistem.",
       "saveMemoryOnlyBtn": "Simpan di Memori Sesi Saja",
       "ssoNotice": "Token perlu otorisasi SAML Single Sign-On oleh organisasi Anda.",
       "patGuideTitle": "Buat & Verifikasi Token:",
@@ -1198,7 +1208,8 @@
     "worktreePrunable": "Folder Hilang",
     "worktreeBranchInUse": "{branch} (sudah digunakan)",
     "worktreeFolderMissing": "Folder worktree tidak ditemukan di disk",
-    "worktreeOpenManager": "Buka Manajer Penuh"
+    "worktreeOpenManager": "Buka Manajer Penuh",
+    "worktreeLockReason": "Alasan: {reason}"
   },
   "wsTools": {
     "menuLabel": "Reflog, Submodul & Worktree",
@@ -1234,7 +1245,12 @@
     "searchMatchCountOne": "{count} kecocokan",
     "searchMatchCountMany": "{count} kecocokan",
     "searchCloseTitle": "Tutup pencarian",
-    "searchCloseAria": "Tutup pencarian"
+    "searchCloseAria": "Tutup pencarian",
+    "resizerAria": "Ubah ukuran terminal",
+    "resizerTitle": "Seret atau gunakan tombol panah untuk mengubah ukuran terminal",
+    "commandRunningTitle": "Perintah sedang berjalan",
+    "lastExitCodeTitle": "Kode keluar terakhir: {code}",
+    "killProcessTitle": "Hentikan paksa proses aktif (Ctrl+C)"
   },
   "palette": {
     "title": "Palet Perintah",
@@ -1279,7 +1295,8 @@
     "badgeActive": "Aktif",
     "badgeLocal": "Lokal",
     "badgeRemote": "Remote",
-    "copiedCommitSha": "SHA commit {sha} disalin ke clipboard"
+    "copiedCommitSha": "SHA commit {sha} disalin ke clipboard",
+    "categoriesAria": "Kategori Perintah"
   },
   "ai": {
     "settingsSection": "AI Kustom",
@@ -1322,7 +1339,18 @@
     "explainDiffBtn": "Jelaskan AI",
     "explainDiffTitle": "Jelaskan diff file ini menggunakan AI Kustom",
     "explainCommitBtn": "Jelaskan AI",
-    "explainCommitTitle": "Jelaskan commit ini menggunakan AI Kustom"
+    "explainCommitTitle": "Jelaskan commit ini menggunakan AI Kustom",
+    "explainDiffPrompt": "Jelaskan perubahan pada file {file}",
+    "explainCommitPrompt": "Jelaskan commit {sha}: {summary}",
+    "errors": {
+      "endpointEmpty": "Endpoint AI belum dikonfigurasi. Atur di Pengaturan -> AI Kustom.",
+      "modelEmpty": "Model AI belum diisi di Pengaturan -> AI Kustom.",
+      "endpointProtocol": "Endpoint AI harus diawali http:// atau https://.",
+      "endpointInvalid": "URL Endpoint AI tidak valid.",
+      "connectionFailed": "Gagal terhubung ke endpoint AI. Periksa koneksi internet atau server AI Anda.",
+      "noDiff": "Tidak ada perubahan diff untuk dibuatkan pesan commit.",
+      "emptyResponse": "Respon AI tidak memiliki teks keluaran."
+    }
   },
   "interactiveRebase": {
     "title": "Interactive Rebase",
@@ -1484,7 +1512,11 @@
     "authSamlTitle": "Otorisasi SAML SSO Diperlukan",
     "authSamlDesc": "Akses ditolak karena organisasi mewajibkan otorisasi SAML Single Sign-On pada Personal Access Token Anda.",
     "divergentBranchesTitle": "Branch Bercabang (Divergent)",
-    "divergentBranchesDesc": "Branch lokal dan remote memiliki riwayat komit yang berbeda. Tentukan strategi rekonsiliasi (Merge atau Rebase)."
+    "divergentBranchesDesc": "Branch lokal dan remote memiliki riwayat komit yang berbeda. Tentukan strategi rekonsiliasi (Merge atau Rebase).",
+    "dnsFailed": "Tidak dapat terhubung ke remote host (gagal DNS/koneksi internet terputus).",
+    "permissionDeniedSsh": "Akses SSH ditolak (Permission denied - publickey). Periksa SSH Key Anda.",
+    "authFailed": "Autentikasi remote gagal. Periksa username dan Personal Access Token (PAT) Anda.",
+    "repoNotFound": "Repositori remote tidak ditemukan atau Anda tidak memiliki izin akses."
   },
   "secretModal": {
     "title": "Deteksi Rahasia / Push Protection",

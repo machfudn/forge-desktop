@@ -243,7 +243,14 @@
       "rebasedBranch": "Rebased onto {branch}.",
       "latestVersionFallback": "latest",
       "themeChanged": "Theme changed to: {theme}",
-      "languageChanged": "Language changed to: {lang}"
+      "languageChanged": "Language changed to: {lang}",
+      "indexLockDetected": "File .git/index.lock detected. Please remove the lock file first.",
+      "dirtyWorkingTree": "Working tree has uncommitted changes. Commit or stash them first.",
+      "noCommitsToPush": "No commits to push. Make your first commit first.",
+      "detachedHeadPush": "Cannot push from detached HEAD. Select or create a branch first.",
+      "commitSummaryRequired": "Commit summary is required.",
+      "noCommitToUndo": "No commits to undo.",
+      "gitNotFound": "Git not found on your system. Ensure Git is installed in PATH."
     }
   },
   "changes": {
@@ -511,7 +518,7 @@
     "dateRelative": "Relative",
     "dateAbsolute": "Absolute",
     "resetColumns": "Reset Layout",
-    "dragToReorder": "Drag to reorder column",
+    "dragToReorder": "Drag to reorder commits",
     "moveColumnLeft": "Move column left",
     "moveColumnRight": "Move column right",
     "columnRequired": "Required column",
@@ -521,7 +528,9 @@
     "clearTagFilter": "Clear tag filter",
     "deleteTagAria": "Delete tag {tagName}",
     "branchLaneTitle": "Branch: {branch}",
-    "commitLaneBadgeTitle": "Branch on this lane"
+    "commitLaneBadgeTitle": "Branch on this lane",
+    "filterTag": "Filter Tag",
+    "searchShortcutTitle": "Shortcut: Ctrl+F"
   },
   "branchModal": {
     "title": "Select or Manage Branches",
@@ -830,6 +839,7 @@
       "tabOauth": "Browser OAuth",
       "tabImport": "Import Session",
       "keyringNotice": "OS Keyring / Secret Service is unavailable. You can temporarily store the token in session memory only (lost when app closes).",
+      "keyringUnavailable": "OS Keyring credential storage is not available on this system.",
       "saveMemoryOnlyBtn": "Save in Session Memory Only",
       "ssoNotice": "Token requires SAML Single Sign-On authorization by your organization.",
       "patGuideTitle": "Create & Verify Token:",
@@ -1198,7 +1208,8 @@
     "worktreePrunable": "Missing Folder",
     "worktreeBranchInUse": "{branch} (already checked out)",
     "worktreeFolderMissing": "Worktree folder does not exist on disk",
-    "worktreeOpenManager": "Open Full Manager"
+    "worktreeOpenManager": "Open Full Manager",
+    "worktreeLockReason": "Reason: {reason}"
   },
   "wsTools": {
     "menuLabel": "Reflog, Submodules & Worktrees",
@@ -1234,7 +1245,12 @@
     "searchMatchCountOne": "{count} match",
     "searchMatchCountMany": "{count} matches",
     "searchCloseTitle": "Close search",
-    "searchCloseAria": "Close search"
+    "searchCloseAria": "Close search",
+    "resizerAria": "Resize terminal",
+    "resizerTitle": "Drag or use arrow keys to resize terminal",
+    "commandRunningTitle": "Command running",
+    "lastExitCodeTitle": "Last exit code: {code}",
+    "killProcessTitle": "Kill active process (Ctrl+C)"
   },
   "palette": {
     "title": "Command Palette",
@@ -1279,7 +1295,8 @@
     "badgeActive": "Active",
     "badgeLocal": "Local",
     "badgeRemote": "Remote",
-    "copiedCommitSha": "Copied commit SHA {sha} to clipboard"
+    "copiedCommitSha": "Copied commit SHA {sha} to clipboard",
+    "categoriesAria": "Palette Categories"
   },
   "ai": {
     "settingsSection": "Custom AI",
@@ -1322,7 +1339,18 @@
     "explainDiffBtn": "AI Explain",
     "explainDiffTitle": "Explain this file diff using Custom AI",
     "explainCommitBtn": "AI Explain",
-    "explainCommitTitle": "Explain this commit using Custom AI"
+    "explainCommitTitle": "Explain this commit using Custom AI",
+    "explainDiffPrompt": "Explain changes in {file}",
+    "explainCommitPrompt": "Explain commit {sha}: {summary}",
+    "errors": {
+      "endpointEmpty": "AI endpoint is not configured. Configure it in Settings -> Custom AI.",
+      "modelEmpty": "AI model is not set in Settings -> Custom AI.",
+      "endpointProtocol": "AI endpoint must start with http:// or https://.",
+      "endpointInvalid": "AI endpoint URL is invalid.",
+      "connectionFailed": "Failed to connect to AI endpoint. Check your network or AI server.",
+      "noDiff": "No diff changes to generate a commit message for.",
+      "emptyResponse": "AI response returned no text output."
+    }
   },
   "interactiveRebase": {
     "title": "Interactive Rebase",
@@ -1484,7 +1512,11 @@
     "authSamlTitle": "SAML SSO Authorization Required",
     "authSamlDesc": "Access was denied because your organization enforces SAML Single Sign-On on Personal Access Tokens.",
     "divergentBranchesTitle": "Divergent Branches",
-    "divergentBranchesDesc": "Local and remote branches have diverged. Specify how to reconcile (Merge or Rebase)."
+    "divergentBranchesDesc": "Local and remote branches have diverged. Specify how to reconcile (Merge or Rebase).",
+    "dnsFailed": "Could not connect to remote host (DNS resolution failed or offline).",
+    "permissionDeniedSsh": "SSH permission denied (publickey). Check your SSH Key configuration.",
+    "authFailed": "Remote authentication failed. Check your username and Personal Access Token (PAT).",
+    "repoNotFound": "Remote repository not found or access denied."
   },
   "secretModal": {
     "title": "Secret Detected / Push Protection",
