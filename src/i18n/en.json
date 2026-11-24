@@ -423,7 +423,14 @@
     "prAddCommentTitle": "Add comment to line {line}",
     "prViewCommentsTitle": "View {count} comment(s)",
     "largeDiffWarning": "This diff is very large ({count} lines). Rendering all lines may slow down the app.",
-    "loadAnywayBtn": "Load Full Diff Anyway"
+    "loadAnywayBtn": "Load Full Diff Anyway",
+    "binaryDiffTitle": "Binary File Changed",
+    "badgeLockfile": "Lockfile",
+    "badgeSourceMap": "Source Map",
+    "badgeMinified": "Minified",
+    "svgVisualToggle": "Visual Preview",
+    "svgCodeToggle": "XML Source",
+    "svgViewModeAria": "SVG view mode"
   },
   "history": {
     "empty": "No commit history on this branch yet.",

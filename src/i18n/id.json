@@ -423,7 +423,14 @@
     "prAddCommentTitle": "Tambah komentar ke baris {line}",
     "prViewCommentsTitle": "Lihat {count} komentar",
     "largeDiffWarning": "Diff ini sangat besar ({count} baris). Menampilkan seluruh baris dapat memperlambat aplikasi.",
-    "loadAnywayBtn": "Tetap Tampilkan Seluruh Diff"
+    "loadAnywayBtn": "Tetap Tampilkan Seluruh Diff",
+    "binaryDiffTitle": "Berkas Biner Berubah",
+    "badgeLockfile": "Lockfile",
+    "badgeSourceMap": "Source Map",
+    "badgeMinified": "Minified",
+    "svgVisualToggle": "Tampilan Visual",
+    "svgCodeToggle": "Kode XML",
+    "svgViewModeAria": "Mode tampilan SVG"
   },
   "history": {
     "empty": "Belum ada riwayat commit di branch ini.",
