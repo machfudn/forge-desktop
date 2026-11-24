@@ -3,7 +3,7 @@
 
 version: 2
 updates:
-  # 1. Frontend & Root Node.js dependencies (Svelte 5, Vite, TypeScript, Tailwind)
+  # 1. Frontend & Root Node.js dependencies (Svelte 5, Vite, TypeScript)
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -20,12 +20,17 @@ updates:
       prefix: "chore"
       include: "scope"
     groups:
-      npm-dependencies:
+      npm-minor-patch:
         patterns:
           - "*"
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
+        update-types:
+          - "minor"
+          - "patch"
+      npm-major-info:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # 2. Rust & Tauri backend dependencies (src-tauri Cargo crates)
   - package-ecosystem: "cargo"
@@ -44,9 +49,17 @@ updates:
       prefix: "chore"
       include: "scope"
     groups:
-      cargo-dependencies:
+      cargo-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      cargo-major-info:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # 3. GitHub Actions CI/CD workflows
   - package-ecosystem: "github-actions"
@@ -65,6 +78,14 @@ updates:
       prefix: "ci"
       include: "scope"
     groups:
-      actions-dependencies:
+      actions-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      actions-major-info:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
