@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as gitService from "../services/git";
   import { t } from "../i18n/index.svelte";
+  import { copyTextToClipboard } from "../lib/contextMenu.svelte";
 
   interface Props {
     repoPath?: string;
@@ -31,6 +32,7 @@
   let metaText = $state("");
   let errorMsg = $state("");
   let autoStarted = false;
+  let promptTextareaEl = $state<HTMLTextAreaElement | null>(null);
 
   $effect(() => {
     taskKind = initialTask;
@@ -39,6 +41,10 @@
     if (!autoStarted && (initialTask === "explain_diff" || initialTask === "explain_commit")) {
       autoStarted = true;
       void runAi();
+    } else if (taskKind === "custom_ask") {
+      queueMicrotask(() => {
+        promptTextareaEl?.focus();
+      });
     }
   });
 
@@ -129,6 +135,7 @@
       <div class="form-field">
         <label class="form-label" for="ai-prompt-input">{t("ai.promptLabel")}</label>
         <textarea
+          bind:this={promptTextareaEl}
           id="ai-prompt-input"
           class="form-input"
           rows="3"
@@ -164,8 +171,7 @@
               type="button"
               class="btn-secondary btn-xs"
               onclick={() => {
-                void navigator.clipboard.writeText(answer);
-                onStatus?.(t("ai.copiedResponse"));
+                void copyTextToClipboard(answer, onStatus, t("ai.copiedResponse"));
               }}
             >
               {t("ai.copyBtn")}
