@@ -7600,10 +7600,16 @@ select optgroup {
 .stash-entry-list {
   max-height: 160px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
 }
 
 .stash-file-list {
   max-height: none;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
 }
 
 .stash-file-badge {
