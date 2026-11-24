@@ -316,7 +316,7 @@ impl AiManager {
 fn require_model(cfg: &AiConfig) -> Result<String, String> {
     let m = cfg.model.trim();
     if m.is_empty() {
-        return Err("Model AI belum diisi di Settings -> Custom AI".into());
+        return Err("[AI_ERR_NO_MODEL] Model AI belum diisi di Settings -> Custom AI".into());
     }
     Ok(m.to_string())
 }
@@ -335,13 +335,13 @@ pub fn mask_api_key(key: &str) -> String {
 pub fn validate_ai_endpoint(endpoint: &str) -> Result<(), String> {
     let trimmed = endpoint.trim();
     if trimmed.is_empty() {
-        return Err("Endpoint AI belum dikonfigurasi".into());
+        return Err("[AI_ERR_NO_ENDPOINT] Endpoint AI belum dikonfigurasi".into());
     }
     if !(trimmed.starts_with("https://") || trimmed.starts_with("http://")) {
-        return Err("Endpoint AI harus diawali http:// atau https://".into());
+        return Err("[AI_ERR_INVALID_PROTOCOL] Endpoint AI harus diawali http:// atau https://".into());
     }
     if trimmed.contains(['\r', '\n', ' ']) {
-        return Err("Endpoint AI tidak valid".into());
+        return Err("[AI_ERR_INVALID_ENDPOINT] Endpoint AI tidak valid".into());
     }
     Ok(())
 }
@@ -491,7 +491,7 @@ fn call_ai_completion(
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if err.is_empty() {
-            "Gagal terhubung ke endpoint AI".into()
+            "[AI_ERR_CONNECT_FAILED] Gagal terhubung ke endpoint AI".into()
         } else {
             err
         });
@@ -564,7 +564,7 @@ pub fn extract_ai_text(provider: AiProviderKind, body: &str) -> Result<String, S
     text_opt
         .map(|s| s.to_string())
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "Respon AI tidak memiliki teks keluaran".into())
+        .ok_or_else(|| "[AI_ERR_EMPTY_RESPONSE] Respon AI tidak memiliki teks keluaran".into())
 }
 
 fn truncate_context(s: &str) -> String {
@@ -615,7 +615,7 @@ fn build_task_prompts(
                 truncate_context(prompt_input)
             };
             if diff_ctx.trim().is_empty() {
-                return Err("Tidak ada perubahan diff untuk dibuatkan pesan commit".into());
+                return Err("[AI_ERR_NO_DIFF] Tidak ada perubahan diff untuk dibuatkan pesan commit".into());
             }
             let sys = format!(
                 "{base_sys}\nGenerate a conventional Git commit message for the diff. Output plain text ONLY in exact format:\n<summary line <= 72 chars>\n\n<optional concise bullet points explaining why/what>"
@@ -663,7 +663,7 @@ fn build_task_prompts(
         _ => {
             let mut user = prompt_input.trim().to_string();
             if user.is_empty() {
-                return Err("Prompt AI tidak boleh kosong".into());
+                return Err("[AI_ERR_PROMPT_EMPTY] Prompt AI tidak boleh kosong".into());
             }
             if let Some(ctx) = extra_context.filter(|s| !s.trim().is_empty()) {
                 user.push_str("\n\nContext:\n");
