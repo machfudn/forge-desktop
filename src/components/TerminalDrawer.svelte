@@ -930,8 +930,8 @@
           type="button"
           class="terminal-btn icon-only {searchOpen ? 'is-highlighted' : ''}"
           onclick={toggleSearch}
-          title="Search output (Ctrl+F)"
-          aria-label="Search output"
+          title={t("terminal.searchToggleTitle")}
+          aria-label={t("terminal.searchToggleAria")}
         >
           <svg
             width="12"
@@ -1078,15 +1078,15 @@
       />
       {#if searchQuery.trim()}
         <span class="terminal-search-count">
-          {searchMatchCount} match{searchMatchCount === 1 ? "" : "es"}
+          {searchMatchCount === 1 ? t("terminal.searchMatchCountOne", { count: searchMatchCount }) : t("terminal.searchMatchCountMany", { count: searchMatchCount })}
         </span>
       {/if}
       <button
         type="button"
         class="terminal-btn icon-only"
         onclick={toggleSearch}
-        title="Close search"
-        aria-label="Close search"
+        title={t("terminal.searchCloseTitle")}
+        aria-label={t("terminal.searchCloseAria")}
       >
         <svg
           width="11"

@@ -224,13 +224,13 @@
               >
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
-              <span>Error Log Detail</span>
+              <span>{t("sshModal.errorLogDetail")}</span>
             </button>
             <button
               type="button"
               class="ssh-copy-btn"
               onclick={handleCopyError}
-              title="Salin pesan error ke clipboard"
+              title={t("sshModal.copyErrorAria")}
             >
               {#if copied}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
