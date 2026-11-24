@@ -71,9 +71,12 @@
   let swipePercent = $state(50);
   let onionOpacity = $state(50);
   let forceRenderLargeDiff = $state(false);
+  let isSvg = $derived(/\.svg$/i.test(filePath));
+  let svgViewMode = $state<"visual" | "code">("visual");
   $effect(() => {
     filePath;
     forceRenderLargeDiff = false;
+    svgViewMode = "visual";
   });
   $effect(() => {
     if (!isMarkdown && viewMode === "markdown") {
@@ -199,6 +202,9 @@
         ? line.charAt(0)
         : "";
     const content = prefix ? line.slice(1) : line;
+    if (content.length > 4000) {
+      return `${escapeHtml(prefix)}${escapeHtml(content)}`;
+    }
     const trimmed = content.trim();
 
     if (
@@ -555,8 +561,35 @@
   }
 
   let safeDiffText = $derived(diffText ?? "");
+  let isBinaryDiff = $derived(
+    (safeDiffText.includes("Binary files ") && safeDiffText.includes(" differ")) ||
+      safeDiffText.startsWith("GIT binary patch")
+  );
+  let showCodeToolbar = $derived(!isBinaryDiff && (!isImage || (isSvg && svgViewMode === "code")));
+  let fileCategoryBadge = $derived.by(() => {
+    const lower = filePath.toLowerCase();
+    if (
+      lower.endsWith("package-lock.json") ||
+      lower.endsWith("pnpm-lock.yaml") ||
+      lower.endsWith("yarn.lock") ||
+      lower.endsWith("cargo.lock") ||
+      lower.endsWith("composer.lock") ||
+      lower.endsWith("poetry.lock") ||
+      lower.endsWith("flake.lock") ||
+      lower.endsWith(".lock")
+    ) {
+      return { label: t("diff.badgeLockfile"), className: "badge-lockfile" };
+    }
+    if (lower.endsWith(".map") || lower.endsWith(".js.map") || lower.endsWith(".css.map")) {
+      return { label: t("diff.badgeSourceMap"), className: "badge-sourcemap" };
+    }
+    if (lower.endsWith(".min.js") || lower.endsWith(".min.css") || lower.includes(".bundle.")) {
+      return { label: t("diff.badgeMinified"), className: "badge-minified" };
+    }
+    return null;
+  });
   let rawLineCount = $derived(safeDiffText ? (safeDiffText.match(/\n/g)?.length ?? 0) + 1 : 0);
-  let isVeryLargeDiff = $derived(rawLineCount > 2500);
+  let isVeryLargeDiff = $derived(rawLineCount > 5000);
   let lines = $derived(
     isVeryLargeDiff && !forceRenderLargeDiff
       ? []
@@ -701,9 +734,9 @@
       }
     }
 
-    if ((!isImage && viewMode !== "markdown") || onToggleWhitespace || onAddToGitignore) {
+    if ((showCodeToolbar && viewMode !== "markdown") || onToggleWhitespace || onAddToGitignore) {
       items.push({ type: "divider" });
-      if (!isImage && viewMode !== "markdown") {
+      if (showCodeToolbar && viewMode !== "markdown") {
         items.push({
           label: wrapLines ? t("ctx.diff.unwrapLines") : t("ctx.diff.wrapLines"),
           onSelect: () => {
@@ -711,7 +744,7 @@
           },
         });
       }
-      if (onToggleWhitespace && !isImage) {
+      if (onToggleWhitespace && showCodeToolbar) {
         items.push({
           label: ignoreWhitespace ? t("ctx.diff.showWhitespace") : t("ctx.diff.ignoreWhitespace"),
           onSelect: onToggleWhitespace,
@@ -734,7 +767,7 @@
   <div class="diff-header">
     <div class="diff-file-meta">
       <span class="diff-file-path" title={filePath}>{filePath}</span>
-      {#if !isImage && (stats.adds > 0 || stats.dels > 0)}
+      {#if showCodeToolbar && (stats.adds > 0 || stats.dels > 0)}
         <span class="tabular-nums" style="font-size: 11px; display: inline-flex; gap: 6px; font-family: var(--font-mono);">
           {#if stats.adds > 0}<span style="color: var(--diff-add-text);">+{stats.adds}</span>{/if}
           {#if stats.dels > 0}<span style="color: var(--diff-del-text);">-{stats.dels}</span>{/if}
@@ -743,10 +776,34 @@
       {#if isLfs}
         <span class="badge-lfs">Git LFS</span>
       {/if}
+      {#if fileCategoryBadge}
+        <span class="badge-file-category {fileCategoryBadge.className}">{fileCategoryBadge.label}</span>
+      {/if}
     </div>
 
     <div class="diff-toolbar">
-      {#if !isImage}
+      {#if isSvg && isImage && safeDiffText.trim()}
+        <div class="seg-group" role="group" aria-label={t("diff.svgViewModeAria")}>
+          <button
+            type="button"
+            class="seg-btn {svgViewMode === 'visual' ? 'active' : ''}"
+            aria-pressed={svgViewMode === "visual"}
+            onclick={() => (svgViewMode = "visual")}
+          >
+            {t("diff.svgVisualToggle")}
+          </button>
+          <button
+            type="button"
+            class="seg-btn {svgViewMode === 'code' ? 'active' : ''}"
+            aria-pressed={svgViewMode === "code"}
+            onclick={() => (svgViewMode = "code")}
+          >
+            {t("diff.svgCodeToggle")}
+          </button>
+        </div>
+      {/if}
+
+      {#if showCodeToolbar}
         <div class="seg-group" role="group" aria-label={t("diff.viewModeAria")}>
           <button
             type="button"
@@ -777,7 +834,7 @@
         </div>
       {/if}
 
-      {#if !isImage && viewMode !== "markdown"}
+      {#if showCodeToolbar && viewMode !== "markdown"}
         <button
           type="button"
           onclick={() => (wrapLines = !wrapLines)}
@@ -788,7 +845,7 @@
           {t("diff.wrap")}
         </button>
       {/if}
-      {#if onToggleWhitespace && !isImage}
+      {#if onToggleWhitespace && showCodeToolbar}
         <button
           type="button"
           onclick={onToggleWhitespace}
@@ -817,7 +874,7 @@
           {t("diff.fileHistoryBtn")}
         </button>
       {/if}
-      {#if onAiExplainDiff && !isImage && safeDiffText.trim()}
+      {#if onAiExplainDiff && showCodeToolbar && safeDiffText.trim()}
         <button
           type="button"
           onclick={() => onAiExplainDiff(filePath, safeDiffText)}
@@ -840,7 +897,28 @@
     </div>
   </div>
 
-  {#if isImage && imageDiffData}
+  {#if isBinaryDiff}
+    <div class="empty-state" style="padding: 40px 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center;">
+      <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <path d="M9 9h6v6H9z" />
+          <path d="M15 2v2" />
+          <path d="M15 20v2" />
+          <path d="M2 15h2" />
+          <path d="M2 9h2" />
+          <path d="M20 15h2" />
+          <path d="M20 9h2" />
+          <path d="M9 2v2" />
+          <path d="M9 20v2" />
+        </svg>
+      </div>
+      <span style="font-weight: 600; font-size: 14px; color: var(--text-primary);">{t("diff.binaryDiffTitle")}</span>
+      <span style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); max-width: 500px; word-break: break-all;">
+        {safeDiffText.trim()}
+      </span>
+    </div>
+  {:else if isImage && imageDiffData && (!isSvg || svgViewMode === "visual")}
     <div class="image-diff-stage">
       <div class="seg-group" role="group" aria-label={t("diff.imageModeAria")}>
         <button
@@ -935,18 +1013,18 @@
         </div>
       {/each}
     </div>
-  {:else if lines.length === 0}
-    <div class="empty-state">
-      <span>{t("diff.emptyDiff")}</span>
-    </div>
   {:else if isVeryLargeDiff && !forceRenderLargeDiff}
     <div class="empty-state" style="padding: 24px 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center;">
       <span style="font-weight: 600; color: var(--text-primary); font-size: 13px;">
-        {t("diff.largeDiffWarning", { count: rawLineCount || lines.length })}
+        {t("diff.largeDiffWarning", { count: rawLineCount || stats.adds + stats.dels })}
       </span>
       <button type="button" class="btn-primary btn-sm" onclick={() => (forceRenderLargeDiff = true)}>
         {t("diff.loadAnywayBtn")}
       </button>
+    </div>
+  {:else if !safeDiffText.trim() || lines.length === 0}
+    <div class="empty-state">
+      <span>{t("diff.emptyDiff")}</span>
     </div>
   {:else if viewMode === "unified"}
     {#if onStageLines && selectedLineCount > 0}

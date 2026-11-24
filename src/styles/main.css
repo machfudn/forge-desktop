@@ -843,6 +843,37 @@ a {
   flex-shrink: 0;
 }
 
+.badge-file-category {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+  border: 1px solid var(--border-default);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.badge-file-category.badge-lockfile {
+  background: rgba(234, 179, 8, 0.12);
+  color: var(--diff-mod-text, #eab308);
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+.badge-file-category.badge-sourcemap {
+  background: rgba(168, 85, 247, 0.12);
+  color: #a855f7;
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.badge-file-category.badge-minified {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-blue, #3b82f6);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
 .file-name {
   flex: 1;
   min-width: 0;

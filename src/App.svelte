@@ -1008,10 +1008,16 @@
   async function loadDiffForFile(file: FileEntry) {
     const isImg = /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(file.path);
     if (isImg) {
+      const isSvg = file.path.toLowerCase().endsWith(".svg");
       try {
-        const nextImgDiff = await gitService.getImageDiff(activeRepo, file.path);
+        const [nextImgDiff, nextTextDiff] = await Promise.all([
+          gitService.getImageDiff(activeRepo, file.path).catch(() => null),
+          isSvg
+            ? gitService.getFileDiff(activeRepo, file.path, file.staged, ignoreWhitespace).catch(() => "")
+            : Promise.resolve(""),
+        ]);
         currentImageDiff = nextImgDiff;
-        currentDiff = "";
+        currentDiff = nextTextDiff;
         return;
       } catch {
         currentImageDiff = null;
