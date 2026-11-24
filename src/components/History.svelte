@@ -749,7 +749,7 @@
     computeCommitGraph(indexedCommits.map((x) => x.commit))
   );
   let maxGraphCols = $derived(
-    Math.min(10, Math.max(1, ...graphLayouts.map((g) => g.maxLanes)))
+    Math.min(10, graphLayouts.reduce((max, g) => Math.max(max, g.maxLanes), 1))
   );
   let graphColWidth = $derived(Math.max(54, maxGraphCols * LANE_W + 16));
   let selectedCommitLayout = $derived(
@@ -829,6 +829,7 @@
   $effect(() => {
     if (repoPath !== lastRepoPath) {
       lastRepoPath = repoPath;
+      failedAvatars = {};
       if (selectedSha) clearSelection();
       return;
     }

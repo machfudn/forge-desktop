@@ -2944,8 +2944,11 @@
 
     const handleGlobalKeydown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        syncMenuOpen = false;
-        toolsMenuOpen = false;
+        if (syncMenuOpen || toolsMenuOpen) {
+          syncMenuOpen = false;
+          toolsMenuOpen = false;
+          return;
+        }
         if (paletteOpen) {
           paletteOpen = false;
         } else if (aiModalState) {
