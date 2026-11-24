@@ -516,7 +516,7 @@
     "densityCompact": "Compact (28px)",
     "dateFormat": "Date Format",
     "dateRelative": "Relative",
-    "dateAbsolute": "Absolute",
+    "dateAbsolute": "Local",
     "resetColumns": "Reset Layout",
     "dragToReorder": "Drag to reorder commits",
     "moveColumnLeft": "Move column left",

@@ -516,7 +516,7 @@
     "densityCompact": "Ringkas (28px)",
     "dateFormat": "Format Tanggal",
     "dateRelative": "Relatif",
-    "dateAbsolute": "Lengkap",
+    "dateAbsolute": "Lokal",
     "resetColumns": "Reset Tata Letak",
     "dragToReorder": "Seret untuk mengubah urutan commit",
     "moveColumnLeft": "Pindahkan kolom ke kiri",
